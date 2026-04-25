@@ -14,18 +14,22 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: cursor
           key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 15m
           script: |
             set -e
             cd /home/script/vitals
-            # Stash any local-only files (none in repo) and pull
             git fetch origin main
             git reset --hard origin/main
-            # Install/update Python deps
-            .venv/bin/pip install --quiet -r requirements.txt
-            # Restart app
-            pm2 restart vitals --update-env
-            # Health check
-            sleep 3
-            curl -fsS http://127.0.0.1:3015/health-check
+            export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+            npm ci --no-audit --no-fund
+            npm run build
+            if pm2 describe vitals > /dev/null 2>&1; then
+              pm2 restart vitals --update-env
+            else
+              pm2 start npm --name vitals -- start
+              pm2 save
+            fi
+            sleep 6
+            curl -fsS http://127.0.0.1:3015/api/health-check
             echo ""
             echo "Deployed at $(date -u)"

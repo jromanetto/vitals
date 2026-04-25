@@ -1,42 +1,47 @@
-# Vitals — Personal Health Dashboard
+# Vitals — Health Intelligence Dashboard
 
-FastAPI app for managing personal health data (blood analyses, biomarkers, consultations, knowledge base).
+Personal health data dashboard for Julien Romanetto.
 
-## Live
-
-https://vitals.blueproject.org
+**Live:** https://vitals.blueproject.org
 
 ## Stack
 
-- FastAPI + Uvicorn (Python 3.11)
-- Jinja2 templates + Tailwind CDN
-- bcrypt + itsdangerous signed cookies
-- PM2 + Nginx + Let's Encrypt
-- VPS: `/home/script/vitals/` (port 3015)
+- Next.js 15 (App Router) + React 19 + TypeScript
+- shadcn/ui pattern + Tailwind + Radix
+- Framer Motion · Recharts · lucide-react
+- Drizzle + better-sqlite3
+- Anthropic SDK (Claude Sonnet 4.5)
+- PM2 + Nginx + Let's Encrypt on VPS
 
-## Architecture
+## Features
 
+- **Profile** — 12 sections, 80+ fields covering identity, anthropometry, lifestyle, diet, medical history, family, mental, reproductive, environment, goals, providers, free notes
+- **Biomarkers** — auto-parsed from blood-test PDFs (15+ years of history), longitudinal charts with reference ranges
+- **DNA Analysis** — 23andMe raw data parsed into 10 categories (cardiovascular, metabolism, longevity, nutrition, fitness, cognition, hormones, immunity, detox, carriers)
+- **AI Reports** — generated multi-kind health summaries (overview, cardiovascular, longevity, nutrition…)
+- **Knowledge base** — full-text + BM25 search over all reports, consultations, KB notes
+- **AI Chat** — RAG-grounded chat with all your data + profile + biomarkers + DNA as context
+- **Timeline** — unified chronological view of all health events
+- **Files** — inline PDF viewer for any report
+
+## Local dev
+
+```bash
+npm ci
+npm run dev
+# open http://localhost:3015
 ```
-app/
-├── main.py              # FastAPI routes + auth
-├── templates/           # Jinja2 templates
-└── static/              # CSS/JS
-data/                    # Health data (gitignored — synced from Google Drive)
-scripts/                 # Biomarker analysis scripts
+
+## Ingest
+
+```bash
+npm run ingest   # parses data/ and populates data/vitals.db
 ```
 
 ## Deploy
 
-Push to `main` → GitHub Actions → SSH deploy to VPS → PM2 restart.
+Push to `main`. GitHub Actions SSH-deploys to the VPS, builds, and `pm2 restart`s.
 
 ## Roadmap
 
-See `ROADMAP.md` for the 10-phase improvement plan handled by the autonomous overnight agent.
-
-## Environment
-
-`.env` (not in repo):
-- `VITALS_AUTH_EMAIL`
-- `VITALS_AUTH_HASH` (bcrypt)
-- `VITALS_SECRET_KEY`
-- `ANTHROPIC_API_KEY` (for RAG/biomarker analysis features)
+See `ROADMAP.md` — 10 phases handled by the autonomous overnight agent.

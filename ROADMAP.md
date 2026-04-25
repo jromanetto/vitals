@@ -1,81 +1,101 @@
-# Vitals Improvement Roadmap
+# Vitals Roadmap (post-pivot Next.js)
 
-The autonomous overnight agent works through these phases hour-by-hour. Each completed phase is marked with [x] and committed.
+The autonomous overnight agent works through these phases hour-by-hour. Each completed phase is marked with `[DONE]` appended to its header. Implement EVERY `[ ]` item, then mark the phase done, commit, push, verify deploy via curl, and continue if budget allows.
 
-**CRITICAL execution rules for the agent:**
-- The VPS path `/home/script/vitals/data/` contains the user's real health data and CANNOT be accessed by the cloud agent. The agent must NEVER assume it has access to actual files. It must write code that handles `data/` correctly when present (works when deployed on VPS).
-- All testing on the cloud side is done via `curl https://vitals.blueproject.org/health-check` after a deploy — the agent must NOT try to SSH into the VPS or read local files.
-- Auth is required for all routes except `/login` and `/health-check`. Never weaken auth.
-- Keep the design dark/minimal/elegant — Apple-meets-medical aesthetic.
-- After each phase: commit with a clear message, push, wait ~30 sec, then `curl -fsS https://vitals.blueproject.org/health-check` to verify deploy succeeded. If health-check fails, investigate logs via `gh run view --log` on the latest workflow run.
+## Stack
+- **Next.js 15 App Router** + React 19 + TypeScript
+- **shadcn/ui pattern** (Tailwind + Radix primitives)
+- **Framer Motion** for animations
+- **Drizzle + better-sqlite3** for the DB (file at `data/vitals.db`)
+- **Recharts** for charts
+- **Anthropic SDK** (`claude-sonnet-4-5-20250929`) for AI features
+- **lucide-react** icons
+- Auth: iron-session signed cookies + bcryptjs (single user)
+- Deploy: GitHub Actions → SSH to VPS → `npm ci && npm run build && pm2 restart vitals` (port 3015, Nginx → vitals.blueproject.org)
+
+## Hard rules
+- Do NOT break the existing routes/pages. Build on top.
+- Health-check at `/api/health-check` must always return 200.
+- All non-public pages go through `middleware.ts` (already enforces auth).
+- Data files live in `data/` (gitignored). Code only in repo.
+- Test deploys via `curl -fsS https://vitals.blueproject.org/api/health-check` and `curl -sI https://vitals.blueproject.org/login`.
+- After each phase: commit, push, sleep 90s, verify both endpoints. If GitHub Actions fail, debug with `gh run view --log-failed --repo jromanetto/vitals` and fix.
 
 ---
 
-## Phase 1 — Biomarkers parser foundation
-- [ ] Create `app/lib/biomarkers.py` with a function `parse_biomarker_pdf(path)` that uses `pdfplumber` to extract structured biomarker tables (name, value, unit, ref_range, date).
-- [ ] Add `pdfplumber` to `requirements.txt`.
-- [ ] Use a regex/heuristic approach (lab reports vary) — focus on Cerba/Synlab/SHA formats found in `data/analyses-sang/` and `data/sha-wellness-clinic/`.
-- [ ] Cache parsed results to a sqlite DB at `data/biomarkers.db` (table: `biomarker(id, name, value, unit, ref_low, ref_high, date, source_file)`).
-- [ ] Add `app/lib/db.py` with a sqlite connection helper.
-- [ ] Create `/api/biomarkers/refresh` endpoint (auth required) that re-parses all PDFs.
+## Phase 1 — Biomarker parser hardening
+- [ ] Improve `lib/parsers/biomarkers.ts` to support more layouts: Cerba, Synlab, Enzo Clinical Labs, CHIREC, LIMS, CEF-Pelleport, SHA Wellness. Add ~50 more aliases (markers commonly seen in French/Spanish lab reports).
+- [ ] Handle multi-line names ("25-OH Vitamine D" split across lines), Comma decimals, scientific notation.
+- [ ] Detect ref ranges given as "< X" or "> X" or "X – Y" or "[X – Y]".
+- [ ] Add a simple unit normalizer: g/L ↔ mg/dL conversions for cholesterol family.
+- [ ] Extend the test heuristics so the agent can run `npm run ingest` (skip if no PDFs locally — it's run on the VPS).
+- [ ] Save ingest log row per file with counts.
 
-## Phase 2 — Biomarkers dashboard UI
-- [ ] New route `/biomarkers` showing a list of all biomarkers found, with latest value, status badge (normal / low / high based on ref range), and trend arrow.
-- [ ] Group by category (lipids, hormones, vitamins, hematology, metabolic).
-- [ ] Sortable + filterable table.
-- [ ] Link from main dashboard card.
+## Phase 2 — Biomarker enrichment & insights
+- [ ] Add a `biomarker_meta` table seeded with: optimal vs lab range, longevity-tilted target, description, why-it-matters, related supplements/lifestyle.
+- [ ] Show optimal range badge alongside lab range on biomarker detail page.
+- [ ] Add "trend over 6 months / 1 year / all time" pill toggle.
+- [ ] On detail page, show top 3 most-correlated biomarkers (Pearson on shared dates).
+- [ ] Add a per-biomarker AI commentary section ("Que dit la littérature sur ton niveau ?") via Claude, cached in DB.
 
-## Phase 3 — Biomarker detail with timeline chart
-- [ ] Route `/biomarkers/{slug}` showing a Chart.js (CDN) line chart of the value over time.
-- [ ] Reference range as a shaded band on the chart.
-- [ ] Latest value + change vs previous + change vs first measurement.
-- [ ] Notes/observations field (stored in `biomarker_notes` table).
+## Phase 3 — DNA catalog expansion
+- [ ] Expand `lib/dna/catalog.ts` from ~30 to **150+ entries** covering all 10 categories in depth. Use SNPedia / ClinVar / GWAS catalog references.
+- [ ] Add a `dna_compound` table for composite traits (e.g., APOE genotype = function of rs429358 + rs7412 → ε2/ε3/ε4) and compute these.
+- [ ] Page `/dna/[category]` now groups by trait, shows compound results at the top.
+- [ ] Add risk score per category (sum of magnitudes, normalized 0-100).
+- [ ] Hero card on `/dna` showing top 5 most-impactful findings + risk gauges per category.
 
-## Phase 4 — Knowledge base text indexing
-- [ ] Walk `data/knowledge-base/` recursively, index `.md`/`.txt`/`.pdf` files into a `kb_chunks(id, file, chunk_idx, text, embedding)` sqlite-vec or simple in-memory index.
-- [ ] If no `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` available, fall back to BM25 (use `rank-bm25` package).
-- [ ] Endpoint `/api/kb/search?q=...` returning top 10 chunks with file + score.
+## Phase 4 — RAG upgrade with embeddings
+- [ ] Add `lib/rag/embed.ts` using Anthropic's batch API or, if not available, `@xenova/transformers` (all-MiniLM-L6-v2 wasm) for local embeddings.
+- [ ] Reembed all chunks during ingest, store as JSON array string in `rag_chunk.embedding`.
+- [ ] Hybrid search: BM25 (current) + cosine on embeddings, blended.
+- [ ] Search results show date + chunk preview + "open document" link to PDF inline viewer.
+- [ ] Highlight matched terms in snippet.
 
-## Phase 5 — Knowledge base search UI
-- [ ] Route `/kb` with a search box, results below with file + snippet highlight + "open file" link.
-- [ ] Recent searches saved per session.
-- [ ] Card on main dashboard.
+## Phase 5 — AI report generator (multi-kind)
+- [ ] Generate kinds: `overview`, `cardiovascular`, `metabolic`, `longevity`, `nutrition`, `dna-deep-dive`, `next-bloodwork-prep`.
+- [ ] Each kind has its own structured prompt + sections. Save with structured `meta` for re-rendering.
+- [ ] Reports list groups by kind with a tab bar.
+- [ ] Report detail: copy markdown, export PDF (use `@react-pdf/renderer` or print CSS).
+- [ ] Include charts (mini Recharts) inline in reports for biomarker timelines mentioned.
 
-## Phase 6 — PDF inline viewer
-- [ ] Replace the current behaviour where opening a PDF triggers download — embed `<iframe src=pdf>` or `pdf.js` viewer in `/browse/{path}` for PDFs.
-- [ ] Add a "download" button next to the inline viewer.
-- [ ] Page navigation + zoom controls.
+## Phase 6 — RAG-grounded chat with streaming
+- [ ] Switch `/api/chat` to streaming via Anthropic SDK streaming.
+- [ ] Client renders tokens as they arrive (Framer Motion fade-in).
+- [ ] Chat sessions saved in DB (`chat_session`, `chat_message`).
+- [ ] Sidebar in `/chat` listing past sessions, renamable + deletable.
+- [ ] Auto-citation: when assistant uses a fact from a chunk, attach inline `[1]` linking to the source doc.
 
-## Phase 7 — Global search
-- [ ] Top-bar search box (visible on every page) that searches biomarkers names + KB chunks + filenames.
-- [ ] Route `/search?q=...` with grouped results (Biomarkers, KB, Files).
-- [ ] Keyboard shortcut `cmd+k`/`ctrl+k` to focus.
+## Phase 7 — PDF inline viewer + global search
+- [ ] New `/files/{path}` route: serves PDFs inline behind auth (use `data/` paths).
+- [ ] Inline viewer page with `<iframe>` and metadata sidebar (date, biomarkers extracted, "linked reports").
+- [ ] Cmd-K palette (component) searching biomarkers + KB chunks + files + reports + DNA traits.
+- [ ] Use `cmdk` or implement minimal version. Animate with Framer Motion (modal scale + fade).
 
-## Phase 8 — Notes & annotations
-- [ ] Generic `notes` table (id, target_type, target_id, body, created_at, updated_at).
-- [ ] Notes UI on biomarker detail pages, on file viewer, on KB search results.
-- [ ] `/notes` index showing all notes sorted by recency.
+## Phase 8 — Profile-aware insights & onboarding
+- [ ] On first login (no profile yet), redirect to `/profile` with a guided wizard: 1 section per step, progress bar, "skip for now".
+- [ ] Per-section "completion %" badges in the profile page.
+- [ ] Use profile fields to personalize: optimal-range targets shift with sex, age, training intensity.
+- [ ] Add `/profile/import` letting the user paste a previous health summary; Claude auto-fills the form.
 
-## Phase 9 — Health summary report
-- [ ] Route `/summary` generating a one-page report:
-  - Latest biomarkers (top 20 most-tracked)
-  - Out-of-range items highlighted
-  - Recent trends (improving / worsening)
-  - Last consultation date
-  - Days since last full panel
-- [ ] "Print to PDF" friendly CSS (`@media print`).
+## Phase 9 — Longevity score + dashboard polish
+- [ ] Compute a Vitals Longevity Score (0-100) on the home dashboard from biomarkers + DNA + lifestyle answers. Document the formula.
+- [ ] Big radial gauge component (Framer Motion + SVG) on the home dashboard.
+- [ ] Sparkline strip showing key biomarker trends inline on home cards.
+- [ ] Sticky weekly habits checklist in `/profile` (sleep, water, training, fasting hours).
+- [ ] Light mode toggle in TopBar (next-themes), persists.
 
-## Phase 10 — UI polish & QoL
-- [ ] Stats card on home: total biomarkers tracked, latest panel date, % in normal range.
-- [ ] Breadcrumbs everywhere.
-- [ ] Loading states / skeleton screens.
-- [ ] Empty states with helpful prompts.
-- [ ] Mobile-responsive nav (hamburger).
-- [ ] Favicon + page titles.
-- [ ] Accessibility: aria labels, focus rings, keyboard nav.
+## Phase 10 — Mobile, accessibility, polish, perf
+- [ ] Mobile sidebar (Sheet drawer) — already imported the Radix dependency.
+- [ ] Keyboard shortcuts: `g d` go DNA, `g b` go biomarkers, etc.
+- [ ] Focus rings, aria-labels on icons, semantic landmarks.
+- [ ] Skeleton loaders for async cards.
+- [ ] Lighthouse pass: image sizes, font preload, no layout shift.
+- [ ] Add favicon + OG image (generated SVG, not committed binary).
+- [ ] Add README sections: features, architecture diagram (ASCII), data flow.
 
 ---
 
 ## After all 10 phases done
 
-If all 10 phases are committed and deployed: the agent should write `COMPLETE.md` at the repo root with a summary of what was built, then mark itself done. Do not invent phase 11 — let the user pick the next direction in the morning.
+Write `COMPLETE.md` summarizing what was built. Then stop.
