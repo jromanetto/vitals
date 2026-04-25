@@ -1,4 +1,3 @@
-import "server-only";
 import { slugify } from "@/lib/utils";
 
 export type Biomarker = {

@@ -1,4 +1,3 @@
-import "server-only";
 import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import readline from "node:readline";

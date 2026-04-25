@@ -70,13 +70,13 @@ async function ingestPdfs() {
 
     if (existing[0]) {
       await d.update(schema.document).set({
-        category: cat, title, date: dateMs ?? null, pages: parsed.numPages, textContent: parsed.text, hash: h,
+        category: cat, title, date: dateMs ? new Date(dateMs) : null, pages: parsed.numPages, textContent: parsed.text, hash: h,
       }).where(eq(schema.document.id, existing[0].id));
       // wipe related chunks/keywords/biomarkers
       d.$client.prepare(`DELETE FROM rag_chunk WHERE doc_id = ?`).run(existing[0].id);
       d.$client.prepare(`DELETE FROM biomarker WHERE source = ?`).run(p);
     } else {
-      await d.insert(schema.document).values({ path: p, category: cat, title, date: dateMs ?? null, pages: parsed.numPages, textContent: parsed.text, hash: h });
+      await d.insert(schema.document).values({ path: p, category: cat, title, date: dateMs ? new Date(dateMs) : null, pages: parsed.numPages, textContent: parsed.text, hash: h });
     }
     const docRow = (await d.select().from(schema.document).where(eq(schema.document.path, p)))[0];
 

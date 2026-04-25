@@ -1,4 +1,3 @@
-import "server-only";
 import { db } from "./index";
 import { sql } from "drizzle-orm";
 

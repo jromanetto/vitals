@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { sql } from "drizzle-orm";
+import { dnaVariant } from "@/lib/db/schema";
 import { motion } from "framer-motion";
 import Link from "next/link";
 
@@ -22,7 +23,7 @@ const CATEGORIES = [
 async function counts() {
   ensureSchema();
   const d = db();
-  const [variants] = await d.select({ c: sql<number>`count(*)` }).from((await import("@/lib/db/schema")).dnaVariant);
+  const [variants] = await d.select({ c: sql<number>`count(*)` }).from(dnaVariant);
   const rows = d.$client.prepare(`SELECT category, COUNT(*) as c, SUM(CASE WHEN has_risk = 1 THEN 1 ELSE 0 END) as risk FROM dna_insight GROUP BY category`).all() as Array<{ category: string; c: number; risk: number }>;
   const byCat = Object.fromEntries(rows.map((r) => [r.category, r]));
   return { totalVariants: variants?.c ?? 0, byCat };
