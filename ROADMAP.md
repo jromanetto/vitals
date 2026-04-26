@@ -25,7 +25,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Add `not-found.tsx` and `error.tsx` boundaries with the same dark theme.
 - [ ] Smoke test: login → dashboard → biomarkers → biomarker detail → /dna → /dna/longevity → /reports → /timeline → /knowledge → /chat → /profile.
 
-## Phase 1 — Biomarker parser hardening
+## Phase 1 — Biomarker parser hardening [DONE]
 - [ ] Add 50+ aliases to `lib/parsers/biomarkers.ts` covering: NSE, S100B, oméga-3 index, ferritine saturation, RDW, MPV, IDR, magnésium érythrocytaire, zinc, sélénium, iode urinaire, cortisol salivaire, T3 reverse, anti-TPO, anti-Tg, ACTH, prolactine, FSH, LH, progestérone, vitamine A, vitamine E, vitamine K, B1/B2/B3/B5/B6, CoQ10, holotranscobalamine, MMA (acide méthylmalonique), troponine, NT-proBNP, D-dimères, INR, TP, TCA, fibrinogène, TGP/TGO ratio, GGT/PAL ratio, lipase, amylase, calcium ionisé, phosphore, PTH, bicarbonates, gaz du sang, LDH, haptoglobine, IgE totales, IgG/IgA/IgM, complément C3 C4, ANA, anti-CCP, FR.
 - [ ] Improve regex to handle: comma-decimal, scientific notation, units split across lines, ref ranges as `< X`, `> X`, `≤ X`, `≥ X`, `[X – Y]`, `(X – Y)`, `entre X et Y`.
 - [ ] Add unit normalizer: g/L ↔ mg/dL ↔ mmol/L for cholesterol family, glycémie, créatinine, bilirubine.
@@ -33,7 +33,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Re-run ingest endpoint, log the count delta.
 - [ ] Goal: from 31 unique biomarkers to **80+**.
 
-## Phase 2 — Biomarker enrichment & insights
+## Phase 2 — Biomarker enrichment & insights [DONE]
 - [ ] Create `biomarker_meta` table with: slug, optimal_low, optimal_high, longevity_target, why_matters, category_long, supplements, lifestyle_actions.
 - [ ] Seed it with reference data for the 50 most-tracked biomarkers (e.g. for ferritine: optimal 70-120 ng/mL, longevity 80-100, why matters = "réserves de fer, marqueur inflammation").
 - [ ] On biomarker detail page: show optimal range badge alongside lab range, and a "longevity target" pill. Color the chart band by both ranges (lab = lighter, optimal = stronger).
