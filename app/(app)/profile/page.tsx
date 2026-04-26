@@ -22,6 +22,7 @@ export default async function ProfilePage() {
           Plus tu remplis, plus les analyses et corrélations seront pertinentes. Toutes les infos restent privées et locales.
         </p>
       </div>
+      <div className="flex gap-2 mb-2"><a href="/profile/family" className="text-xs px-3 py-1.5 rounded-md bg-emerald/10 border border-emerald/30 text-emerald hover:bg-emerald/20 transition">Pedigree familial →</a></div>
       <ProfileForm initial={initial} />
     </div>
   );

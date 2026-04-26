@@ -572,3 +572,6 @@ export function apoeGenotype(g429358: string | null, g7412: string | null): stri
   };
   return map[k] || "unknown";
 }
+
+import { EXTRA_CATALOG } from "./extra-catalog";
+CATALOG.push(...EXTRA_CATALOG);
