@@ -2,6 +2,8 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X } from "lucide-react";
+import { AdherenceCalendar } from "@/components/adherence-calendar";
+import { InteractionsCard } from "@/components/interactions-card";
 
 type Supplement = {
   id: number; name: string; dose: string | null; unit: string | null;
@@ -9,7 +11,6 @@ type Supplement = {
   startedAt: number | null; endedAt: number | null;
   notes: string | null; targetBiomarker: string | null; targetSnp: string | null;
 };
-
 type Suggestion = {
   supplement: string; reason: string; biomarker?: string; biomarkerSlug?: string;
   value?: number; unit?: string; dose: string; timing: string;
@@ -30,17 +31,13 @@ export default function SupplementsPage() {
     setRows(d.rows ?? []);
     setTaken(new Set(d.takenToday ?? []));
     const sg = await fetch("/api/supplements/suggestions");
-    const sd = await sg.json();
-    setSuggestions(sd.suggestions ?? []);
+    setSuggestions((await sg.json()).suggestions ?? []);
   }
   useEffect(() => { load(); }, []);
 
   async function save() {
     if (!form.name) return;
-    await fetch("/api/supplements", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, id: editing?.id }),
-    });
+    await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editing?.id }) });
     setShowForm(false); setEditing(null);
     setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "" });
     load();
@@ -55,16 +52,10 @@ export default function SupplementsPage() {
     const isTaken = next.has(id);
     if (isTaken) next.delete(id); else next.add(id);
     setTaken(next);
-    await fetch("/api/supplements/log", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ supplementId: id, date: today, taken: !isTaken }),
-    });
+    await fetch("/api/supplements/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ supplementId: id, date: today, taken: !isTaken }) });
   }
   async function addFromSuggestion(s: Suggestion) {
-    await fetch("/api/supplements", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: s.supplement, dose: s.dose, timing: s.timing, frequency: "1x/jour", notes: s.reason, targetBiomarker: s.biomarkerSlug ?? null }),
-    });
+    await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: s.supplement, dose: s.dose, timing: s.timing, frequency: "1x/jour", notes: s.reason, targetBiomarker: s.biomarkerSlug ?? null }) });
     load();
   }
 
@@ -76,13 +67,14 @@ export default function SupplementsPage() {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Suppléments</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions basées sur tes biomarqueurs et ton ADN.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions personnalisées · interactions.</p>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90">
+        <button onClick={() => { setEditing(null); setShowForm(true); }} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90">
           <Plus className="h-4 w-4" /> Ajouter
         </button>
       </div>
+
+      <InteractionsCard />
 
       {suggestions.length > 0 && (
         <section className="rounded-xl border border-emerald/30 bg-emerald/5 p-5">
@@ -92,15 +84,11 @@ export default function SupplementsPage() {
           </div>
           <div className="space-y-2">
             {suggestions.map((s, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                          className="flex items-start justify-between gap-4 p-3 rounded-md bg-card border border-border">
+              <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="flex items-start justify-between gap-4 p-3 rounded-md bg-card border border-border">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm">{s.supplement}</div>
                   <div className="text-xs text-muted-foreground mt-0.5">{s.reason}</div>
-                  <div className="text-xs mt-2">
-                    <span className="text-emerald">{s.dose}</span> · <span className="text-muted-foreground">{s.timing}</span>
-                    {s.biomarker && <span className="text-muted-foreground"> · {s.biomarker}: {s.value} {s.unit}</span>}
-                  </div>
+                  <div className="text-xs mt-2"><span className="text-emerald">{s.dose}</span> · <span className="text-muted-foreground">{s.timing}</span>{s.biomarker && <span className="text-muted-foreground"> · {s.biomarker}: {s.value} {s.unit}</span>}</div>
                 </div>
                 <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">+ Ajouter</button>
               </motion.div>
@@ -118,9 +106,7 @@ export default function SupplementsPage() {
         <div className="space-y-2">
           {active.map((r) => (
             <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-              <button onClick={() => toggleTaken(r.id)}
-                      className={`h-6 w-6 rounded-full border-2 flex items-center justify-center transition ${taken.has(r.id) ? "bg-emerald border-emerald" : "border-border hover:border-emerald/50"}`}
-                      aria-label={taken.has(r.id) ? "Pris aujourd'hui" : "Marquer pris"}>
+              <button onClick={() => toggleTaken(r.id)} className={`h-6 w-6 rounded-full border-2 flex items-center justify-center transition ${taken.has(r.id) ? "bg-emerald border-emerald" : "border-border hover:border-emerald/50"}`} aria-label={taken.has(r.id) ? "Pris aujourd'hui" : "Marquer pris"}>
                 {taken.has(r.id) && <Check className="h-3.5 w-3.5 text-primary-foreground" />}
               </button>
               <div className="flex-1 min-w-0">
@@ -140,6 +126,8 @@ export default function SupplementsPage() {
         </div>
       </section>
 
+      {active.length > 0 && <AdherenceCalendar supplements={active.map((r) => ({ id: r.id, name: r.name, startedAt: r.startedAt }))} />}
+
       {ended.length > 0 && (
         <section>
           <h2 className="text-sm font-medium mb-3 text-muted-foreground">Anciens ({ended.length})</h2>
@@ -157,33 +145,23 @@ export default function SupplementsPage() {
 
       <AnimatePresence>
         {showForm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
-                      onClick={() => setShowForm(false)}>
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full max-w-md rounded-2xl border border-border bg-card p-6 space-y-4">
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-card p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Nouveau supplément</h3>
                 <button onClick={() => setShowForm(false)}><X className="h-4 w-4 text-muted-foreground" /></button>
               </div>
               <div className="space-y-3">
-                <input placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                       className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                <input placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Dose (ex: 4000)" value={form.dose} onChange={(e) => setForm({ ...form, dose: e.target.value })}
-                         className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                  <input placeholder="Unité" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                         className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <input placeholder="Dose (ex: 4000)" value={form.dose} onChange={(e) => setForm({ ...form, dose: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <input placeholder="Unité" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })}
-                         className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                  <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })}
-                         className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                 </div>
-                <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2}
-                          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
               </div>
               <div className="flex justify-end gap-2">
                 <button onClick={() => setShowForm(false)} className="px-3 py-2 rounded-md text-sm">Annuler</button>

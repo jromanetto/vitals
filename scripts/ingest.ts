@@ -17,6 +17,7 @@ import { parsePdf, extractDateFromPath, extractDateFromText } from "../lib/parse
 import { parseBiomarkersFromText } from "../lib/parsers/biomarkers";
 import { iterate23andMe } from "../lib/parsers/dna23";
 import { CATALOG, evaluate } from "../lib/dna/catalog";
+import { normalizeUnits } from "../lib/parsers/normalize-units";
 import { eq, sql } from "drizzle-orm";
 import { tokenize } from "../lib/rag/search";
 
@@ -85,10 +86,24 @@ async function ingestPdfs() {
       const bms = parseBiomarkersFromText(parsed.text);
       const bmDate = dateMs ?? Date.now();
       for (const bm of bms) {
+        const norm = normalizeUnits(bm.slug, bm.value, bm.unit);
+        if (!norm) continue; // rejected as garbage by sanity check
+        let nValue = norm.value;
+        let nUnit = norm.unit;
+        let nLow = bm.refLow;
+        let nHigh = bm.refHigh;
+        if (nLow != null) {
+          const r = normalizeUnits(bm.slug, nLow, bm.unit);
+          if (r) nLow = r.value;
+        }
+        if (nHigh != null) {
+          const r = normalizeUnits(bm.slug, nHigh, bm.unit);
+          if (r) nHigh = r.value;
+        }
         await d.insert(schema.biomarker).values({
           name: bm.name, slug: bm.slug, category: bm.category,
-          value: bm.value, unit: bm.unit ?? null,
-          refLow: bm.refLow ?? null, refHigh: bm.refHigh ?? null,
+          value: nValue, unit: nUnit ?? null,
+          refLow: nLow, refHigh: nHigh,
           date: new Date(bmDate),
           source: p, rawText: bm.raw,
         });
