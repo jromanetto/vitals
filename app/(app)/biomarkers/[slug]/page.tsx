@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { BiomarkerChart } from "@/components/biomarker-chart";
+import { BiomarkerCommentary } from "@/components/biomarker-commentary";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import Link from "next/link";
 
@@ -97,6 +98,7 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
             </div>
           )}
 
+          <BiomarkerCommentary slug={slug} />
           <BiomarkerChart
             series={series}
             refLow={meta.refLow} refHigh={meta.refHigh}
