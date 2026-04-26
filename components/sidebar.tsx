@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User } from "lucide-react";
+import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -13,6 +13,8 @@ const items = [
   { href: "/timeline", label: "Timeline", icon: Clock },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
+  { href: "/supplements", label: "Suppléments", icon: Pill },
+  { href: "/symptoms", label: "Symptômes", icon: HeartPulse },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
@@ -29,22 +31,14 @@ export function Sidebar() {
           const active = pathname === it.href || (it.href !== "/" && pathname.startsWith(it.href));
           const Icon = it.icon;
           return (
-            <Link
-              key={it.href}
-              href={it.href}
-              className={cn(
-                "relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-                active
-                  ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
-              )}
-            >
+            <Link key={it.href} href={it.href}
+                  className={cn(
+                    "relative flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                    active ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                  )}>
               {active && (
-                <motion.span
-                  layoutId="sidebar-active"
-                  className="absolute inset-0 bg-secondary rounded-md"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                />
+                <motion.span layoutId="sidebar-active" className="absolute inset-0 bg-secondary rounded-md"
+                             transition={{ type: "spring", stiffness: 380, damping: 30 }} />
               )}
               <Icon className="relative h-4 w-4 shrink-0" />
               <span className="relative">{it.label}</span>

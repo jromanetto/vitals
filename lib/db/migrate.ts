@@ -24,6 +24,16 @@ export function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS chat_session (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
     `CREATE TABLE IF NOT EXISTS chat_message (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER NOT NULL REFERENCES chat_session(id) ON DELETE CASCADE, role TEXT NOT NULL, content TEXT NOT NULL, sources TEXT, created_at INTEGER NOT NULL)`,
     `CREATE INDEX IF NOT EXISTS chat_msg_session_idx ON chat_message(session_id)`,
+    // Sprint 5 — supplements & symptoms
+    `CREATE TABLE IF NOT EXISTS supplement (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, dose TEXT, unit TEXT, timing TEXT, frequency TEXT, started_at INTEGER, ended_at INTEGER, notes TEXT, target_biomarker TEXT, target_snp TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
+    `CREATE INDEX IF NOT EXISTS supplement_active_idx ON supplement(ended_at)`,
+    `CREATE TABLE IF NOT EXISTS supplement_log (id INTEGER PRIMARY KEY AUTOINCREMENT, supplement_id INTEGER NOT NULL REFERENCES supplement(id) ON DELETE CASCADE, date TEXT NOT NULL, taken INTEGER NOT NULL DEFAULT 1)`,
+    `CREATE INDEX IF NOT EXISTS supplement_log_date_idx ON supplement_log(date)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS supplement_log_unique ON supplement_log(supplement_id, date)`,
+    `CREATE TABLE IF NOT EXISTS symptom_log (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, key TEXT NOT NULL, value REAL NOT NULL, notes TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
+    `CREATE INDEX IF NOT EXISTS symptom_log_date_idx ON symptom_log(date)`,
+    `CREATE INDEX IF NOT EXISTS symptom_log_key_idx ON symptom_log(key)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS symptom_log_unique ON symptom_log(date, key)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
 }
