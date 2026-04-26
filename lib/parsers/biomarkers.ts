@@ -285,51 +285,84 @@ const ALIASES: Record<string, { canonical: string; category: string; unit?: stri
   "afp": { canonical: "Alpha-fœtoprotéine (AFP)", category: "tumor", unit: "ng/mL" },
   "nse": { canonical: "NSE (Énolase neurono-spécifique)", category: "tumor", unit: "ng/mL" },
   "s100b": { canonical: "S-100B", category: "tumor", unit: "μg/L" },
-  "s100b": { canonical: "S-100B", category: "tumor", unit: "μg/L" },
-  // Prefixed forms found in Synlab/Cerba lab PDFs
+  // Prefixed forms
   "cholesterol hdl": { canonical: "HDL", category: "lipids", unit: "g/L" },
   "cholesterol ldl": { canonical: "LDL", category: "lipids", unit: "g/L" },
   "cholesterol ldl calcule": { canonical: "LDL", category: "lipids", unit: "g/L" },
   "cholesterol ldl (calcule)": { canonical: "LDL", category: "lipids", unit: "g/L" },
   "cholesterol non hdl": { canonical: "Non-HDL", category: "lipids", unit: "g/L" },
   "25 hydroxy vitamine d": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
-  "25-hydroxy-vitamine d": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
   "vitamine d3": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
   "hba1c ngsp": { canonical: "HbA1c", category: "metabolic", unit: "%" },
   "hba1c ifcc": { canonical: "HbA1c IFCC", category: "metabolic", unit: "mmol/mol" },
-  "hemoglobine glyquee": { canonical: "HbA1c", category: "metabolic", unit: "%" },
+  "hba1c hemoglobine glyquee": { canonical: "HbA1c", category: "metabolic", unit: "%" },
+  "vit b12": { canonical: "Vitamine B12", category: "vitamins", unit: "pg/mL" },
   "folates erythrocytaires": { canonical: "Folates érythrocytaires", category: "vitamins", unit: "ng/mL" },
-  "index quicki": { canonical: "Index Quicki", category: "metabolic" },
-  "chlorures": { canonical: "Chlorure", category: "minerals", unit: "mmol/L" },
+  "crp ultra sensible": { canonical: "CRP ultrasensible (hsCRP)", category: "inflammation", unit: "mg/L" },
+  "crp protein c reactive": { canonical: "CRP", category: "inflammation", unit: "mg/L" },
+  "crp protein c reactive ultrasensible": { canonical: "CRP ultrasensible (hsCRP)", category: "inflammation", unit: "mg/L" },
+  "crp proteine c reactive": { canonical: "CRP", category: "inflammation", unit: "mg/L" },
+  "estim glycemie moyenne": { canonical: "Glycémie moyenne estimée", category: "metabolic", unit: "mg/dL" },
   "estim. glycemie moyenne": { canonical: "Glycémie moyenne estimée", category: "metabolic", unit: "mg/dL" },
-  "anti-thyroglobuline": { canonical: "Anti-thyroglobuline", category: "thyroid", unit: "UI/mL" },
+  "anti thyroglobuline": { canonical: "Anti-thyroglobuline", category: "thyroid", unit: "UI/mL" },
+  "anti tg": { canonical: "Anti-thyroglobuline", category: "thyroid", unit: "UI/mL" },
+  "ratio fer transferrine": { canonical: "Saturation transferrine", category: "iron", unit: "%" },
+  "rapport fer transferrine": { canonical: "Saturation transferrine", category: "iron", unit: "%" },
+  "saturation tf": { canonical: "Saturation transferrine", category: "iron", unit: "%" },
+  "rapport albumine creatinine urinaire": { canonical: "Ratio Albumine/Créatinine urinaire", category: "kidney", unit: "mg/g" },
+  "pth": { canonical: "PTH (parathormone)", category: "minerals", unit: "ng/L" },
+  "parathormone": { canonical: "PTH (parathormone)", category: "minerals", unit: "ng/L" },
 };
 
 function normalize(s: string): string {
   return s.toLowerCase()
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    // Treat hyphens, slashes and parens as spaces for alias matching
+    .replace(/[\-\/]+/g, " ")
+    .replace(/[\(\)\[\]]/g, "")
     .replace(/\s+/g, " ").trim();
 }
 
-const VALUE_LINE = /([A-Za-zÀ-ÿ()\-' /\.]{3,40}?)\s*[:\.]?\s+([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-ZµμΩ%\/\.]+(?:\s*\/\s*[a-zA-Zµμ%]+)?)?\s*(?:[\(\[]?\s*(?:(?:<|>|≤|≥|inf|sup)\s*([0-9]+(?:[.,][0-9]+)?)|([0-9]+(?:[.,][0-9]+)?)\s*[-–à]\s*([0-9]+(?:[.,][0-9]+)?))\s*[\)\]]?)?/g;
+// Name MUST start with a letter and may contain digits/punctuation.
+const VALUE_LINE = /([A-Za-zÀ-ÿ][A-Za-z0-9À-ÿ()\-' /\.]{2,40}?)\s*[:\.]?\s+([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-ZµμΩ%\/\.]+(?:\s*\/\s*[a-zA-Zµμ%]+)?)?\s*(?:[\(\[]?\s*(?:(?:<|>|≤|≥|inf|sup)\s*([0-9]+(?:[.,][0-9]+)?)|([0-9]+(?:[.,][0-9]+)?)\s*[-–à]\s*([0-9]+(?:[.,][0-9]+)?))\s*[\)\]]?)?/g;
 
 export function parseBiomarkersFromText(text: string): Biomarker[] {
   const out: Biomarker[] = [];
   const seen = new Set<string>();
-  const cleaned = text
+  // Protect biomarker codes that contain digits (e.g., B12, A1c, D3) with a single Unicode private-use char.
+  const protectedCodes: Array<[string, string]> = [
+    ["B12", "\uF101"], ["A1c", "\uF102"], ["A1C", "\uF103"], ["B6", "\uF104"], ["B9", "\uF105"],
+    ["B1", "\uF106"], ["B2", "\uF107"], ["B3", "\uF108"], ["B5", "\uF109"],
+    ["D3", "\uF10A"], ["K2", "\uF10B"], ["Q10", "\uF10C"], ["C3", "\uF10D"], ["C4", "\uF10E"],
+    ["T3", "\uF10F"], ["T4", "\uF110"], ["IGF-1", "\uF111"], ["NT-proBNP", "\uF112"],
+    ["CA 19-9", "\uF113"], ["CA 15-3", "\uF114"], ["S-100B", "\uF115"],
+    ["25-OH", "\uF116"], ["1,25-OH", "\uF117"],
+  ];
+  let pre = text;
+  for (const [code, ph] of protectedCodes) pre = pre.split(code).join(ph);
+  let cleaned = pre
     .replace(/[\r ]+/g, " ")
     .replace(/\n(?=\s*[0-9])/g, " ")
     .replace(/([a-zA-ZÀ-ÿ\)\]\%])([0-9])/g, "$1 $2")
     .replace(/(\d+\.\d+)(\d+\.\d+\s*[-–])/g, "$1 $2")
     .replace(/(\d{2,4})(\d{2,3}\s*[-–]\s*\d)/g, "$1 $2");
+  for (const [code, ph] of protectedCodes) cleaned = cleaned.split(ph).join(code);
   for (const m of cleaned.matchAll(VALUE_LINE)) {
     const rawName = m[1].trim();
     if (rawName.length < 3) continue;
     const norm = normalize(rawName);
-    const alias = ALIASES[norm];
-    if (!alias) continue;
+    let alias = ALIASES[norm];
+    if (!alias) {
+      // Try progressively shorter name (drop trailing tokens)
+      const tokens = norm.split(" ");
+      for (let len = tokens.length - 1; len >= 1 && !alias; len--) {
+        alias = ALIASES[tokens.slice(0, len).join(" ")];
+      }
+      if (!alias) continue;
+    }
     const value = parseFloat(m[2].replace(",", "."));
     if (!Number.isFinite(value) || value > 1e9) continue;
+    // Reject obvious garbage: value=0 with no unit and no ref usually means a heading
     const unit = m[3]?.trim().replace(/\s+/g, "") || alias.unit || null;
     let refLow: number | null = null;
     let refHigh: number | null = null;
@@ -342,6 +375,30 @@ export function parseBiomarkersFromText(text: string): Biomarker[] {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({ name: alias.canonical, slug, category: alias.category, value, unit, refLow, refHigh, raw: m[0] });
+  }
+
+  // 2nd pass: literal alias scan to recover cases where the non-greedy regex bailed
+  // early (e.g., "Vitamine B12 454" where regex captures "Vitamine B" + value=12).
+  for (const aliasKey of Object.keys(ALIASES)) {
+    if (aliasKey.length < 5) continue;
+    const alias = ALIASES[aliasKey];
+    const slug = slugify(alias.canonical);
+    const escaped = aliasKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp("\\b" + escaped + "\\s+([0-9]+(?:[.,][0-9]+)?)\\s*([a-zA-Z\u00b5\u03bc%\\/]+)?\\s*(?:([0-9]+(?:[.,][0-9]+)?)\\s*[-\u2013]\\s*([0-9]+(?:[.,][0-9]+)?))?", "i");
+    const mm = cleaned.match(re);
+    if (!mm) continue;
+    const value = parseFloat(mm[1].replace(",", "."));
+    if (!Number.isFinite(value)) continue;
+    const key = slug + ":" + value;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name: alias.canonical, slug, category: alias.category, value,
+      unit: (mm[2]?.trim() || alias.unit) ?? null,
+      refLow: mm[3] ? parseFloat(mm[3].replace(",", ".")) : null,
+      refHigh: mm[4] ? parseFloat(mm[4].replace(",", ".")) : null,
+      raw: mm[0],
+    });
   }
   return out;
 }

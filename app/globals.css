@@ -4,6 +4,28 @@
 
 @layer base {
   :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 99%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 99%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 10% 10%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 160 84% 39%;
+    --radius: 0.6rem;
+  }
+  .dark {
     --background: 0 0% 4%;
     --foreground: 210 20% 92%;
     --card: 240 6% 8%;
@@ -23,7 +45,6 @@
     --border: 240 5% 15%;
     --input: 240 5% 15%;
     --ring: 160 84% 39%;
-    --radius: 0.6rem;
   }
 }
 
@@ -37,7 +58,7 @@
 }
 
 .glass {
-  background: linear-gradient(180deg, hsl(240 6% 9% / 0.6), hsl(240 6% 7% / 0.6));
+  background: linear-gradient(180deg, hsl(var(--card) / 0.6), hsl(var(--card) / 0.6));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
