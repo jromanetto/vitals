@@ -1,9 +1,23 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { sql } from "drizzle-orm";
 import Link from "next/link";
+import { ReportKindPicker } from "@/components/report-kind-picker";
 
 export const dynamic = "force-dynamic";
+
+const KINDS = [
+  { id: "overview", label: "Vue d'ensemble", desc: "Synthèse globale santé" },
+  { id: "longevity", label: "Longévité", desc: "Biomarqueurs et ADN longevity-tilted" },
+  { id: "cardiovascular", label: "Cardiovasculaire", desc: "Lipides, inflammation, thrombose" },
+  { id: "metabolic", label: "Métabolique", desc: "Glycémie, insuline, lipides, fer" },
+  { id: "hormonal", label: "Hormonal", desc: "Testostérone, thyroïde, cortisol" },
+  { id: "nutrition", label: "Nutrition", desc: "Nutrigénomique, vitamines, méthylation" },
+  { id: "cognition", label: "Cognition", desc: "BDNF, COMT, dopamine" },
+  { id: "inflammation", label: "Inflammation", desc: "CRP, IL-6, fibrinogène, ADN" },
+  { id: "dna-deep-dive", label: "ADN approfondi", desc: "Analyse complète des 10 catégories" },
+  { id: "supplement-recommendations", label: "Suppléments", desc: "Reco basée biomarkers + SNPs" },
+  { id: "next-bloodwork-prep", label: "Prochaine prise de sang", desc: "Marqueurs à demander" },
+];
 
 async function getAll() {
   ensureSchema();
@@ -15,21 +29,21 @@ export default async function ReportsPage() {
   const rows = await getAll();
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Synthèses générées : santé globale, biomarqueurs, ADN, longevity score.</p>
-        </div>
-        <a href="/api/reports/generate?kind=overview" className="px-3 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition">+ Générer un rapport</a>
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Rapports</h1>
+        <p className="text-muted-foreground mt-1 text-sm">Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile.</p>
       </div>
+
+      <ReportKindPicker kinds={KINDS} />
+
       <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {rows.length === 0 && <div className="p-8 text-center text-muted-foreground text-sm">Aucun rapport encore. Clique sur "Générer un rapport" après avoir rempli ton profile et ingéré tes données.</div>}
+        {rows.length === 0 && <div className="p-8 text-center text-muted-foreground text-sm">Aucun rapport encore. Choisis un type ci-dessus pour générer ton premier.</div>}
         {rows.map((r) => (
           <Link key={r.id} href={`/reports/${r.id}`} className="block px-5 py-3 border-t border-border first:border-0 hover:bg-secondary/30 transition">
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{r.title}</div>
-                <div className="text-xs text-muted-foreground mt-0.5">{r.kind} · {new Date(r.created_at).toLocaleString("fr-FR")}</div>
+                <div className="text-xs text-muted-foreground mt-0.5 capitalize">{r.kind.replace(/-/g, " ")} · {new Date(r.created_at).toLocaleString("fr-FR")}</div>
               </div>
               <span className="text-muted-foreground text-sm">→</span>
             </div>
