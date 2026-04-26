@@ -285,6 +285,24 @@ const ALIASES: Record<string, { canonical: string; category: string; unit?: stri
   "afp": { canonical: "Alpha-fœtoprotéine (AFP)", category: "tumor", unit: "ng/mL" },
   "nse": { canonical: "NSE (Énolase neurono-spécifique)", category: "tumor", unit: "ng/mL" },
   "s100b": { canonical: "S-100B", category: "tumor", unit: "μg/L" },
+  "s100b": { canonical: "S-100B", category: "tumor", unit: "μg/L" },
+  // Prefixed forms found in Synlab/Cerba lab PDFs
+  "cholesterol hdl": { canonical: "HDL", category: "lipids", unit: "g/L" },
+  "cholesterol ldl": { canonical: "LDL", category: "lipids", unit: "g/L" },
+  "cholesterol ldl calcule": { canonical: "LDL", category: "lipids", unit: "g/L" },
+  "cholesterol ldl (calcule)": { canonical: "LDL", category: "lipids", unit: "g/L" },
+  "cholesterol non hdl": { canonical: "Non-HDL", category: "lipids", unit: "g/L" },
+  "25 hydroxy vitamine d": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
+  "25-hydroxy-vitamine d": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
+  "vitamine d3": { canonical: "Vitamine D (25-OH)", category: "vitamins", unit: "ng/mL" },
+  "hba1c ngsp": { canonical: "HbA1c", category: "metabolic", unit: "%" },
+  "hba1c ifcc": { canonical: "HbA1c IFCC", category: "metabolic", unit: "mmol/mol" },
+  "hemoglobine glyquee": { canonical: "HbA1c", category: "metabolic", unit: "%" },
+  "folates erythrocytaires": { canonical: "Folates érythrocytaires", category: "vitamins", unit: "ng/mL" },
+  "index quicki": { canonical: "Index Quicki", category: "metabolic" },
+  "chlorures": { canonical: "Chlorure", category: "minerals", unit: "mmol/L" },
+  "estim. glycemie moyenne": { canonical: "Glycémie moyenne estimée", category: "metabolic", unit: "mg/dL" },
+  "anti-thyroglobuline": { canonical: "Anti-thyroglobuline", category: "thyroid", unit: "UI/mL" },
 };
 
 function normalize(s: string): string {
@@ -293,14 +311,17 @@ function normalize(s: string): string {
     .replace(/\s+/g, " ").trim();
 }
 
-// More flexible regex: name : value unit (ref) — supports comma decimals, ranges with –, à, -, [..], (..), <X, >X, ≤X, ≥X
 const VALUE_LINE = /([A-Za-zÀ-ÿ()\-' /\.]{3,40}?)\s*[:\.]?\s+([0-9]+(?:[.,][0-9]+)?)\s*([a-zA-ZµμΩ%\/\.]+(?:\s*\/\s*[a-zA-Zµμ%]+)?)?\s*(?:[\(\[]?\s*(?:(?:<|>|≤|≥|inf|sup)\s*([0-9]+(?:[.,][0-9]+)?)|([0-9]+(?:[.,][0-9]+)?)\s*[-–à]\s*([0-9]+(?:[.,][0-9]+)?))\s*[\)\]]?)?/g;
 
 export function parseBiomarkersFromText(text: string): Biomarker[] {
   const out: Biomarker[] = [];
   const seen = new Set<string>();
-  // Pre-clean: collapse line breaks within table rows
-  const cleaned = text.replace(/[\r ]+/g, " ").replace(/\n(?=\s*[0-9])/g, " ");
+  const cleaned = text
+    .replace(/[\r ]+/g, " ")
+    .replace(/\n(?=\s*[0-9])/g, " ")
+    .replace(/([a-zA-ZÀ-ÿ\)\]\%])([0-9])/g, "$1 $2")
+    .replace(/(\d+\.\d+)(\d+\.\d+\s*[-–])/g, "$1 $2")
+    .replace(/(\d{2,4})(\d{2,3}\s*[-–]\s*\d)/g, "$1 $2");
   for (const m of cleaned.matchAll(VALUE_LINE)) {
     const rawName = m[1].trim();
     if (rawName.length < 3) continue;
@@ -315,17 +336,12 @@ export function parseBiomarkersFromText(text: string): Biomarker[] {
     if (m[5] && m[6]) {
       refLow = parseFloat(m[5].replace(",", "."));
       refHigh = parseFloat(m[6].replace(",", "."));
-    } else if (m[4]) {
-      // single-bound ref: < X or > X (we ignore for now — could store as upper or lower)
     }
     const slug = slugify(alias.canonical);
     const key = slug + ":" + value;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({
-      name: alias.canonical, slug, category: alias.category,
-      value, unit, refLow, refHigh, raw: m[0],
-    });
+    out.push({ name: alias.canonical, slug, category: alias.category, value, unit, refLow, refHigh, raw: m[0] });
   }
   return out;
 }
