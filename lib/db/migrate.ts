@@ -42,6 +42,18 @@ export function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`,
     `CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`,
     `CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`,
+    // Sprint 28: cross-session chat memory
+    `CREATE TABLE IF NOT EXISTS chat_memory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      body TEXT NOT NULL,
+      source_session_id INTEGER,
+      confidence REAL DEFAULT 0.8,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      active INTEGER NOT NULL DEFAULT 1
+    )`,
+    `CREATE INDEX IF NOT EXISTS chat_memory_kind_idx ON chat_memory(kind)`,
+    `CREATE INDEX IF NOT EXISTS chat_memory_active_idx ON chat_memory(active)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
 

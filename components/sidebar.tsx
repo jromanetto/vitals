@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote } from "lucide-react";
+import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -14,7 +14,8 @@ const items = [
   { href: "/correlations", label: "Corrélations", icon: GitMerge },
   { href: "/notes", label: "Notes", icon: StickyNote },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { href: "/chat", label: "AI Chat", icon: MessageSquare },
+  { href: "/chat", label: "Panel médical", icon: MessageSquare },
+  { href: "/memory", label: "Memory", icon: Brain },
   { href: "/supplements", label: "Suppléments", icon: Pill },
   { href: "/symptoms", label: "Symptômes", icon: HeartPulse },
   { href: "/habits", label: "Habitudes", icon: ListChecks },
