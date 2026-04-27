@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 
 const SYMPTOMS = [
   { key: "energy", label: "Énergie", scale: 10 },
@@ -18,10 +19,7 @@ type Log = { id: number; date: string; key: string; value: number; notes: string
 
 function dateRange(days: number): string[] {
   const out: string[] = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(Date.now() - i * 86400000);
-    out.push(d.toISOString().slice(0, 10));
-  }
+  for (let i = 0; i < days; i++) out.push(new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
   return out;
 }
 
@@ -74,7 +72,7 @@ export default function SymptomsPage() {
     <div className="space-y-7">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Symptômes</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Auto-évaluation rapide quotidienne. Plus tu remplis, mieux les corrélations émergent.</p>
+        <p className="text-muted-foreground mt-1 text-sm">Auto-évaluation rapide quotidienne. Clique un nom pour voir le détail + overlay biomarker.</p>
       </div>
 
       <section className="rounded-xl border border-border bg-card p-5">
@@ -87,7 +85,7 @@ export default function SymptomsPage() {
           {SYMPTOMS.map((sym) => (
             <div key={sym.key} className="space-y-1.5">
               <div className="flex items-center justify-between text-xs">
-                <span>{sym.label}</span>
+                <Link href={`/symptoms/${sym.key}`} className="hover:text-emerald transition">{sym.label}</Link>
                 <span className="font-mono tabular-nums">{today[sym.key] ?? "—"}</span>
               </div>
               {sym.scale ? (
@@ -114,7 +112,7 @@ export default function SymptomsPage() {
         <div className="space-y-1">
           {SYMPTOMS.map((sym) => (
             <motion.div key={sym.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-xs">
-              <div className="w-32 truncate text-muted-foreground shrink-0">{sym.label}</div>
+              <Link href={`/symptoms/${sym.key}`} className="w-32 truncate text-muted-foreground hover:text-foreground shrink-0">{sym.label}</Link>
               <div className="flex gap-px flex-1">
                 {days.slice().reverse().map((d) => {
                   const v = getValue(d, sym.key);

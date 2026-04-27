@@ -8,6 +8,9 @@ import { computeLongevityScore } from "@/lib/scoring/longevity";
 import { ScoreBreakdownCard } from "@/components/score-breakdown";
 import { HomeSparklines } from "@/components/home-sparklines";
 import { WearableWidget } from "@/components/wearable-widget";
+import { SleepStageWidget } from "@/components/sleep-stage-widget";
+import { RecoveryWidget } from "@/components/recovery-widget";
+import { StreaksWidget } from "@/components/streaks-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +58,9 @@ export default async function Home() {
 
       <HomeSparklines />
       <WearableWidget />
+      <SleepStageWidget />
+      <RecoveryWidget />
+      <StreaksWidget />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Biomarqueurs" value={stats.biomarkersUnique.toLocaleString()} hint={`${stats.biomarkersTotal} mesures totales`} delay={0.05} accent />
