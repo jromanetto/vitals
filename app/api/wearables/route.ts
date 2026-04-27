@@ -159,5 +159,29 @@ export async function GET(req: Request) {
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE date >= ? ORDER BY date DESC`).all(since);
   const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric GROUP BY source, kind ORDER BY source, kind`).all();
-  return NextResponse.json({ rows, summary });
+
+  // Per-source overview: total rows, date range
+  const sources = sqlite.prepare(`
+    SELECT source,
+           COUNT(*) as total,
+           COUNT(DISTINCT date) as days,
+           COUNT(DISTINCT kind) as kinds,
+           MIN(date) as firstDate,
+           MAX(date) as lastDate
+    FROM wearable_metric
+    GROUP BY source
+    ORDER BY source
+  `).all() as Array<{ source: string; total: number; days: number; kinds: number; firstDate: string; lastDate: string }>;
+
+  // 60-day series for headline kinds per source
+  const headlineKinds = ["hrv", "rhr", "recovery", "sleep_total_min", "sleep_score", "readiness"];
+  const series: Record<string, Array<{ date: string; value: number }>> = {};
+  for (const src of sources) {
+    for (const k of headlineKinds) {
+      const pts = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE source = ? AND kind = ? AND date >= ? ORDER BY date ASC`).all(src.source, k, since) as Array<{ date: string; value: number }>;
+      if (pts.length > 0) series[`${src.source}:${k}`] = pts;
+    }
+  }
+
+  return NextResponse.json({ rows, summary, sources, series });
 }

@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2 } from "lucide-react";
+import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import { WearableDashboardCard } from "@/components/wearable-dashboard-card";
 
 type Summary = { source: string; kind: string; c: number; avg: number };
 type Result = {
@@ -127,6 +129,24 @@ export default function ImportPage() {
         </section>
       )}
 
+      {results.length > 0 && results.some((r) => r.status === "ok" && (r.inserted ?? 0) > 0) && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border border-emerald/40 bg-emerald/10 p-4 flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-emerald/20 flex items-center justify-center shrink-0">
+            <Check className="h-4 w-4 text-emerald" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-emerald">
+              {results.reduce((acc, r) => acc + (r.inserted ?? 0), 0).toLocaleString()} mesures ingérées dans la base
+            </div>
+            <div className="text-xs text-muted-foreground">Tu peux retrouver tes tendances HRV / FC repos / sommeil sur le dashboard.</div>
+          </div>
+          <Link href="/" className="text-xs text-emerald hover:underline flex items-center gap-1 shrink-0">
+            Dashboard <ArrowRight className="h-3 w-3" />
+          </Link>
+        </motion.div>
+      )}
+
       <AnimatePresence>
         {results.length > 0 && (
           <motion.section initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
@@ -156,28 +176,7 @@ export default function ImportPage() {
         )}
       </AnimatePresence>
 
-      {summary.length > 0 && (
-        <section className="rounded-xl border border-border bg-card p-5">
-          <h2 className="text-sm font-medium mb-3">Wearables — données ingérées ({summary.length} métriques)</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase tracking-wider text-muted-foreground">
-                <tr><th className="text-left py-2">Source</th><th className="text-left py-2">Métrique</th><th className="text-right py-2">N</th><th className="text-right py-2">Moyenne</th></tr>
-              </thead>
-              <tbody>
-                {summary.map((s, i) => (
-                  <tr key={i} className="border-t border-border">
-                    <td className="py-2 capitalize">{s.source}</td>
-                    <td className="py-2 text-muted-foreground">{s.kind}</td>
-                    <td className="py-2 text-right font-mono">{s.c}</td>
-                    <td className="py-2 text-right font-mono">{s.avg.toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      <WearableDashboardCard refreshKey={results.length} />
     </div>
   );
 }
