@@ -3,6 +3,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import { sql } from "drizzle-orm";
 import { dnaVariant } from "@/lib/db/schema";
 import { DnaCategoryCard } from "@/components/dna-category-card";
+import { DnaTopFindings } from "@/components/dna-top-findings";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +24,15 @@ async function counts() {
   ensureSchema();
   const d = db();
   const [variants] = await d.select({ c: sql<number>`count(*)` }).from(dnaVariant);
-  const rows = d.$client.prepare(`SELECT category, COUNT(*) as c, SUM(CASE WHEN has_risk = 1 THEN 1 ELSE 0 END) as risk FROM dna_insight GROUP BY category`).all() as Array<{ category: string; c: number; risk: number }>;
+  const rows = d.$client.prepare(`SELECT category, COUNT(*) as c, SUM(CASE WHEN has_risk = 1 THEN 1 ELSE 0 END) as risk, SUM(CASE WHEN has_risk = 1 THEN COALESCE(magnitude, 1) ELSE 0 END) as risk_score FROM dna_insight GROUP BY category`).all() as Array<{ category: string; c: number; risk: number; risk_score: number }>;
   const byCat = Object.fromEntries(rows.map((r) => [r.category, { c: r.c, risk: r.risk }]));
-  return { totalVariants: variants?.c ?? 0, byCat };
+  // Top findings: highest magnitude, has_risk=1
+  const top = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, magnitude, summary FROM dna_insight WHERE has_risk = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all() as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string }>;
+  return { totalVariants: variants?.c ?? 0, byCat, top };
 }
 
 export default async function DnaPage() {
-  const { totalVariants, byCat } = await counts();
+  const { totalVariants, byCat, top } = await counts();
   return (
     <div className="space-y-6">
       <div>
@@ -40,6 +43,9 @@ export default async function DnaPage() {
             : "Aucun ADN ingéré. Lance l'ingestion DNA depuis Profile pour démarrer."}
         </p>
       </div>
+
+      {top.length > 0 && <DnaTopFindings findings={top} />}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {CATEGORIES.map((c, i) => (
           <DnaCategoryCard key={c.id} cat={c} stats={byCat[c.id]} idx={i} />

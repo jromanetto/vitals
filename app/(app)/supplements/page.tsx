@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, Check, X } from "lucide-react";
+import { Plus, Trash2, Sparkles, Check, X, Activity, Dna } from "lucide-react";
 import { AdherenceCalendar } from "@/components/adherence-calendar";
 import { InteractionsCard } from "@/components/interactions-card";
 
@@ -11,10 +11,22 @@ type Supplement = {
   startedAt: number | null; endedAt: number | null;
   notes: string | null; targetBiomarker: string | null; targetSnp: string | null;
 };
+
 type Suggestion = {
-  supplement: string; reason: string; biomarker?: string; biomarkerSlug?: string;
-  value?: number; unit?: string; dose: string; timing: string;
+  source: "biomarker" | "dna";
+  supplement: string; reason: string;
+  biomarker?: string; biomarkerSlug?: string; value?: number; unit?: string;
+  rsid?: string; trait?: string; genotype?: string;
+  dose: string; timing: string;
+  priority: "high" | "moderate" | "info";
 };
+
+const PRIORITY_STYLES = {
+  high: "border-red-500/30 bg-red-500/5",
+  moderate: "border-amber-500/30 bg-amber-500/5",
+  info: "border-emerald/30 bg-emerald/5",
+};
+const PRIORITY_LABELS = { high: "Priorité haute", moderate: "Modéré", info: "Info" };
 
 export default function SupplementsPage() {
   const [rows, setRows] = useState<Supplement[]>([]);
@@ -23,6 +35,7 @@ export default function SupplementsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplement | null>(null);
   const [form, setForm] = useState({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "" });
+  const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
   const today = new Date().toISOString().slice(0, 10);
 
   async function load() {
@@ -55,19 +68,25 @@ export default function SupplementsPage() {
     await fetch("/api/supplements/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ supplementId: id, date: today, taken: !isTaken }) });
   }
   async function addFromSuggestion(s: Suggestion) {
-    await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: s.supplement, dose: s.dose, timing: s.timing, frequency: "1x/jour", notes: s.reason, targetBiomarker: s.biomarkerSlug ?? null }) });
+    const targetBiomarker = s.biomarkerSlug ?? null;
+    const targetSnp = s.rsid ?? null;
+    await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: s.supplement, dose: s.dose, timing: s.timing, frequency: "1x/jour", notes: s.reason, targetBiomarker, targetSnp }) });
     load();
   }
 
   const active = rows.filter((r) => r.endedAt === null);
   const ended = rows.filter((r) => r.endedAt !== null);
+  const filteredSuggestions = filter === "all" ? suggestions : suggestions.filter((s) => s.source === filter);
+
+  const bmCount = suggestions.filter((s) => s.source === "biomarker").length;
+  const dnaCount = suggestions.filter((s) => s.source === "dna").length;
 
   return (
     <div className="space-y-7">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Suppléments</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions personnalisées · interactions.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions personnalisées (biomarkers + ADN) · interactions.</p>
         </div>
         <button onClick={() => { setEditing(null); setShowForm(true); }} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90">
           <Plus className="h-4 w-4" /> Ajouter
@@ -78,19 +97,39 @@ export default function SupplementsPage() {
 
       {suggestions.length > 0 && (
         <section className="rounded-xl border border-emerald/30 bg-emerald/5 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="h-4 w-4 text-emerald" />
-            <h2 className="text-sm font-medium">Suggestions personnalisées ({suggestions.length})</h2>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald" />
+              <h2 className="text-sm font-medium">Suggestions personnalisées ({suggestions.length})</h2>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs">
+              {(["all", "biomarker", "dna"] as const).map((f) => (
+                <button key={f} onClick={() => setFilter(f)}
+                        className={`px-2.5 py-1 rounded-full border transition ${filter === f ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}>
+                  {f === "all" ? `Tous (${suggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : `ADN (${dnaCount})`}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="space-y-2">
-            {suggestions.map((s, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="flex items-start justify-between gap-4 p-3 rounded-md bg-card border border-border">
+            {filteredSuggestions.map((s, i) => (
+              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                          className={`flex items-start justify-between gap-4 p-3 rounded-md border ${PRIORITY_STYLES[s.priority]}`}>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{s.supplement}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{s.reason}</div>
-                  <div className="text-xs mt-2"><span className="text-emerald">{s.dose}</span> · <span className="text-muted-foreground">{s.timing}</span>{s.biomarker && <span className="text-muted-foreground"> · {s.biomarker}: {s.value} {s.unit}</span>}</div>
+                  <div className="flex items-center gap-2 mb-1">
+                    {s.source === "biomarker" ? <Activity className="h-3 w-3 text-emerald shrink-0" /> : <Dna className="h-3 w-3 text-emerald shrink-0" />}
+                    <span className="font-medium text-sm">{s.supplement}</span>
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto shrink-0">{PRIORITY_LABELS[s.priority]}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground leading-relaxed">{s.reason}</div>
+                  <div className="text-xs mt-2">
+                    {s.dose !== "—" && <span className="text-emerald">{s.dose}</span>}
+                    {s.timing !== "—" && <span className="text-muted-foreground"> · {s.timing}</span>}
+                    {s.biomarker && <span className="text-muted-foreground"> · {s.biomarker}: {s.value} {s.unit}</span>}
+                    {s.rsid && <span className="text-muted-foreground"> · {s.rsid} {s.genotype}</span>}
+                  </div>
                 </div>
-                <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">+ Ajouter</button>
+                <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 self-start">+ Ajouter</button>
               </motion.div>
             ))}
           </div>
@@ -115,6 +154,7 @@ export default function SupplementsPage() {
                   {r.dose && <span>{r.dose} </span>}
                   {r.timing && <span>· {r.timing} </span>}
                   {r.frequency && <span>· {r.frequency}</span>}
+                  {r.targetSnp && <span> · {r.targetSnp}</span>}
                   {r.notes && <div className="mt-1">{r.notes}</div>}
                 </div>
               </div>
