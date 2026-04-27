@@ -11,6 +11,8 @@ type Supplement = {
   startedAt: number | null; endedAt: number | null;
   notes: string | null; targetBiomarker: string | null; targetSnp: string | null;
   url: string | null; brand: string | null; imageUrl: string | null;
+  ingredients: { name: string; dose?: string; unit?: string; nrv?: number; category?: string }[] | null;
+  servingSize: string | null; suggestedUse: string | null; price: string | null;
 };
 
 type Suggestion = {
@@ -35,7 +37,7 @@ export default function SupplementsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplement | null>(null);
-  const [form, setForm] = useState({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "" });
+  const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
   const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -53,7 +55,7 @@ export default function SupplementsPage() {
     if (!form.name) return;
     await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editing?.id }) });
     setShowForm(false); setEditing(null);
-    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "" });
+    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
     load();
   }
   async function del(id: number) {
@@ -162,6 +164,22 @@ export default function SupplementsPage() {
                     Voir produit ↗
                   </a>}
                   {r.notes && <div className="mt-1">{r.notes}</div>}
+                  {r.servingSize && <div className="mt-1 text-emerald">{r.servingSize}</div>}
+                  {Array.isArray(r.ingredients) && r.ingredients.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer hover:text-emerald transition">📋 {r.ingredients.length} ingrédients</summary>
+                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-1 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
+                        {r.ingredients.map((ing: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between gap-2 text-[11px] py-1 border-b border-border/30">
+                            <span className="truncate">{ing.name}</span>
+                            <span className="text-muted-foreground font-mono shrink-0">
+                              {ing.dose} {ing.unit}{typeof ing.nrv === "number" && ing.nrv > 0 ? ` (${ing.nrv}%)` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               </div>
               <button onClick={() => del(r.id)} className="p-1.5 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-400" aria-label="Supprimer">
@@ -213,16 +231,46 @@ export default function SupplementsPage() {
                            className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                     <button type="button" onClick={async () => {
                       if (!form.url) return;
-                      const r = await fetch("/api/supplements/from-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: form.url }) });
-                      const d = await r.json();
-                      if (d.ok) {
-                        setForm((f) => ({ ...f, name: f.name || d.suggestedName || "", brand: f.brand || d.brand || "", imageUrl: d.image || "" }));
-                      }
+                      const btn = document.activeElement as HTMLButtonElement;
+                      const prev = btn?.textContent;
+                      if (btn) btn.textContent = "Extraction…";
+                      try {
+                        const r = await fetch("/api/supplements/from-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: form.url }) });
+                        const d = await r.json();
+                        if (d.ok || d.name || d.suggestedName) {
+                          setForm((f: any) => ({
+                            ...f,
+                            name: d.name || d.suggestedName || f.name || "",
+                            brand: d.brand || f.brand || "",
+                            imageUrl: d.image || f.imageUrl || "",
+                            ingredients: Array.isArray(d.ingredients) ? d.ingredients : f.ingredients,
+                            servingSize: d.servingSize || f.servingSize || "",
+                            suggestedUse: d.suggestedUse || f.suggestedUse || "",
+                          }));
+                        }
+                      } finally { if (btn) btn.textContent = prev || "Importer"; }
                     }} className="px-3 py-2 rounded-md bg-secondary/60 hover:bg-secondary border border-border text-xs">Importer</button>
                   </div>
                   {form.imageUrl && <img src={form.imageUrl} alt="" className="h-16 rounded-md border border-border object-contain bg-secondary/30" />}
                   <input placeholder="Marque (ex: Thorne, Nordic Naturals...)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}
                          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  {form.servingSize && <div className="text-xs text-muted-foreground"><span className="text-emerald">Posologie:</span> {form.servingSize}</div>}
+                  {form.suggestedUse && <div className="text-xs text-muted-foreground italic">{form.suggestedUse}</div>}
+                  {Array.isArray(form.ingredients) && form.ingredients.length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-emerald hover:underline">Ingrédients détectés ({form.ingredients.length}) — clique pour voir</summary>
+                      <div className="mt-2 max-h-48 overflow-y-auto border border-border/40 rounded-md p-2 space-y-1 scrollbar-thin">
+                        {form.ingredients.map((ing: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="truncate">{ing.name}</span>
+                            <span className="text-muted-foreground font-mono shrink-0">
+                              {ing.dose} {ing.unit}{typeof ing.nrv === "number" && ing.nrv > 0 ? ` · ${ing.nrv}% AR` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
                 <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
               </div>
