@@ -1,14 +1,10 @@
 "use client";
 import { EnvironmentSection } from "@/components/environment-section";
-import { DietMulti } from "@/components/diet-multi";
-import { SleepWindow } from "@/components/sleep-window";
-import { ChronicConditions, type ChronicCondition } from "@/components/chronic-conditions";
-import { SurgeriesList, type Surgery } from "@/components/surgeries-list";
-import { HrvWithSource } from "@/components/hrv-with-source";
-import { StressTrigger } from "@/components/stress-trigger";
-import { SliderRating } from "@/components/slider-rating";
-import { CompletionProgress } from "@/components/completion-progress";
-import { AgeSexSuggestions } from "@/components/age-sex-suggestions";
+import {
+  MedicationList, AllergyList,
+  migrateMedications, migrateAllergies,
+  type MedRow, type AllergyRow,
+} from "@/components/medical-autocomplete";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Save, Sparkles } from "lucide-react";
@@ -24,7 +20,8 @@ type Field =
   | { id: string; label: string; type: "select"; options: string[]; col?: 1 | 2 }
   | { id: string; label: string; type: "multi"; options: string[] }
   | { id: string; label: string; type: "checkbox" }
-  | { id: string; label: string; type: "custom"; render: "diet-multi" | "sleep-window" | "chronic-conditions" | "surgeries-list" | "hrv-with-source" | "stress-trigger" };
+  | { id: string; label: string; type: "medications" }
+  | { id: string; label: string; type: "allergies" };
 
 const SECTIONS: Section[] = [
   { id: "identity", title: "Identité", description: "Identification de base.", fields: [
@@ -53,16 +50,16 @@ const SECTIONS: Section[] = [
     { id: "trainingHoursWeek", label: "Heures de sport / semaine", type: "number", suffix: "h", col: 1 },
     { id: "sleepHours", label: "Sommeil moyen / nuit", type: "number", suffix: "h", col: 1 },
     { id: "sleepQuality", label: "Qualité de sommeil", type: "select", options: ["", "Excellente", "Bonne", "Moyenne", "Mauvaise"], col: 1 },
-    { id: "_sleepWindow", label: "Fenêtre de sommeil", type: "custom", render: "sleep-window" },
+    { id: "wakeTime", label: "Heure de réveil habituelle", type: "text", col: 1 },
     { id: "stressLevel", label: "Niveau de stress (0-10)", type: "number", col: 1 },
     { id: "screenTime", label: "Temps d'écran / jour", type: "number", suffix: "h", col: 1 },
     { id: "meditation", label: "Méditation", type: "select", options: ["", "Jamais", "Occasionnel", "Hebdo", "Quotidien"], col: 1 },
-    { id: "_hrv", label: "HRV", type: "custom", render: "hrv-with-source" },
+    { id: "hrv", label: "HRV moyenne (ms)", type: "number", suffix: "ms", col: 1 },
     { id: "restingHr", label: "FC repos", type: "number", suffix: "bpm", col: 1 },
     { id: "vo2max", label: "VO2max", type: "number", suffix: "ml/kg/min", col: 1 },
   ]},
   { id: "diet", title: "Alimentation", fields: [
-    { id: "_dietTypes", label: "Type d'alimentation", type: "custom", render: "diet-multi" },
+    { id: "dietType", label: "Type d'alimentation", type: "select", options: ["", "Omnivore", "Flexitarien", "Pescetarien", "Végétarien", "Vegan", "Carnivore", "Cétogène", "Paléo", "Méditerranéen"], col: 1 },
     { id: "intermittentFasting", label: "Jeûne intermittent", type: "select", options: ["", "Non", "12h", "14h", "16h", "18h", "20h+", "OMAD"], col: 1 },
     { id: "mealsPerDay", label: "Repas / jour", type: "number", col: 1 },
     { id: "waterLiters", label: "Eau / jour", type: "number", suffix: "L", col: 1 },
@@ -74,11 +71,11 @@ const SECTIONS: Section[] = [
     { id: "foodsAvoided", label: "Aliments évités volontairement", type: "textarea", rows: 2 },
   ]},
   { id: "medical", title: "Antécédents médicaux", fields: [
-    { id: "_chronicConditions", label: "Maladies chroniques", type: "custom", render: "chronic-conditions" },
-    { id: "_surgeries", label: "Opérations chirurgicales", type: "custom", render: "surgeries-list" },
+    { id: "chronicConditions", label: "Maladies chroniques", type: "textarea", rows: 2 },
+    { id: "surgeries", label: "Opérations chirurgicales", type: "textarea", rows: 2 },
     { id: "hospitalizations", label: "Hospitalisations notables", type: "textarea", rows: 2 },
-    { id: "allergies", label: "Allergies (médicaments, environnement)", type: "textarea", rows: 2 },
-    { id: "medications", label: "Médicaments actuels (nom, dose, fréquence)", type: "textarea", rows: 3 },
+    { id: "allergies", label: "Allergies (médicaments, alimentaires, environnement, contact)", type: "allergies" },
+    { id: "medications", label: "Médicaments actuels", type: "medications" },
     { id: "supplements", label: "Compléments alimentaires", type: "textarea", rows: 3 },
     { id: "vaccinations", label: "Vaccinations à jour", type: "textarea", rows: 2 },
     { id: "lastCheckup", label: "Dernier checkup complet", type: "date", col: 1 },
@@ -95,7 +92,6 @@ const SECTIONS: Section[] = [
   { id: "mental", title: "Santé mentale & cognition", fields: [
     { id: "moodAvg", label: "Humeur moyenne (0-10)", type: "number", col: 1 },
     { id: "anxietyLevel", label: "Anxiété (0-10)", type: "number", col: 1 },
-    { id: "_stressTriggers", label: "Triggers habituels", type: "custom", render: "stress-trigger" },
     { id: "depressionHistory", label: "Antécédents de dépression", type: "textarea", rows: 2 },
     { id: "therapy", label: "Suivi psy actuel ou passé", type: "textarea", rows: 2 },
     { id: "cognitiveConcerns", label: "Concerns cognitives (mémoire, focus…)", type: "textarea", rows: 2 },
@@ -126,16 +122,6 @@ const SECTIONS: Section[] = [
   ]},
 ];
 
-function customFieldFilled(render: string, data: Record<string, unknown>): boolean {
-  if (render === "diet-multi") return Array.isArray(data.dietTypes) && (data.dietTypes as string[]).length > 0;
-  if (render === "sleep-window") return !!data.bedTime || !!data.wakeTime;
-  if (render === "chronic-conditions") return Array.isArray(data.chronicConditionsList) && (data.chronicConditionsList as unknown[]).length > 0;
-  if (render === "surgeries-list") return Array.isArray(data.surgeriesList) && (data.surgeriesList as unknown[]).length > 0;
-  if (render === "hrv-with-source") return data.hrv !== undefined && data.hrv !== null && data.hrv !== "";
-  if (render === "stress-trigger") return Array.isArray(data.stressTriggers) && (data.stressTriggers as string[]).length > 0;
-  return false;
-}
-
 function completion(section: Section, data: Record<string, unknown>): number {
   if (section.id === "environment") {
     let filled = 0; const max = 5;
@@ -149,53 +135,26 @@ function completion(section: Section, data: Record<string, unknown>): number {
   }
   let filled = 0;
   for (const f of section.fields) {
-    if (f.type === "custom") {
-      if (customFieldFilled(f.render, data)) filled++;
-      continue;
-    }
     const v = data[f.id];
     if (v === undefined || v === null || v === "") continue;
-    if (Array.isArray(v) && v.length === 0) continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      // Structured medication/allergy rows: count as filled only if at least one row has a name
+      if (typeof v[0] === "object" && v[0] !== null) {
+        const hasName = v.some((r: { name?: string }) => r && typeof r.name === "string" && r.name.trim().length > 0);
+        if (!hasName) continue;
+      }
+    }
     filled++;
   }
   return Math.round((filled / section.fields.length) * 100);
 }
 
-function migrateInitial(initial: Record<string, unknown>): Record<string, unknown> {
-  const out = { ...initial };
-  // Migrate dietType (string) -> dietTypes (string[])
-  if (!out.dietTypes && typeof out.dietType === "string" && out.dietType) {
-    out.dietTypes = [out.dietType];
-  }
-  if (!out.dietTypes) out.dietTypes = [];
-  // Migrate chronicConditions (textarea string) -> chronicConditionsList ({name, ...}[])
-  if (!out.chronicConditionsList && typeof out.chronicConditions === "string" && out.chronicConditions.trim()) {
-    out.chronicConditionsList = (out.chronicConditions as string)
-      .split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean)
-      .map((name) => ({ name, status: "En cours" }));
-  }
-  if (!out.chronicConditionsList) out.chronicConditionsList = [];
-  // Migrate surgeries textarea -> surgeriesList
-  if (!out.surgeriesList && typeof out.surgeries === "string" && (out.surgeries as string).trim()) {
-    out.surgeriesList = (out.surgeries as string)
-      .split(/[\n;]+/).map((s) => s.trim()).filter(Boolean)
-      .map((name) => ({ name }));
-  }
-  if (!out.surgeriesList) out.surgeriesList = [];
-  if (!out.stressTriggers) out.stressTriggers = [];
-  return out;
-}
-
 export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
-  const migrated = migrateInitial(initial);
-  const [data, setData] = useState<Record<string, unknown>>(migrated);
+  const [data, setData] = useState<Record<string, unknown>>(initial);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [activeSection, setActiveSection] = useState(SECTIONS[0].id);
-
-  const totalCompletion = Math.round(
-    SECTIONS.reduce((sum, s) => sum + completion(s, data), 0) / SECTIONS.length
-  );
 
   function set<K extends string>(k: K, v: unknown) { setData((d) => ({ ...d, [k]: v })); }
   function toggleMulti(k: string, opt: string) {
@@ -205,7 +164,7 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
 
   // Auto-save (debounced 1.5s)
   useEffect(() => {
-    if (JSON.stringify(data) === JSON.stringify(migrated)) return;
+    if (JSON.stringify(data) === JSON.stringify(initial)) return;
     const t = setTimeout(async () => {
       setSaving(true);
       const res = await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
@@ -213,8 +172,7 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
       if (res.ok) setSavedAt(new Date());
     }, 1500);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, initial]);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6">
@@ -239,8 +197,6 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
       </nav>
 
       <div className="space-y-6">
-        <CompletionProgress data={data} totalPct={totalCompletion} />
-        <AgeSexSuggestions data={data} />
         {SECTIONS.map((section) => {
           if (section.id === "environment") {
             return (
@@ -268,52 +224,9 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
             </div>
             {section.description && <p className="text-sm text-muted-foreground mt-1">{section.description}</p>}
             <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {section.fields.map((f) => {
-                if (f.type === "custom") {
-                  if (f.render === "diet-multi") {
-                    return <DietMulti key={f.id} value={(data.dietTypes as string[]) || []} onChange={(v) => set("dietTypes", v)} />;
-                  }
-                  if (f.render === "sleep-window") {
-                    return <SleepWindow key={f.id}
-                      bedTime={(data.bedTime as string) || ""}
-                      wakeTime={(data.wakeTime as string) || ""}
-                      onChange={(patch) => setData((d) => ({ ...d, ...patch }))} />;
-                  }
-                  if (f.render === "chronic-conditions") {
-                    return <ChronicConditions key={f.id}
-                      value={(data.chronicConditionsList as ChronicCondition[]) || []}
-                      onChange={(v) => set("chronicConditionsList", v)} />;
-                  }
-                  if (f.render === "surgeries-list") {
-                    return <SurgeriesList key={f.id}
-                      value={(data.surgeriesList as Surgery[]) || []}
-                      onChange={(v) => set("surgeriesList", v)} />;
-                  }
-                  if (f.render === "hrv-with-source") {
-                    return <HrvWithSource key={f.id}
-                      hrv={(data.hrv as number | string) ?? ""}
-                      source={(data.hrvSource as string) || ""}
-                      metric={(data.hrvMetric as string) || ""}
-                      onChange={(patch) => setData((d) => ({ ...d, ...patch }))} />;
-                  }
-                  if (f.render === "stress-trigger") {
-                    return <StressTrigger key={f.id}
-                      value={(data.stressTriggers as string[]) || []}
-                      onChange={(v) => set("stressTriggers", v)} />;
-                  }
-                  return null;
-                }
-                if (f.id === "stressLevel") {
-                  return <SliderRating key={f.id} label={f.label} value={data[f.id] as number | "" | undefined} onChange={(v) => set(f.id, v)} variant="stress" />;
-                }
-                if (f.id === "moodAvg") {
-                  return <SliderRating key={f.id} label={f.label} value={data[f.id] as number | "" | undefined} onChange={(v) => set(f.id, v)} variant="mood" />;
-                }
-                if (f.id === "anxietyLevel") {
-                  return <SliderRating key={f.id} label={f.label} value={data[f.id] as number | "" | undefined} onChange={(v) => set(f.id, v)} variant="anxiety" />;
-                }
-                return <FieldRow key={f.id} field={f} value={data[f.id]} onChange={(v) => set(f.id, v)} onMulti={(opt) => toggleMulti(f.id, opt)} />;
-              })}
+              {section.fields.map((f) => (
+                <FieldRow key={f.id} field={f} value={data[f.id]} onChange={(v) => set(f.id, v)} onMulti={(opt) => toggleMulti(f.id, opt)} />
+              ))}
             </div>
           </motion.section>
           );
@@ -344,8 +257,37 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
 function FieldRow({ field, value, onChange, onMulti }: {
   field: Field; value: unknown; onChange: (v: unknown) => void; onMulti: (opt: string) => void;
 }) {
-  if (field.type === "custom") return null;
   const colSpan = (field as { col?: 1 | 2 }).col === 2 ? "md:col-span-2" : (field as { col?: 1 | 2 }).col === 1 ? "" : "md:col-span-2";
+  if (field.type === "medications") {
+    const rows: MedRow[] = migrateMedications(value);
+    const wasLegacyString = typeof value === "string" && value.trim().length > 0;
+    return (
+      <div className="md:col-span-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs uppercase tracking-wider text-muted-foreground">{field.label}</label>
+          {wasLegacyString && (
+            <span className="text-[10px] uppercase tracking-wider text-amber-400/80">Migré depuis texte libre — vérifie les entrées</span>
+          )}
+        </div>
+        <MedicationList value={rows} onChange={(r) => onChange(r)} />
+      </div>
+    );
+  }
+  if (field.type === "allergies") {
+    const rows: AllergyRow[] = migrateAllergies(value);
+    const wasLegacyString = typeof value === "string" && value.trim().length > 0;
+    return (
+      <div className="md:col-span-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs uppercase tracking-wider text-muted-foreground">{field.label}</label>
+          {wasLegacyString && (
+            <span className="text-[10px] uppercase tracking-wider text-amber-400/80">Migré depuis texte libre — vérifie les entrées</span>
+          )}
+        </div>
+        <AllergyList value={rows} onChange={(r) => onChange(r)} />
+      </div>
+    );
+  }
   if (field.type === "textarea") {
     return (
       <div className="md:col-span-2 space-y-1.5">
