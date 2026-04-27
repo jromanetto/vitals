@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { logAudit } from "@/lib/audit";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
   const ins = await db().insert(schema.report).values({ kind: validKind, title: `${title} — génération…`, body: "", meta: { status: "generating" } }).returning({ id: schema.report.id });
   const id = ins[0].id;
   startGen(id, validKind);
+  logAudit("report_create", `id=${id} kind=${validKind}`, req);
   return NextResponse.json({ id, kind: validKind, redirect: `/reports/${id}` });
 }
 
@@ -50,5 +52,6 @@ export async function GET(req: Request) {
   const ins = await db().insert(schema.report).values({ kind: validKind, title: `${title} — génération…`, body: "", meta: { status: "generating" } }).returning({ id: schema.report.id });
   const id = ins[0].id;
   startGen(id, validKind);
+  logAudit("report_create", `id=${id} kind=${validKind}`, req);
   return NextResponse.redirect(new URL(`/reports/${id}`, baseUrl));
 }

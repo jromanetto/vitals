@@ -13,3 +13,4 @@ dist/
 *.pyc
 __pycache__/
 .venv/
+tsconfig.tsbuildinfo

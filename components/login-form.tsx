@@ -8,23 +8,40 @@ export function LoginForm() {
   const sp = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needTotp, setNeedTotp] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const idle = sp.get("reason") === "idle";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setErr(null);
+    const body: Record<string, string> = { email, password };
+    if (needTotp && totpCode) body.totpCode = totpCode;
     const res = await fetch("/api/auth/login", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(body),
     });
     if (res.ok) {
       router.push(sp.get("from") || "/");
       router.refresh();
+      return;
+    }
+    let data: { error?: string; retryAfter?: number } = {};
+    try { data = await res.json(); } catch {}
+    if (res.status === 429) {
+      setErr(`Trop de tentatives. Réessaye dans ${data.retryAfter ?? "10 min"}.`);
+    } else if (data.error === "totp_required") {
+      setNeedTotp(true);
+      setErr(null);
+    } else if (data.error === "totp_invalid") {
+      setErr("Code 2FA invalide");
     } else {
       setErr("Identifiants invalides");
-      setLoading(false);
+      setNeedTotp(false);
     }
+    setLoading(false);
   }
 
   return (
@@ -41,6 +58,12 @@ export function LoginForm() {
             <h1 className="text-2xl font-semibold tracking-tight">Vitals</h1>
           </div>
           <p className="text-muted-foreground text-sm mb-7">Health intelligence dashboard</p>
+
+          {idle && !err && (
+            <div className="mb-4 px-3 py-2 rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-500 text-sm">
+              Session expirée pour inactivité. Reconnecte-toi.
+            </div>
+          )}
 
           {err && (
             <motion.div
@@ -69,11 +92,23 @@ export function LoginForm() {
                 className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2.5 outline-none focus:border-primary transition"
               />
             </div>
+            {needTotp && (
+              <div className="space-y-1.5">
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">Code 2FA</label>
+                <input
+                  type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus
+                  value={totpCode} maxLength={8}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder="123 456"
+                  className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2.5 outline-none focus:border-primary transition tracking-widest font-mono"
+                />
+              </div>
+            )}
             <button
               type="submit" disabled={loading}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 rounded-md transition disabled:opacity-50"
             >
-              {loading ? "Connexion…" : "Se connecter"}
+              {loading ? "Connexion…" : needTotp ? "Vérifier le code" : "Se connecter"}
             </button>
           </form>
         </div>

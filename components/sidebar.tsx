@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain } from "lucide-react";
+import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -21,6 +21,7 @@ const items = [
   { href: "/habits", label: "Habitudes", icon: ListChecks },
   { href: "/import", label: "Import wearables", icon: Upload },
   { href: "/profile", label: "Profile", icon: User },
+  { href: "/profile/security", label: "Sécurité", icon: Shield },
 ];
 
 export function Sidebar() {
