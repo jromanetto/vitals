@@ -13,7 +13,7 @@ export function DnaTopFindings({ findings }: { findings: Finding[] }) {
     >
       <div className="flex items-center gap-2 mb-3">
         <AlertTriangle className="h-4 w-4 text-amber-400" />
-        <h2 className="text-sm font-medium">Top {findings.length} traits à surveiller (par magnitude)</h2>
+        <h2 className="text-sm font-medium">Points d'attention ({findings.length})</h2>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {findings.map((f, i) => (
