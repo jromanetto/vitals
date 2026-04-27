@@ -10,6 +10,7 @@ type Supplement = {
   timing: string | null; frequency: string | null;
   startedAt: number | null; endedAt: number | null;
   notes: string | null; targetBiomarker: string | null; targetSnp: string | null;
+  url: string | null; brand: string | null; imageUrl: string | null;
 };
 
 type Suggestion = {
@@ -34,7 +35,7 @@ export default function SupplementsPage() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Supplement | null>(null);
-  const [form, setForm] = useState({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "" });
+  const [form, setForm] = useState({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "" });
   const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
   const today = new Date().toISOString().slice(0, 10);
 
@@ -52,7 +53,7 @@ export default function SupplementsPage() {
     if (!form.name) return;
     await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editing?.id }) });
     setShowForm(false); setEditing(null);
-    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "" });
+    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "" });
     load();
   }
   async function del(id: number) {
@@ -155,6 +156,11 @@ export default function SupplementsPage() {
                   {r.timing && <span>· {r.timing} </span>}
                   {r.frequency && <span>· {r.frequency}</span>}
                   {r.targetSnp && <span> · {r.targetSnp}</span>}
+                  {r.brand && <span> · {r.brand}</span>}
+                  {r.url && <a href={r.url} target="_blank" rel="noopener noreferrer" className="ml-1.5 inline-flex items-center gap-1 text-emerald hover:underline">
+                    <img src={`https://www.google.com/s2/favicons?domain=${(() => { try { return new URL(r.url).hostname; } catch { return ""; } })()}&sz=32`} alt="" className="h-3 w-3 rounded-sm" />
+                    Voir produit ↗
+                  </a>}
                   {r.notes && <div className="mt-1">{r.notes}</div>}
                 </div>
               </div>
@@ -200,6 +206,23 @@ export default function SupplementsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                   <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                </div>
+                                <div className="space-y-2 pb-2 border-b border-border/50">
+                  <div className="flex gap-2">
+                    <input placeholder="URL du produit (Amazon, iHerb, marque...)" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })}
+                           className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <button type="button" onClick={async () => {
+                      if (!form.url) return;
+                      const r = await fetch("/api/supplements/from-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: form.url }) });
+                      const d = await r.json();
+                      if (d.ok) {
+                        setForm((f) => ({ ...f, name: f.name || d.suggestedName || "", brand: f.brand || d.brand || "", imageUrl: d.image || "" }));
+                      }
+                    }} className="px-3 py-2 rounded-md bg-secondary/60 hover:bg-secondary border border-border text-xs">Importer</button>
+                  </div>
+                  {form.imageUrl && <img src={form.imageUrl} alt="" className="h-16 rounded-md border border-border object-contain bg-secondary/30" />}
+                  <input placeholder="Marque (ex: Thorne, Nordic Naturals...)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                         className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                 </div>
                 <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
               </div>
