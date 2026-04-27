@@ -2,8 +2,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { Send, Sparkles, Plus, Trash2, MessageSquare, Wrench } from "lucide-react";
+import { Send, Sparkles, Plus, Trash2, MessageSquare } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
+import { ChatThinking } from "@/components/chat-thinking";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: { path: string; snippet?: string }[]; streaming?: boolean; toolCalls?: { name: string; input: unknown }[] };
 type Session = { id: number; title: string; created_at: number; updated_at: number };
@@ -152,19 +153,13 @@ export default function ChatPage() {
               <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                           className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-card border border-border"}`}>
-                  {m.toolCalls && m.toolCalls.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                      {m.toolCalls.map((tc, k) => (
-                        <span key={k} className="inline-flex items-center gap-1 text-[0.7rem] px-1.5 py-0.5 rounded bg-secondary/60 border border-border text-muted-foreground">
-                          <Wrench className="h-2.5 w-2.5" />{tc.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                   {m.role === "assistant" ? (
                     <div className="text-sm">
-                      <ChatMarkdown text={m.content} />
-                      {m.streaming && <span className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom bg-emerald animate-pulse" />}
+                      {(m.streaming || (m.toolCalls && m.toolCalls.length > 0)) && (
+                        <ChatThinking toolCalls={m.toolCalls ?? []} hasContent={!!m.content} />
+                      )}
+                      {m.content && <ChatMarkdown text={m.content} />}
+                      {m.streaming && m.content && <span className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom bg-emerald animate-pulse" />}
                     </div>
                   ) : (
                     <div className="whitespace-pre-wrap">{m.content}</div>

@@ -14,12 +14,15 @@ type DocCitation = { kind: string; ref: string; label?: string };
 export function splitContentAndFootnotes(text: string): { body: string; footnotes: DocCitation[] } {
   const footnotes: DocCitation[] = [];
   const lines = text.split("\n");
-  // Walk from the end; collect contiguous trailing footnote-like lines.
+  // Walk from the end; tolerate code fences, "Sources" headers, separators, blank lines.
+  const footnoteRx = /^\[(\d+)\]\s+(\{.*\})\s*$/;
+  const skipRx = /^(?:```+\s*\w*|---+|—+|\*\*\s*sources?\s*\*\*\s*:?|sources?\s*:?)$/i;
   let cut = lines.length;
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i].trim();
     if (l === "") { cut = i; continue; }
-    const m = l.match(/^\[(\d+)\]\s+(\{.*\})\s*$/);
+    if (skipRx.test(l)) { cut = i; continue; }
+    const m = l.match(footnoteRx);
     if (!m) break;
     try {
       const obj = JSON.parse(m[2]) as DocCitation;
