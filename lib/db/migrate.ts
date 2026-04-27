@@ -18,7 +18,9 @@ export function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS rag_doc_idx ON rag_chunk(doc_id)`,
     `CREATE TABLE IF NOT EXISTS rag_keyword (id INTEGER PRIMARY KEY AUTOINCREMENT, chunk_id INTEGER NOT NULL REFERENCES rag_chunk(id) ON DELETE CASCADE, term TEXT NOT NULL, tf REAL NOT NULL)`,
     `CREATE INDEX IF NOT EXISTS rag_term_idx ON rag_keyword(term)`,
-    `CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT NOT NULL, target_id TEXT NOT NULL, body TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
+    `CREATE TABLE IF NOT EXISTS note (id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT NOT NULL, target_id TEXT NOT NULL, body TEXT NOT NULL, tags TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
+    `CREATE INDEX IF NOT EXISTS note_target_idx ON note(target_type, target_id)`,
+    `CREATE INDEX IF NOT EXISTS note_created_idx ON note(created_at)`,
     `CREATE TABLE IF NOT EXISTS report (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
     `CREATE TABLE IF NOT EXISTS ingest_log (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, status TEXT NOT NULL, detail TEXT, duration_ms INTEGER, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
     `CREATE TABLE IF NOT EXISTS chat_session (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`,
@@ -33,11 +35,21 @@ export function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS symptom_log_date_idx ON symptom_log(date)`,
     `CREATE INDEX IF NOT EXISTS symptom_log_key_idx ON symptom_log(key)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS symptom_log_unique ON symptom_log(date, key)`,
-    // Sprint 11 — habits
     `CREATE TABLE IF NOT EXISTS habit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, key TEXT NOT NULL, value REAL NOT NULL DEFAULT 1, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`,
     `CREATE INDEX IF NOT EXISTS habit_log_date_idx ON habit_log(date)`,
     `CREATE INDEX IF NOT EXISTS habit_log_key_idx ON habit_log(key)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS habit_log_unique ON habit_log(date, key)`,
+    `CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`,
+    `CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`,
+    `CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
+
+  // Add tags column to existing note table if it doesn't exist
+  try {
+    d.run(sql.raw(`ALTER TABLE note ADD COLUMN tags TEXT`));
+  } catch {}
+  try {
+    d.run(sql.raw(`ALTER TABLE note ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`));
+  } catch {}
 }

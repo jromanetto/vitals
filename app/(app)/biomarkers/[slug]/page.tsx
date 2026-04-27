@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { BiomarkerChart } from "@/components/biomarker-chart";
 import { BiomarkerCommentary } from "@/components/biomarker-commentary";
+import { NotesWidget } from "@/components/notes-widget";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import Link from "next/link";
 
@@ -64,7 +65,6 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
             </div>
           </div>
 
-          {/* Reference range pills */}
           {md && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Cibles de référence</div>
@@ -106,6 +106,7 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
             longevityLow={md?.longevityLow} longevityHigh={md?.longevityHigh}
             unit={meta.unit ?? md?.unit ?? ""}
           />
+          <NotesWidget targetType="biomarker" targetId={slug} label="Notes sur ce marqueur" />
         </>
       )}
     </div>
