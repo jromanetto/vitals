@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureSchema } from "@/lib/db/migrate";
@@ -11,16 +10,14 @@ export const maxDuration = 90;
 
 export async function POST(req: Request) {
   const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!s) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   ensureSchema();
 
   const { messages, sessionId } = await req.json() as { messages: { role: "user" | "assistant"; content: string }[]; sessionId?: number };
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  if (!lastUser) return NextResponse.json({ content: "Pas de question." });
+  if (!lastUser) return new Response(JSON.stringify({ content: "Pas de question." }));
 
   const sqlite = db().$client;
-
-  // Persist user message if sessionId provided
   let activeSession = sessionId;
   if (!activeSession) {
     const ins = sqlite.prepare(`INSERT INTO chat_session (title, created_at, updated_at) VALUES (?, ?, ?)`).run("Nouvelle conversation", Date.now(), Date.now());
@@ -44,49 +41,66 @@ export async function POST(req: Request) {
   const apiKey = anthropicApiKey();
   if (!apiKey) {
     sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)`).run(activeSession, "assistant", "ANTHROPIC_API_KEY non configurée.", Date.now());
-    return NextResponse.json({
-      content: "ANTHROPIC_API_KEY non configurée sur le serveur.",
-      sources: hits.map((h) => ({ path: h.path, snippet: h.snippet.slice(0, 200) })),
-      sessionId: activeSession,
-    });
+    return new Response(JSON.stringify({ content: "ANTHROPIC_API_KEY non configurée.", sessionId: activeSession, sources: [] }));
   }
 
   const client = new Anthropic({ apiKey });
-  const sys = `Tu es l'assistant santé personnel de Julien Romanetto. Tu réponds en français, de façon concise, factuelle et personnalisée.
-Quand tu utilises un extrait de la RAG, cite-le entre crochets [1] [2] etc. (correspondant aux extraits ci-dessous).
-Tu présentes les faits, les corrélations, et tu suggères des pistes à creuser avec un médecin si pertinent. Tu n'inventes pas de chiffres.
+  const sys = `Tu es l'assistant santé personnel de Julien Romanetto. Tu réponds en français, factuel, personnalisé. Cite les extraits avec [1] [2] etc.
 
 CONTEXTE PERSONNEL:
 ${context}`;
 
-  const resp = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 2000,
-    system: sys,
+  const stream = client.messages.stream({
+    model: "claude-sonnet-4-5-20250929", max_tokens: 2000, system: sys,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   });
-  const text = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
 
-  sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, sources, created_at) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "assistant", text, JSON.stringify(hits.map((h) => h.path)), Date.now());
-  sqlite.prepare(`UPDATE chat_session SET updated_at = ? WHERE id = ?`).run(Date.now(), activeSession);
+  const encoder = new TextEncoder();
+  let fullText = "";
+  const sources = hits.map((h) => h.path);
 
-  // Auto-rename on first exchange
-  const msgCount = (sqlite.prepare(`SELECT COUNT(*) c FROM chat_message WHERE session_id = ?`).get(activeSession) as { c: number }).c;
-  if (msgCount === 2) {
-    try {
-      const titleResp = await client.messages.create({
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 30,
-        messages: [{ role: "user", content: `Donne un titre court (max 6 mots, sans guillemets) pour cette conversation: USER: "${lastUser.content.slice(0, 200)}"` }],
-      });
-      const title = titleResp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("").trim().replace(/^["']|["']$/g, "").slice(0, 60);
-      if (title) sqlite.prepare(`UPDATE chat_session SET title = ? WHERE id = ?`).run(title, activeSession);
-    } catch {}
-  }
+  const responseStream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const event of stream) {
+          if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+            const text = event.delta.text;
+            fullText += text;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "delta", text })}\n\n`));
+          }
+        }
+        // Persist final
+        sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, sources, created_at) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "assistant", fullText, JSON.stringify(sources), Date.now());
+        sqlite.prepare(`UPDATE chat_session SET updated_at = ? WHERE id = ?`).run(Date.now(), activeSession);
 
-  return NextResponse.json({
-    content: text,
-    sources: hits.map((h) => ({ path: h.path, snippet: h.snippet.slice(0, 200) })),
-    sessionId: activeSession,
+        // Auto-rename on first exchange
+        const msgCount = (sqlite.prepare(`SELECT COUNT(*) c FROM chat_message WHERE session_id = ?`).get(activeSession) as { c: number }).c;
+        if (msgCount === 2) {
+          try {
+            const titleResp = await client.messages.create({
+              model: "claude-sonnet-4-5-20250929", max_tokens: 30,
+              messages: [{ role: "user", content: `Titre court (max 6 mots, sans guillemets) pour: USER: "${lastUser.content.slice(0, 200)}"` }],
+            });
+            const title = titleResp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("").trim().replace(/^["']|["']$/g, "").slice(0, 60);
+            if (title) sqlite.prepare(`UPDATE chat_session SET title = ? WHERE id = ?`).run(title, activeSession);
+          } catch {}
+        }
+
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done", sessionId: activeSession, sources: hits.map((h) => ({ path: h.path, snippet: h.snippet.slice(0, 200) })) })}\n\n`));
+        controller.close();
+      } catch (e) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: (e as Error).message })}\n\n`));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(responseStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
   });
 }

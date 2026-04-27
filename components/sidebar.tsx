@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks } from "lucide-react";
+import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks, GitMerge, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -11,11 +11,13 @@ const items = [
   { href: "/dna", label: "DNA Analysis", icon: Dna },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/timeline", label: "Timeline", icon: Clock },
+  { href: "/correlations", label: "Corrélations", icon: GitMerge },
   { href: "/knowledge", label: "Knowledge", icon: BookOpen },
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
   { href: "/supplements", label: "Suppléments", icon: Pill },
   { href: "/symptoms", label: "Symptômes", icon: HeartPulse },
   { href: "/habits", label: "Habitudes", icon: ListChecks },
+  { href: "/import", label: "Import wearables", icon: Upload },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
@@ -27,7 +29,7 @@ export function Sidebar() {
         <div className="h-2 w-2 rounded-full bg-emerald" />
         <span className="text-lg font-semibold tracking-tight">Vitals</span>
       </div>
-      <nav className="flex-1 px-3 py-2 space-y-0.5">
+      <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto scrollbar-thin">
         {items.map((it) => {
           const active = pathname === it.href || (it.href !== "/" && pathname.startsWith(it.href));
           const Icon = it.icon;
