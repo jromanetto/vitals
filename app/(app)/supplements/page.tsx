@@ -36,6 +36,7 @@ export default function SupplementsPage() {
   const [taken, setTaken] = useState<Set<number>>(new Set());
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [inputMode, setInputMode] = useState<"url" | "manual">("url");
   const [editing, setEditing] = useState<Supplement | null>(null);
   const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
   const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
@@ -215,8 +216,108 @@ export default function SupplementsPage() {
                 <h3 className="text-lg font-semibold">Nouveau supplément</h3>
                 <button onClick={() => setShowForm(false)}><X className="h-4 w-4 text-muted-foreground" /></button>
               </div>
+              <div className="flex gap-1 p-1 bg-secondary/30 rounded-lg border border-border">
+                <button type="button" onClick={() => setInputMode("url")}
+                  className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition ${inputMode === "url" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  🌐 Depuis une URL produit
+                </button>
+                <button type="button" onClick={() => setInputMode("manual")}
+                  className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition ${inputMode === "manual" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  ✏️ Saisie manuelle
+                </button>
+              </div>
+
               <div className="space-y-3">
-                <input placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                {inputMode === "url" ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[11px] uppercase tracking-wider text-muted-foreground">URL du produit</label>
+                      <div className="flex gap-2">
+                        <input
+                          autoFocus
+                          placeholder="https://drstanfield.com/... · iHerb · Amazon · marque"
+                          value={form.url}
+                          onChange={(e) => setForm({ ...form, url: e.target.value })}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (document.getElementById("sup-import-btn") as HTMLButtonElement)?.click(); } }}
+                          className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                        />
+                        <button
+                          id="sup-import-btn"
+                          type="button"
+                          onClick={async () => {
+                            if (!form.url) return;
+                            const btn = document.getElementById("sup-import-btn") as HTMLButtonElement | null;
+                            const prev = btn?.textContent;
+                            if (btn) { btn.disabled = true; btn.textContent = "Extraction…"; }
+                            try {
+                              const r = await fetch("/api/supplements/from-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: form.url }) });
+                              const d = await r.json();
+                              if (d.ok || d.name || d.suggestedName) {
+                                setForm((f: any) => ({
+                                  ...f,
+                                  name: d.name || d.suggestedName || f.name || "",
+                                  brand: d.brand || f.brand || "",
+                                  imageUrl: d.image || f.imageUrl || "",
+                                  ingredients: Array.isArray(d.ingredients) ? d.ingredients : f.ingredients,
+                                  servingSize: d.servingSize || f.servingSize || "",
+                                  suggestedUse: d.suggestedUse || f.suggestedUse || "",
+                                }));
+                              }
+                            } finally { if (btn) { btn.disabled = false; btn.textContent = prev || "Importer"; } }
+                          }}
+                          className="px-4 py-2 rounded-md bg-emerald/15 hover:bg-emerald/25 border border-emerald/30 text-emerald text-xs font-medium transition disabled:opacity-50"
+                        >
+                          Importer
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">Colle une URL produit, on extrait automatiquement nom, marque, image et tous les ingrédients.</p>
+                    </div>
+
+                    {(form.name || form.imageUrl) && (
+                      <div className="rounded-lg border border-emerald/30 bg-emerald/5 p-3 space-y-2">
+                        <div className="flex gap-3">
+                          {form.imageUrl && <img src={form.imageUrl} alt="" className="h-16 w-16 rounded-md border border-border object-contain bg-secondary/30 shrink-0" />}
+                          <div className="min-w-0 flex-1">
+                            <input
+                              value={form.name}
+                              onChange={(e) => setForm({ ...form, name: e.target.value })}
+                              className="w-full bg-transparent border-0 border-b border-border/40 px-0 py-0.5 text-sm font-medium outline-none focus:border-primary"
+                            />
+                            <input
+                              value={form.brand}
+                              placeholder="Marque"
+                              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                              className="w-full bg-transparent border-0 px-0 py-0.5 text-xs text-muted-foreground outline-none"
+                            />
+                          </div>
+                        </div>
+                        {form.servingSize && <div className="text-xs"><span className="text-emerald font-medium">Posologie:</span> <span className="text-muted-foreground">{form.servingSize}</span></div>}
+                        {form.suggestedUse && <div className="text-xs text-muted-foreground italic">{form.suggestedUse}</div>}
+                        {Array.isArray(form.ingredients) && form.ingredients.length > 0 && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer text-emerald hover:underline">📋 {form.ingredients.length} ingrédients détectés</summary>
+                            <div className="mt-2 max-h-40 overflow-y-auto border border-border/40 rounded-md p-2 space-y-1 scrollbar-thin">
+                              {form.ingredients.map((ing: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                                  <span className="truncate">{ing.name}</span>
+                                  <span className="text-muted-foreground font-mono shrink-0">
+                                    {ing.dose} {ing.unit}{typeof ing.nrv === "number" && ing.nrv > 0 ? ` · ${ing.nrv}% AR` : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <input autoFocus placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <input placeholder="Marque (ex: Thorne, Nordic Naturals…)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  </>
+                )}
+
                 <div className="grid grid-cols-2 gap-2">
                   <input placeholder="Dose (ex: 4000)" value={form.dose} onChange={(e) => setForm({ ...form, dose: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                   <input placeholder="Unité" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -224,53 +325,6 @@ export default function SupplementsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                   <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                </div>
-                                <div className="space-y-2 pb-2 border-b border-border/50">
-                  <div className="flex gap-2">
-                    <input placeholder="URL du produit (Amazon, iHerb, marque...)" value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })}
-                           className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                    <button type="button" onClick={async () => {
-                      if (!form.url) return;
-                      const btn = document.activeElement as HTMLButtonElement;
-                      const prev = btn?.textContent;
-                      if (btn) btn.textContent = "Extraction…";
-                      try {
-                        const r = await fetch("/api/supplements/from-url", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: form.url }) });
-                        const d = await r.json();
-                        if (d.ok || d.name || d.suggestedName) {
-                          setForm((f: any) => ({
-                            ...f,
-                            name: d.name || d.suggestedName || f.name || "",
-                            brand: d.brand || f.brand || "",
-                            imageUrl: d.image || f.imageUrl || "",
-                            ingredients: Array.isArray(d.ingredients) ? d.ingredients : f.ingredients,
-                            servingSize: d.servingSize || f.servingSize || "",
-                            suggestedUse: d.suggestedUse || f.suggestedUse || "",
-                          }));
-                        }
-                      } finally { if (btn) btn.textContent = prev || "Importer"; }
-                    }} className="px-3 py-2 rounded-md bg-secondary/60 hover:bg-secondary border border-border text-xs">Importer</button>
-                  </div>
-                  {form.imageUrl && <img src={form.imageUrl} alt="" className="h-16 rounded-md border border-border object-contain bg-secondary/30" />}
-                  <input placeholder="Marque (ex: Thorne, Nordic Naturals...)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                         className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                  {form.servingSize && <div className="text-xs text-muted-foreground"><span className="text-emerald">Posologie:</span> {form.servingSize}</div>}
-                  {form.suggestedUse && <div className="text-xs text-muted-foreground italic">{form.suggestedUse}</div>}
-                  {Array.isArray(form.ingredients) && form.ingredients.length > 0 && (
-                    <details className="text-xs">
-                      <summary className="cursor-pointer text-emerald hover:underline">Ingrédients détectés ({form.ingredients.length}) — clique pour voir</summary>
-                      <div className="mt-2 max-h-48 overflow-y-auto border border-border/40 rounded-md p-2 space-y-1 scrollbar-thin">
-                        {form.ingredients.map((ing: any, i: number) => (
-                          <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
-                            <span className="truncate">{ing.name}</span>
-                            <span className="text-muted-foreground font-mono shrink-0">
-                              {ing.dose} {ing.unit}{typeof ing.nrv === "number" && ing.nrv > 0 ? ` · ${ing.nrv}% AR` : ""}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
                 </div>
                 <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
               </div>
