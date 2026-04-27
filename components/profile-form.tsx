@@ -3,6 +3,9 @@ import { EnvironmentSection } from "@/components/environment-section";
 import { VaccinationsList, type VaccinationEntry } from "@/components/vaccinations-list";
 import { SportsStructured, type SportEntry } from "@/components/sports-structured";
 import { SpecialistsList, type SpecialistEntry } from "@/components/specialists-list";
+import { SliderRating } from "@/components/slider-rating";
+import { CompletionProgress } from "@/components/completion-progress";
+import { AgeSexSuggestions } from "@/components/age-sex-suggestions";
 import {
   MedicationList, AllergyList,
   migrateMedications, migrateAllergies,
@@ -203,6 +206,8 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
       </nav>
 
       <div className="space-y-6">
+        <CompletionProgress data={data} totalPct={Math.round(SECTIONS.reduce((a,s)=>a+completion(s as Section,data),0)/SECTIONS.length)} />
+        <AgeSexSuggestions data={data} />
         {SECTIONS.map((section) => {
           if (section.id === "environment") {
             return (
@@ -263,6 +268,15 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
 function FieldRow({ field, value, onChange, onMulti }: {
   field: Field; value: unknown; onChange: (v: unknown) => void; onMulti: (opt: string) => void;
 }) {
+  // Sliders for 0-10 emotional ratings
+  if (field.id === "stressLevel" || field.id === "moodAvg" || field.id === "anxietyLevel") {
+    const variant = field.id === "stressLevel" ? "stress" : field.id === "moodAvg" ? "mood" : "anxiety";
+    return (
+      <div className="md:col-span-2">
+        <SliderRating label={field.label} value={typeof value === "number" ? value : 5} onChange={(v) => onChange(v)} variant={variant} />
+      </div>
+    );
+  }
   if (field.type === "vaccinationsStructured") {
     return (
       <VaccinationsList
