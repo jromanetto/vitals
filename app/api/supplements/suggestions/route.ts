@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
+import { buildActiveIndex, findCoverage } from "@/lib/supplement-nutrients";
 
 export const runtime = "nodejs";
 
@@ -14,6 +15,7 @@ type Suggestion = {
   rsid?: string; trait?: string; genotype?: string;
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
+  coveredBy?: { id: number; name: string; nutrient: string } | null;
 };
 
 // === Biomarker-driven suggestions ===
@@ -231,6 +233,10 @@ export async function GET() {
   const sqlite = db().$client;
   const out: Suggestion[] = [];
 
+  // Active supplements index for coverage detection
+  const activeRows = sqlite.prepare(`SELECT id, name, brand, ingredients, ended_at FROM supplement WHERE ended_at IS NULL`).all() as Array<{ id: number; name: string; brand: string | null; ingredients: string | null; ended_at: number | null }>;
+  const activeIndex = buildActiveIndex(activeRows);
+
   // Biomarker-based
   const latestBms = sqlite.prepare(`
     SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
@@ -247,6 +253,7 @@ export async function GET() {
         source: "biomarker", supplement: rec.supplement, reason: rec.reason,
         biomarker: r.name, biomarkerSlug: r.slug, value: r.value, unit: r.unit ?? undefined,
         dose: rec.dose, timing: rec.timing, priority: rec.priority,
+        coveredBy: findCoverage(rec.supplement, activeIndex),
       });
     }
   }
@@ -266,12 +273,19 @@ export async function GET() {
       reason: rule.reason(found.user_genotype, found.trait),
       rsid: rule.rsid, trait: found.trait, genotype: found.user_genotype,
       dose: rule.dose, timing: rule.timing, priority: rule.priority,
+      coveredBy: rule.dose !== "—" ? findCoverage(rule.supplement, activeIndex) : null,
     });
   }
 
-  // Sort by priority high → moderate → info
+  // Sort: not-covered first, then by priority high → moderate → info
   const order = { high: 0, moderate: 1, info: 2 };
-  out.sort((a, b) => order[a.priority] - order[b.priority]);
+  out.sort((a, b) => {
+    const ac = a.coveredBy ? 1 : 0;
+    const bc = b.coveredBy ? 1 : 0;
+    if (ac !== bc) return ac - bc;
+    return order[a.priority] - order[b.priority];
+  });
 
-  return NextResponse.json({ suggestions: out });
+  const coveredCount = out.filter((x) => x.coveredBy).length;
+  return NextResponse.json({ suggestions: out, coveredCount, activeCount: activeIndex.length });
 }

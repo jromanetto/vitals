@@ -22,6 +22,7 @@ type Suggestion = {
   rsid?: string; trait?: string; genotype?: string;
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
+  coveredBy?: { id: number; name: string; nutrient: string } | null;
 };
 
 const PRIORITY_STYLES = {
@@ -40,6 +41,7 @@ export default function SupplementsPage() {
   const [editing, setEditing] = useState<Supplement | null>(null);
   const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
   const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
+  const [showCovered, setShowCovered] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
   async function load() {
@@ -80,7 +82,9 @@ export default function SupplementsPage() {
 
   const active = rows.filter((r) => r.endedAt === null);
   const ended = rows.filter((r) => r.endedAt !== null);
-  const filteredSuggestions = filter === "all" ? suggestions : suggestions.filter((s) => s.source === filter);
+  const baseFiltered = filter === "all" ? suggestions : suggestions.filter((s) => s.source === filter);
+  const filteredSuggestions = showCovered ? baseFiltered : baseFiltered.filter((s) => !s.coveredBy);
+  const coveredHiddenCount = baseFiltered.length - filteredSuggestions.length;
 
   const bmCount = suggestions.filter((s) => s.source === "biomarker").length;
   const dnaCount = suggestions.filter((s) => s.source === "dna").length;
@@ -106,23 +110,40 @@ export default function SupplementsPage() {
               <Sparkles className="h-4 w-4 text-emerald" />
               <h2 className="text-sm font-medium">Suggestions personnalisées ({suggestions.length})</h2>
             </div>
-            <div className="flex items-center gap-1.5 text-xs">
+            <div className="flex items-center gap-1.5 text-xs flex-wrap">
               {(["all", "biomarker", "dna"] as const).map((f) => (
                 <button key={f} onClick={() => setFilter(f)}
                         className={`px-2.5 py-1 rounded-full border transition ${filter === f ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}>
                   {f === "all" ? `Tous (${suggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : `ADN (${dnaCount})`}
                 </button>
               ))}
+              {coveredHiddenCount > 0 && !showCovered && (
+                <button onClick={() => setShowCovered(true)}
+                        className="px-2.5 py-1 rounded-full border bg-card border-border text-muted-foreground hover:text-foreground transition">
+                  + {coveredHiddenCount} déjà couvert{coveredHiddenCount > 1 ? "s" : ""}
+                </button>
+              )}
+              {showCovered && (
+                <button onClick={() => setShowCovered(false)}
+                        className="px-2.5 py-1 rounded-full border bg-emerald/10 border-emerald/30 text-emerald hover:bg-emerald/20 transition">
+                  Masquer les couverts
+                </button>
+              )}
             </div>
           </div>
           <div className="space-y-2">
             {filteredSuggestions.map((s, i) => (
               <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
-                          className={`flex items-start justify-between gap-4 p-3 rounded-md border ${PRIORITY_STYLES[s.priority]}`}>
+                          className={`flex items-start justify-between gap-4 p-3 rounded-md border transition ${PRIORITY_STYLES[s.priority]} ${s.coveredBy ? "opacity-60" : ""}`}>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     {s.source === "biomarker" ? <Activity className="h-3 w-3 text-emerald shrink-0" /> : <Dna className="h-3 w-3 text-emerald shrink-0" />}
                     <span className="font-medium text-sm">{s.supplement}</span>
+                    {s.coveredBy && (
+                      <span className="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald shrink-0">
+                        <Check className="h-2.5 w-2.5" /> Déjà couvert · {s.coveredBy.name}
+                      </span>
+                    )}
                     <span className="text-[10px] uppercase tracking-wider text-muted-foreground ml-auto shrink-0">{PRIORITY_LABELS[s.priority]}</span>
                   </div>
                   <div className="text-xs text-muted-foreground leading-relaxed">{s.reason}</div>
@@ -133,7 +154,11 @@ export default function SupplementsPage() {
                     {s.rsid && <span className="text-muted-foreground"> · {s.rsid} {s.genotype}</span>}
                   </div>
                 </div>
-                <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 self-start">+ Ajouter</button>
+                {s.coveredBy ? (
+                  <span className="text-[10px] text-muted-foreground shrink-0 self-start italic">déjà pris</span>
+                ) : (
+                  <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 self-start">+ Ajouter</button>
+                )}
               </motion.div>
             ))}
           </div>
