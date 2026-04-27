@@ -53,9 +53,9 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    -webkit-tap-highlight-color: transparent;
   }
   ::selection { @apply bg-primary/30 text-foreground; }
-  /* Better focus rings everywhere */
   button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [role="link"]:focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
@@ -65,9 +65,20 @@
     outline: 2px solid hsl(var(--ring));
     outline-offset: 1px;
   }
-  /* sr-only utility */
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   .focus\:not-sr-only:focus { position: static; width: auto; height: auto; padding: revert; margin: 0; overflow: visible; clip: auto; white-space: normal; }
+  /* Mobile: improve touch targets */
+  @media (max-width: 768px) {
+    button, [role="button"], a.btn { min-height: 40px; }
+    table { font-size: 0.8rem; }
+    h1 { font-size: 1.5rem !important; }
+    h2 { font-size: 1.05rem !important; }
+  }
+  /* Responsive table wrapper */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .glass {
