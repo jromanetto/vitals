@@ -43,6 +43,7 @@ export const dnaInsight = sqliteTable("dna_insight", {
   riskAllele: text("risk_allele"),
   userGenotype: text("user_genotype"),
   hasRisk: integer("has_risk", { mode: "boolean" }),
+  isProtective: integer("is_protective", { mode: "boolean" }),
   summary: text("summary"),
   source: text("source"),
 }, (t) => ({

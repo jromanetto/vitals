@@ -182,6 +182,7 @@ async function ingestDna() {
       effect: cat.effect ?? null, magnitude: cat.magnitude ?? null,
       riskAllele: cat.riskGenotypes.join(",") || null,
       userGenotype: ug, hasRisk: ev.hasRisk,
+      isProtective: ev.isProtective,
       summary: cat.summary, source: cat.source,
     });
     insightCount++;

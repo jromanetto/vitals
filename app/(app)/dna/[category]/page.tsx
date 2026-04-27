@@ -9,9 +9,9 @@ async function load(category: string) {
   ensureSchema();
   const d = db();
   return d.$client.prepare(`
-    SELECT rsid, trait, effect, magnitude, risk_allele as riskAllele, user_genotype as userGenotype, has_risk as hasRisk, summary, source
+    SELECT rsid, trait, effect, magnitude, risk_allele as riskAllele, user_genotype as userGenotype, has_risk as hasRisk, is_protective as isProtective, summary, source
     FROM dna_insight WHERE category = ? ORDER BY (has_risk * COALESCE(magnitude,0)) DESC, magnitude DESC NULLS LAST
-  `).all(category) as Array<{ rsid: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number | null; summary: string | null; source: string | null }>;
+  `).all(category) as Array<{ rsid: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number | null; isProtective: number | null; summary: string | null; source: string | null }>;
 }
 
 export default async function DnaCat({ params }: { params: Promise<{ category: string }> }) {

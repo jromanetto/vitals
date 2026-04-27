@@ -9,6 +9,7 @@ export type CatalogEntry = {
   category: "cardiovascular" | "metabolism" | "longevity" | "nutrition" | "fitness" | "cognitive" | "hormones" | "immunity" | "detox" | "carriers";
   trait: string;
   riskGenotypes: string[];
+  protectiveGenotypes?: string[];
   effect?: string;
   summary: string;
   source: string;
@@ -21,11 +22,11 @@ export const CATALOG: CatalogEntry[] = [
     effect: "L'allèle C (ε4) augmente le risque d'Alzheimer et de maladies cardiovasculaires.",
     summary: "Le SNP le plus important pour le risque d'Alzheimer tardif. ε4/ε4 multiplie le risque par ~10. ε2 protège.",
     source: "https://www.snpedia.com/index.php/Rs429358" },
-  { rsid: "rs7412", category: "longevity", trait: "APOE — variant ε2 protecteur", riskGenotypes: ["CC"], magnitude: 2,
+  { rsid: "rs7412", category: "longevity", trait: "APOE — variant ε2 protecteur", riskGenotypes: [], protectiveGenotypes: ["CT", "TT"], magnitude: 2,
     effect: "Combiné à rs429358, détermine ε2/ε3/ε4. Allèle T = ε2 (protecteur).",
     summary: "rs7412(T) avec rs429358(T) = ε2, longévité accrue, cholestérol plus bas.",
     source: "https://www.snpedia.com/index.php/Rs7412" },
-  { rsid: "rs2802292", category: "longevity", trait: "FOXO3 — longévité extrême", riskGenotypes: ["TT"], magnitude: 2,
+  { rsid: "rs2802292", category: "longevity", trait: "FOXO3 — longévité extrême", riskGenotypes: [], protectiveGenotypes: ["GG", "GT"], magnitude: 2,
     effect: "Allèle G associé à longévité accrue chez les centenaires.",
     summary: "Un des rares SNPs validés pour la longévité humaine extrême. Effet via résistance au stress oxydatif.",
     source: "https://www.snpedia.com/index.php/Rs2802292" },
@@ -33,7 +34,7 @@ export const CATALOG: CatalogEntry[] = [
     effect: "Pro/Pro (GG) = longévité légèrement accrue mais réponse apoptotique réduite.",
     summary: "Trade-off cancer/longévité. Pro = longévité, Arg = meilleure réponse anti-tumorale.",
     source: "https://www.snpedia.com/index.php/Rs1042522" },
-  { rsid: "rs9536314", category: "longevity", trait: "KLOTHO KL-VS — vieillissement", riskGenotypes: [], magnitude: 2,
+  { rsid: "rs9536314", category: "longevity", trait: "KLOTHO KL-VS — vieillissement", riskGenotypes: [], protectiveGenotypes: ["GT"], magnitude: 2,
     effect: "Hétérozygotie KL-VS associée à longévité, meilleure cognition, moins d'AVC.",
     summary: "Klotho régule le métabolisme du phosphate et la signalisation insuline. Variant rare protecteur.",
     source: "https://www.snpedia.com/index.php/Rs9536314" },
@@ -139,7 +140,7 @@ export const CATALOG: CatalogEntry[] = [
     effect: "G augmente le LDL et le risque coronarien.",
     summary: "Locus 1p13. SORT1 module la sécrétion VLDL hépatique.",
     source: "https://www.snpedia.com/index.php/Rs599839" },
-  { rsid: "rs5882", category: "cardiovascular", trait: "CETP I405V — HDL & longévité", riskGenotypes: [], magnitude: 1,
+  { rsid: "rs5882", category: "cardiovascular", trait: "CETP I405V — HDL & longévité", riskGenotypes: [], protectiveGenotypes: ["GG"], magnitude: 1,
     effect: "GG (Val/Val) = CETP réduite, HDL plus élevé, longévité accrue (Ashkenazes).",
     summary: "CETP transfère les esters de cholestérol entre HDL et VLDL/LDL. Variants protecteurs.",
     source: "https://www.snpedia.com/index.php/Rs5882" },
@@ -309,7 +310,7 @@ export const CATALOG: CatalogEntry[] = [
     source: "https://www.snpedia.com/index.php/Rs1726866" },
 
   // ============================ FITNESS (10) ============================
-  { rsid: "rs1815739", category: "fitness", trait: "ACTN3 R577X — fibres rapides", riskGenotypes: ["TT"], magnitude: 2,
+  { rsid: "rs1815739", category: "fitness", trait: "ACTN3 R577X — fibres rapides", riskGenotypes: [], magnitude: 2,
     effect: "TT = absence d'α-actinine-3, fibres rapides moins efficaces. Avantage endurance.",
     summary: "CC = sprinter, TT = endurance, CT = mixte. Influence force explosive et risque blessure.",
     source: "https://www.snpedia.com/index.php/Rs1815739" },
@@ -553,11 +554,12 @@ export const CATALOG: CatalogEntry[] = [
     source: "https://www.snpedia.com/index.php/BRCA2" },
 ];
 
-export function evaluate(catalog: CatalogEntry, userGenotype: string): { hasRisk: boolean; userGenotype: string } {
-  if (!userGenotype || userGenotype.length < 2) return { hasRisk: false, userGenotype };
+export function evaluate(catalog: CatalogEntry, userGenotype: string): { hasRisk: boolean; isProtective: boolean; userGenotype: string } {
+  if (!userGenotype || userGenotype.length < 2) return { hasRisk: false, isProtective: false, userGenotype };
   const sorted = userGenotype.split("").sort().join("");
   const sortedRisk = catalog.riskGenotypes.map((g) => g.split("").sort().join(""));
-  return { hasRisk: sortedRisk.includes(sorted), userGenotype };
+  const sortedProt = (catalog.protectiveGenotypes ?? []).map((g) => g.split("").sort().join(""));
+  return { hasRisk: sortedRisk.includes(sorted), isProtective: sortedProt.includes(sorted), userGenotype };
 }
 
 // Compound trait calculator: APOE genotype derived from rs429358 + rs7412
