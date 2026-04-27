@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna } from "lucide-react";
 import { AdherenceCalendar } from "@/components/adherence-calendar";
 import { InteractionsCard } from "@/components/interactions-card";
+import { SupplementCoverage } from "@/components/supplement-coverage";
 
 type Supplement = {
   id: number; name: string; dose: string | null; unit: string | null;
@@ -164,6 +165,8 @@ export default function SupplementsPage() {
           </div>
         </section>
       )}
+
+      <SupplementCoverage refreshKey={rows.length} />
 
       <section>
         <h2 className="text-sm font-medium mb-3 flex items-center gap-2">
