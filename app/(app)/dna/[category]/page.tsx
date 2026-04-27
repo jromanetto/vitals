@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import Link from "next/link";
+import { NotesWidget } from "@/components/notes-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
       <div className="grid gap-3">
         {rows.length === 0 && <div className="rounded-xl border border-border p-8 bg-card text-muted-foreground">Aucun insight encore généré pour cette catégorie.</div>}
         {rows.map((r) => (
-          <article key={r.rsid + r.trait} className="rounded-xl border border-border bg-card p-5">
+          <article key={r.rsid + r.trait} className="rounded-xl border border-border bg-card p-5 space-y-3">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="font-medium tracking-tight">{r.trait}</h3>
@@ -35,9 +36,18 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
               {r.hasRisk === 1 && <span className="px-2 py-0.5 rounded-full text-xs border bg-amber-500/15 text-amber-400 border-amber-500/30">À surveiller</span>}
               {r.hasRisk === 0 && <span className="px-2 py-0.5 rounded-full text-xs border bg-emerald/15 text-emerald border-emerald/30">Favorable</span>}
             </div>
-            {r.effect && <p className="text-sm mt-3">{r.effect}</p>}
-            {r.summary && <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{r.summary}</p>}
-            {r.source && <a href={r.source} target="_blank" rel="noopener" className="inline-block mt-3 text-xs text-muted-foreground hover:text-emerald">Source ↗</a>}
+            {r.effect && <p className="text-sm">{r.effect}</p>}
+            {r.summary && <p className="text-sm text-muted-foreground leading-relaxed">{r.summary}</p>}
+            {r.source && <a href={r.source} target="_blank" rel="noopener" className="inline-block text-xs text-muted-foreground hover:text-emerald">Source ↗</a>}
+            <details className="group">
+              <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground inline-flex items-center gap-1">
+                <span className="group-open:hidden">+ Notes personnelles</span>
+                <span className="hidden group-open:inline">− Masquer notes</span>
+              </summary>
+              <div className="mt-3">
+                <NotesWidget targetType="dna" targetId={r.rsid} label="Notes" />
+              </div>
+            </details>
           </article>
         ))}
       </div>

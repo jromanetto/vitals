@@ -2,12 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Activity, BookOpen, Clock, Dna, FileText, LayoutDashboard, MessageSquare, Search, User } from "lucide-react";
+import { Activity, BookOpen, Dna, FileText, LayoutDashboard, Pill, Search, StickyNote } from "lucide-react";
 
-type Hit = { kind: "biomarker" | "dna" | "report" | "doc" | "page"; title: string; subtitle?: string; href: string };
+type Hit = { kind: "biomarker" | "dna" | "report" | "doc" | "page" | "note" | "supplement" | "habit"; title: string; subtitle?: string; href: string };
 
 const ICONS: Record<Hit["kind"], typeof Search> = {
   page: LayoutDashboard, biomarker: Activity, dna: Dna, report: FileText, doc: BookOpen,
+  note: StickyNote, supplement: Pill, habit: LayoutDashboard,
 };
 
 export function CommandPalette() {
@@ -63,13 +64,15 @@ export function CommandPalette() {
             transition={{ duration: 0.18, ease: "easeOut" }}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+            role="dialog" aria-label="Command palette"
           >
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-              <Search className="h-4 w-4 text-muted-foreground" />
+              <Search className="h-4 w-4 text-muted-foreground" aria-hidden />
               <input
                 ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKeyDown}
-                placeholder="Rechercher biomarker, ADN, fichier, page…"
+                placeholder="Rechercher biomarker, ADN, fichier, note, page…"
                 className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground/60"
+                aria-label="Recherche"
               />
               <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">esc</kbd>
             </div>
@@ -80,10 +83,10 @@ export function CommandPalette() {
                 const isActive = i === active;
                 return (
                   <button
-                    key={h.href + i} onMouseEnter={() => setActive(i)} onClick={() => go(h)}
+                    key={h.href + i + h.title} onMouseEnter={() => setActive(i)} onClick={() => go(h)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition ${isActive ? "bg-secondary" : "hover:bg-secondary/40"}`}
                   >
-                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <Icon className="h-4 w-4 text-muted-foreground shrink-0" aria-hidden />
                     <div className="flex-1 text-left min-w-0">
                       <div className="truncate">{h.title}</div>
                       {h.subtitle && <div className="text-xs text-muted-foreground truncate">{h.subtitle}</div>}

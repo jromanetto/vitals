@@ -41,7 +41,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Trend pill toggle: 6m / 1y / all time.
 - [ ] On detail page: list top 3 most-correlated biomarkers (Pearson on overlapping dates).
 
-## Phase 3 — DNA catalog massive expansion
+## Phase 3 — DNA catalog massive expansion [DONE]
 - [ ] Expand `lib/dna/catalog.ts` to **150+ entries** (currently ~30). Sourced from SNPedia/ClinVar/peer-reviewed only. Cite the URL.
 - [ ] Coverage targets:
   - Longevity: APOE compound, FOXO3, KLOTHO, SIRT1, TP53, IGF1R, mTOR, NRF2, TERC, telomere SNPs (10+ entries).
@@ -59,7 +59,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] On `/dna`: hero card shows top 5 most-impactful findings + risk gauges per category (radial 0-100 score = sum of (hasRisk × magnitude) capped).
 - [ ] On `/dna/[category]` group by trait, show compound results at top, then individual SNPs sorted by magnitude × hasRisk.
 
-## Phase 4 — RAG embeddings + hybrid search
+## Phase 4 — RAG embeddings + hybrid search [DONE]
 - [ ] Add `lib/rag/embed.ts`. If `ANTHROPIC_API_KEY` is set, use Anthropic's Claude for embedding (no embedding endpoint — use a simple semantic re-rank: take top 30 BM25 hits and ask Claude to rank them by relevance to query). If not, just use BM25 (already working).
 - [ ] Save the rank score in a `rag_chunk.last_rank_score` column.
 - [ ] Hybrid: BM25 first pass → Claude re-rank top 30 → return top 10.
@@ -67,7 +67,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Add filter pills: "Tous", "Sang", "Consultations", "Knowledge", "ADN", "SHA Wellness".
 - [ ] Empty state with example queries.
 
-## Phase 5 — Reports — multi-kind generator + viewer
+## Phase 5 — Reports — multi-kind generator + viewer [DONE]
 - [ ] Generate kinds: `overview`, `cardiovascular`, `metabolic`, `longevity`, `nutrition`, `cognition`, `dna-deep-dive`, `hormonal`, `inflammation`, `next-bloodwork-prep`, `supplement-recommendations`.
 - [ ] Each kind has a tailored system prompt + structured sections.
 - [ ] Cache: don't regenerate if the underlying data hasn't changed (hash profile+biomarkers+dna and store in report.meta.dataHash).
@@ -77,7 +77,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Inline mini-charts in reports: detect `[[chart:slug]]` markers and replace with a Recharts SparklineChart server-side (rendered via @react-pdf or as inline SVG).
 - [ ] Add `/reports/quick-summary` which generates a one-paragraph summary of latest state, refreshed daily (cached).
 
-## Phase 6 — Streaming chat with sessions
+## Phase 6 — Streaming chat with sessions [DONE]
 - [ ] Switch `/api/chat` to server streaming via Anthropic SDK `stream: true`.
 - [ ] Client renders tokens as they arrive. Framer Motion fade-in by 4-character chunks.
 - [ ] Tables: `chat_session(id, title, created_at, updated_at)` and `chat_message(id, session_id, role, content, sources, created_at)`.
@@ -87,14 +87,14 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Token counter + cost estimate in footer.
 - [ ] Quick-action buttons: "Compare two periods", "Recommend supplements", "Plan next bloodwork".
 
-## Phase 7 — PDF inline viewer + global Cmd-K palette
+## Phase 7 — PDF inline viewer + global Cmd-K palette [DONE]
 - [ ] New `/files/[...path]` route serving PDFs inline behind auth (read from data/, sanitize path).
 - [ ] Inline viewer page: iframe with #view=FitH, sidebar showing extracted biomarkers, related reports, "open in new tab".
 - [ ] Cmd-K command palette component (using a lightweight headless approach, no extra dep). Searches biomarkers + KB chunks + files + reports + DNA traits + actions.
 - [ ] Keyboard shortcuts: `g d` → /dna, `g b` → /biomarkers, `g r` → /reports, `g t` → /timeline, `g k` → /knowledge, `g c` → /chat, `g p` → /profile, `g h` → /, `?` → show shortcuts overlay.
 - [ ] Animate the palette: scale-down + fade in 200ms (framer).
 
-## Phase 8 — Profile UX + onboarding + import
+## Phase 8 — Profile UX + onboarding + import [DONE]
 - [ ] On first login (no profile yet), `/` redirects to `/profile/onboarding` with a wizard: 1 section per step, animated progress bar, "skip for now" allowed.
 - [ ] Sticky save bar with "Last saved 12 sec ago" indicator.
 - [ ] Per-section completion badges in the profile page.
@@ -102,7 +102,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] `/profile/import`: paste a previous health summary or doctor letter; Claude auto-fills the form fields it can extract. Show a diff preview before saving.
 - [ ] `/profile` page also surfaces "missing high-impact data" alerts (e.g., "you haven't filled family history" with CTA).
 
-## Phase 9 — Longevity score + dashboard polish
+## Phase 9 — Longevity score + dashboard polish [DONE]
 - [ ] Compute Vitals Longevity Score 0-100. Formula in `lib/scoring/longevity.ts`. Document inputs:
   - 40% biomarkers in optimal range (per biomarker_meta.optimal_low/high).
   - 25% DNA: longevity-favorable variants minus risk variants, normalized.
@@ -114,7 +114,7 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 - [ ] Add weekly habits checklist on `/profile` (sleep, water, training, fasting, sun, meditation) — store in `habit_log(date, key, value)`.
 - [ ] Light mode toggle in TopBar (next-themes), persists. Make sure all components have light mode treatment.
 
-## Phase 10 — Mobile + accessibility + performance
+## Phase 10 — Mobile + accessibility + performance [DONE]
 - [ ] Mobile sidebar: convert Sidebar to a Sheet-style drawer on <md screens, hamburger trigger in TopBar.
 - [ ] Profile-form section nav also collapses on mobile.
 - [ ] `aria-label` on all icon-only buttons.
@@ -126,32 +126,32 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 
 ---
 
-## Phase 11 — Habits & supplements tracker
+## Phase 11 — Habits & supplements tracker [DONE]
 - [ ] Tables: `supplement(id, name, dose, unit, timing, started_at, ended_at, notes)`, `supplement_log(id, supplement_id, date, taken)`.
 - [ ] `/supplements` page: list current stack with add/edit/end. Daily checklist.
 - [ ] Plot adherence calendar (heatmap, last 90 days).
 - [ ] Cross-reference: list supplements that target out-of-range biomarkers (e.g. low vit D → vitamin D3+K2 recommendation).
 - [ ] Drug-supplement interaction warnings (small built-in list: K with anticoagulants, fish oil with anticoagulants, St John's wort with SSRIs, etc).
 
-## Phase 12 — Symptoms diary + correlations
+## Phase 12 — Symptoms diary + correlations [DONE]
 - [ ] Tables: `symptom(id, key, label, scale)`, `symptom_log(id, symptom_id, date, value, notes)`.
 - [ ] Default symptoms: energy, mood, focus, sleep_quality, gut, skin, anxiety, libido, hrv (number).
 - [ ] `/symptoms`: 1-tap entry from a "today" panel; calendar heatmap per symptom; weekly average line chart.
 - [ ] Correlation engine: Spearman correlation between any symptom log and biomarker / supplement / habit. Top 5 correlations shown.
 
-## Phase 13 — Wearables import
+## Phase 13 — Wearables import [DONE]
 - [ ] `/import`: upload Apple Health export.zip, Oura JSON, Whoop CSV, Garmin GPX.
 - [ ] Parsers in `lib/parsers/wearables/{apple,oura,whoop,garmin}.ts`.
 - [ ] Unified `wearable_metric(date, source, kind, value, unit)` table.
 - [ ] Display on dashboard: HRV trend (Oura/Whoop), resting HR (all), sleep stages (Apple/Oura), training load (Whoop).
 - [ ] Correlate wearable metrics with biomarkers (e.g., HRV vs. cortisol).
 
-## Phase 14 — Family pedigree + risks
+## Phase 14 — Family pedigree + risks [DONE]
 - [ ] In Profile → Family section: build a structured pedigree (father, mother, 2 paternal GP, 2 maternal GP, siblings, kids). Each with name, conditions, age of onset, alive status.
 - [ ] Visualize as an SVG family tree (react-flow or hand-rolled).
 - [ ] Compute hereditary risk flags (cancer, cardio, diabetes, alzheimer) using simple rules + first-degree weighting.
 
-## Phase 15 — Doctor pack export
+## Phase 15 — Doctor pack export [DONE]
 - [ ] One-click export: PDF bundle with last bilan + biomarker timelines (12 most relevant) + family history + current supplements + symptoms summary + 3 questions to ask.
 - [ ] Generated by Claude based on profile.goals.
 - [ ] Save to `report` with kind='doctor-pack' for re-download.

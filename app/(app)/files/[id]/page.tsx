@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { NotesWidget } from "@/components/notes-widget";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,6 @@ async function load(id: number) {
   const sqlite = db().$client;
   const doc = sqlite.prepare(`SELECT id, path, title, category, date, pages FROM document WHERE id = ?`).get(id) as { id: number; path: string; title: string | null; category: string; date: number | null; pages: number | null } | undefined;
   if (!doc) return null;
-  // related biomarkers extracted from this doc
   const bms = sqlite.prepare(`SELECT name, value, unit FROM biomarker WHERE source = ? ORDER BY name LIMIT 30`).all(doc.path) as Array<{ name: string; value: number; unit: string | null }>;
   return { doc, bms };
 }
@@ -34,7 +34,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
         </div>
         <a href={`/api/files/${doc.id}`} download className="text-xs px-3 py-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/70">⬇ Télécharger</a>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         <div className="rounded-xl border border-border bg-card overflow-hidden h-[78vh]">
           <iframe src={`/api/files/${doc.id}#view=FitH`} className="w-full h-full" title={fileName} />
         </div>
@@ -52,6 +52,7 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
               </div>
             </div>
           )}
+          <NotesWidget targetType="file" targetId={String(doc.id)} label="Notes sur ce document" />
         </aside>
       </div>
     </div>
