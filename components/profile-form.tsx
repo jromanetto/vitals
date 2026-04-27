@@ -24,7 +24,7 @@ const SECTIONS: Section[] = [
     { id: "birthDate", label: "Date de naissance", type: "date", col: 1 },
     { id: "birthPlace", label: "Lieu de naissance", type: "text", col: 1 },
     { id: "sex", label: "Sexe biologique", type: "select", options: ["", "Homme", "Femme", "Intersexe"], col: 1 },
-    { id: "gender", label: "Genre", type: "text", col: 1 },
+    { id: "gender", label: "Genre", type: "select", options: ["", "Homme cis", "Femme cis", "Homme trans", "Femme trans", "Non-binaire", "Genderfluid", "Agender", "Autre", "Préfère ne pas répondre"], col: 1 },
   ]},
   { id: "anthro", title: "Anthropométrie", fields: [
     { id: "height", label: "Taille", type: "number", suffix: "cm", col: 1 },
@@ -34,7 +34,7 @@ const SECTIONS: Section[] = [
     { id: "waist", label: "Tour de taille", type: "number", suffix: "cm", col: 1 },
     { id: "neck", label: "Tour de cou", type: "number", suffix: "cm", col: 1 },
     { id: "bloodType", label: "Groupe sanguin", type: "select", options: ["", "O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-"], col: 1 },
-    { id: "ethnicity", label: "Origine ethnique", type: "text", col: 1 },
+    { id: "ethnicity", label: "Origine ethnique", type: "select", options: ["", "Européenne (Caucasienne)", "Africaine subsaharienne", "Nord-Africaine / Maghrébine", "Moyen-Orient", "Asiatique de l'Est", "Asiatique du Sud", "Asiatique du Sud-Est", "Hispanique / Latino-Américaine", "Amérindienne", "Océanienne / Pacifique", "Ashkénaze", "Séfarade", "Mixte / multi-ethnique", "Autre", "Préfère ne pas répondre"], col: 1 },
   ]},
   { id: "lifestyle", title: "Mode de vie", fields: [
     { id: "activityLevel", label: "Niveau d'activité", type: "select", options: ["", "Sédentaire", "Léger (1-2x/sem)", "Modéré (3-4x/sem)", "Intense (5-6x/sem)", "Athlète"], col: 1 },
