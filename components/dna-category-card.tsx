@@ -20,7 +20,8 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
         <div className="mt-4 flex items-center justify-between text-xs">
           <span className="text-muted-foreground">{stats?.c ?? 0} traits</span>
           {stats && stats.risk > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            <span title={`${stats.risk} traits à risque sur ${stats.c} dans cette catégorie`}
+                  className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 cursor-help">
               {stats.risk} à surveiller
             </span>
           )}

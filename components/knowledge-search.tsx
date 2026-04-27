@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Search } from "lucide-react";
+import { SkeletonCard } from "./skeleton";
 
 type Hit = { docId: number; chunkId: number; path: string; category: string; snippet: string; score: number; date: number | null };
 
@@ -24,7 +25,7 @@ function highlight(text: string, terms: string[]): React.ReactNode {
 
 export function KnowledgeSearch() {
   const [q, setQ] = useState("");
-  const [hits, setHits] = useState<Hit[]>([]);
+  const [hits, setHits] = useState<Hit[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState("all");
   const [useAI, setUseAI] = useState(false);
@@ -64,30 +65,32 @@ export function KnowledgeSearch() {
         ))}
         <div className="ml-auto flex items-center gap-2 text-xs">
           <button onClick={() => setUseAI(!useAI)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md border transition ${useAI ? "bg-emerald/15 border-emerald/40 text-emerald" : "bg-secondary/40 border-border text-muted-foreground"}`}>
-            <Sparkles className="h-3 w-3" />
-            AI re-rank
+                  title="Re-classement par Claude pour améliorer la pertinence"
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md border transition cursor-help ${useAI ? "bg-emerald/15 border-emerald/40 text-emerald" : "bg-secondary/40 border-border text-muted-foreground"}`}>
+            <Sparkles className="h-3 w-3" /> AI re-rank
           </button>
         </div>
       </div>
 
       <AnimatePresence>
-        {loading && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-muted-foreground">Recherche…</motion.div>}
-        {!loading && hits.length === 0 && q && <div className="text-sm text-muted-foreground">Aucun résultat.</div>}
-        <div className="space-y-3">
-          {hits.map((h, i) => (
-            <motion.article key={h.chunkId}
-                            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: i * 0.02 }}
-                            className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{h.category} · {h.path.split("/").slice(-1)[0]}</span>
-                <span className="font-mono">{h.score.toFixed(2)}</span>
-              </div>
-              <p className="text-sm mt-2 leading-relaxed">{highlight(h.snippet, terms)}</p>
-              <a href={`/files/${h.docId}`} className="text-xs text-emerald hover:underline mt-2 inline-block">Ouvrir le document →</a>
-            </motion.article>
-          ))}
-        </div>
+        {loading && <div className="space-y-3">{Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)}</div>}
+        {!loading && hits !== null && hits.length === 0 && q && <div className="text-sm text-muted-foreground">Aucun résultat.</div>}
+        {!loading && hits !== null && (
+          <div className="space-y-3">
+            {hits.map((h, i) => (
+              <motion.article key={h.chunkId}
+                              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: i * 0.02 }}
+                              className="rounded-xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{h.category} · {h.path.split("/").slice(-1)[0]}</span>
+                  <span className="font-mono">{h.score.toFixed(2)}</span>
+                </div>
+                <p className="text-sm mt-2 leading-relaxed">{highlight(h.snippet, terms)}</p>
+                <a href={`/files/${h.docId}`} className="text-xs text-emerald hover:underline mt-2 inline-block">Ouvrir le document →</a>
+              </motion.article>
+            ))}
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );

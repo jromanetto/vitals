@@ -6,6 +6,7 @@ import { HomeHero } from "@/components/home-hero";
 import { LongevityGauge } from "@/components/longevity-gauge";
 import { computeLongevityScore } from "@/lib/scoring/longevity";
 import { ScoreBreakdownCard } from "@/components/score-breakdown";
+import { HomeSparklines } from "@/components/home-sparklines";
 
 export const dynamic = "force-dynamic";
 
@@ -38,8 +39,6 @@ export default async function Home() {
   return (
     <div className="space-y-8">
       <HomeHero />
-
-      {/* Longevity score card + stat row */}
       <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6">
         <div className="rounded-2xl border border-border bg-card p-6 flex flex-col items-center justify-center">
           <LongevityGauge score={score.total} />
@@ -53,7 +52,8 @@ export default async function Home() {
         <ScoreBreakdownCard breakdown={score} />
       </div>
 
-      {/* Stats row */}
+      <HomeSparklines />
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Biomarqueurs" value={stats.biomarkersUnique.toLocaleString()} hint={`${stats.biomarkersTotal} mesures totales`} delay={0.05} accent />
         <StatCard label="Documents" value={stats.documents.toLocaleString()} hint="rapports indexés" delay={0.1} />

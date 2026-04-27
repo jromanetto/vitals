@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse } from "lucide-react";
+import { LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare, User, Pill, HeartPulse, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
@@ -15,6 +15,7 @@ const items = [
   { href: "/chat", label: "AI Chat", icon: MessageSquare },
   { href: "/supplements", label: "Suppléments", icon: Pill },
   { href: "/symptoms", label: "Symptômes", icon: HeartPulse },
+  { href: "/habits", label: "Habitudes", icon: ListChecks },
   { href: "/profile", label: "Profile", icon: User },
 ];
 

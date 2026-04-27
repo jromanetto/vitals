@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { SkeletonRow } from "./skeleton";
 
 type Row = {
   slug: string; name: string; category: string | null;
@@ -10,26 +11,30 @@ type Row = {
   date: number; status: "low" | "ok" | "high" | "unknown";
 };
 
+const STATUS_TIPS = {
+  low: "Sous le range de référence du laboratoire",
+  ok: "Dans le range de référence du laboratoire",
+  high: "Au-dessus du range de référence du laboratoire",
+  unknown: "Pas de range de référence dans le rapport source",
+};
+
 export function BiomarkerTable() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Row[] | null>(null);
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
-    fetch("/api/biomarkers/latest").then((r) => r.json()).then((d) => {
-      setRows(d.rows ?? []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    fetch("/api/biomarkers/latest").then((r) => r.json()).then((d) => setRows(d.rows ?? [])).catch(() => setRows([]));
   }, []);
 
-  const filtered = rows.filter((r) => r.name.toLowerCase().includes(filter.toLowerCase()) || (r.category ?? "").toLowerCase().includes(filter.toLowerCase()));
+  const loading = rows === null;
+  const filtered = (rows ?? []).filter(
+    (r) => r.name.toLowerCase().includes(filter.toLowerCase()) || (r.category ?? "").toLowerCase().includes(filter.toLowerCase()),
+  );
 
   return (
     <div className="space-y-3">
       <input
-        placeholder="Filtrer par nom ou catégorie…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Filtrer par nom ou catégorie…" value={filter} onChange={(e) => setFilter(e.target.value)}
         className="w-full md:w-80 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary transition"
       />
       <div className="rounded-xl border border-border overflow-hidden bg-card">
@@ -45,17 +50,15 @@ export function BiomarkerTable() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">Chargement…</td></tr>}
+            {loading && Array.from({ length: 8 }, (_, i) => <tr key={i}><td colSpan={6} className="p-0"><SkeletonRow /></td></tr>)}
             {!loading && filtered.length === 0 && (
               <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">
-                Aucun biomarqueur indexé. Lance l'ingestion depuis Profile pour parser tes PDFs.
+                Aucun biomarqueur indexé. Lance l'ingestion via Profile pour parser tes PDFs.
               </td></tr>
             )}
-            {filtered.map((r, i) => (
+            {!loading && filtered.map((r, i) => (
               <motion.tr
-                key={r.slug}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
+                key={r.slug} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: Math.min(i * 0.01, 0.4) }}
                 className="border-t border-border hover:bg-secondary/30 transition"
               >
@@ -67,9 +70,7 @@ export function BiomarkerTable() {
                 <td className="px-4 py-2.5 text-muted-foreground text-xs">
                   {r.refLow != null && r.refHigh != null ? `${r.refLow}–${r.refHigh}` : "—"}
                 </td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge s={r.status} />
-                </td>
+                <td className="px-4 py-2.5"><StatusBadge s={r.status} /></td>
                 <td className="px-4 py-2.5 text-right text-muted-foreground text-xs">
                   {new Date(r.date).toLocaleDateString("fr-FR")}
                 </td>
@@ -90,5 +91,9 @@ function StatusBadge({ s }: { s: Row["status"] }) {
     unknown: { label: "—", cls: "bg-secondary text-muted-foreground border-border" },
   } as const;
   const m = map[s];
-  return <span className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${m.cls}`}>{m.label}</span>;
+  return (
+    <span title={STATUS_TIPS[s]} className={`inline-flex px-2 py-0.5 rounded-full text-xs border cursor-help ${m.cls}`}>
+      {m.label}
+    </span>
+  );
 }
