@@ -1,4 +1,5 @@
 "use client";
+import { EnvironmentSection } from "@/components/environment-section";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Save, Sparkles } from "lucide-react";
@@ -94,15 +95,7 @@ const SECTIONS: Section[] = [
     { id: "stiTests", label: "Date du dernier test IST complet", type: "date", col: 1 },
     { id: "fertility", label: "Projet enfant / fertilité", type: "textarea", rows: 2 },
   ]},
-  { id: "environment", title: "Environnement & exposition", fields: [
-    { id: "city", label: "Ville actuelle", type: "text", col: 1 },
-    { id: "climate", label: "Climat", type: "select", options: ["", "Tempéré", "Tropical", "Méditerranéen", "Continental", "Aride", "Polaire"], col: 1 },
-    { id: "occupation", label: "Métier", type: "text", col: 1 },
-    { id: "workEnvironment", label: "Type d'environnement de travail", type: "select", options: ["", "Bureau", "Télétravail", "Industriel", "Médical", "Extérieur", "Voyage fréquent"], col: 1 },
-    { id: "toxicExposure", label: "Expositions toxiques connues", type: "textarea", rows: 2 },
-    { id: "sunExposure", label: "Exposition soleil moyenne", type: "select", options: ["", "Faible", "Modérée", "Élevée"], col: 1 },
-    { id: "airQuality", label: "Qualité de l'air ressentie", type: "select", options: ["", "Excellente", "Bonne", "Moyenne", "Mauvaise"], col: 1 },
-  ]},
+  { id: "environment", title: "Environnement & exposition", fields: [] as Field[] },
   { id: "goals", title: "Objectifs & priorités santé", fields: [
     { id: "primaryGoals", label: "Objectifs principaux", type: "multi", options: ["Longévité", "Performance physique", "Perte de masse grasse", "Prise de muscle", "Meilleur sommeil", "Réduction stress", "Optimisation cognitive", "Énergie", "Hormones", "Immunité", "Santé cardiaque", "Microbiote"] },
     { id: "currentChallenges", label: "Défis actuels", type: "textarea", rows: 3 },
@@ -123,6 +116,16 @@ const SECTIONS: Section[] = [
 ];
 
 function completion(section: Section, data: Record<string, unknown>): number {
+  if (section.id === "environment") {
+    let filled = 0; const max = 5;
+    const cur = data.currentLocation as { countryCode?: string; city?: string } | undefined;
+    if (cur?.countryCode) filled++;
+    if (cur?.city) filled++;
+    if (data.occupation) filled++;
+    if (data.workEnvironment) filled++;
+    if (data.toxicExposure) filled++;
+    return Math.round((filled / max) * 100);
+  }
   let filled = 0;
   for (const f of section.fields) {
     const v = data[f.id];
@@ -180,7 +183,21 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
       </nav>
 
       <div className="space-y-6">
-        {SECTIONS.map((section) => (
+        {SECTIONS.map((section) => {
+          if (section.id === "environment") {
+            return (
+              <EnvironmentSection
+                key={section.id}
+                current={((data as Record<string, unknown>).currentLocation as { countryCode: string; city: string }) || { countryCode: "", city: "" }}
+                history={((data as Record<string, unknown>).residenceHistory as { countryCode: string; city: string }[]) || []}
+                occupation={((data as Record<string, unknown>).occupation as string) || ""}
+                workEnvironment={((data as Record<string, unknown>).workEnvironment as string) || ""}
+                toxicExposure={((data as Record<string, unknown>).toxicExposure as string) || ""}
+                onChange={(patch) => setData((d) => ({ ...d, ...patch }))}
+              />
+            );
+          }
+          return (
           <motion.section
             key={section.id} id={section.id}
             initial={{ opacity: 0, y: 6 }} whileInView={{ opacity: 1, y: 0 }}
@@ -198,7 +215,8 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
               ))}
             </div>
           </motion.section>
-        ))}
+          );
+        })}
 
         <div className="sticky bottom-4 z-10 flex justify-end">
           <div className="bg-card border border-border rounded-md px-3 py-2 shadow-lg flex items-center gap-2 text-xs">
