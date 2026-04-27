@@ -55,6 +55,19 @@
     font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
   }
   ::selection { @apply bg-primary/30 text-foreground; }
+  /* Better focus rings everywhere */
+  button:focus-visible, a:focus-visible, [role="button"]:focus-visible, [role="link"]:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 2px);
+  }
+  input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 1px;
+  }
+  /* sr-only utility */
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  .focus\:not-sr-only:focus { position: static; width: auto; height: auto; padding: revert; margin: 0; overflow: visible; clip: auto; white-space: normal; }
 }
 
 .glass {
@@ -70,3 +83,9 @@
 .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+
+@media print {
+  aside, header { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  body { background: white !important; color: black !important; }
+}
