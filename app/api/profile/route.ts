@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { logAudit } from "@/lib/audit";
 import { sql } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
   const md = renderMarkdown(data);
   await fs.writeFile(mdPath, md, "utf8");
 
+  logAudit("profile_update", null, req);
   return NextResponse.json({ ok: true });
 }
 

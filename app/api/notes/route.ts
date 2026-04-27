@@ -2,8 +2,31 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { encryptField, decryptField, isEncrypted } from "@/lib/crypto-fields";
 
 export const runtime = "nodejs";
+
+type NoteRow = {
+  id: number;
+  targetType: string;
+  targetId: string;
+  body: string;
+  tags: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+function maskNote(row: NoteRow, unlock: boolean): NoteRow & { encrypted: boolean } {
+  if (!isEncrypted(row.body)) return { ...row, encrypted: false };
+  if (unlock) {
+    try {
+      return { ...row, body: decryptField(row.body), encrypted: true };
+    } catch {
+      return { ...row, body: "[verrouillé]", encrypted: true };
+    }
+  }
+  return { ...row, body: "[verrouillé]", encrypted: true };
+}
 
 export async function GET(req: Request) {
   const s = await getSession();
@@ -13,15 +36,17 @@ export async function GET(req: Request) {
   const targetType = url.searchParams.get("targetType");
   const targetId = url.searchParams.get("targetId");
   const tag = url.searchParams.get("tag");
+  const unlock = url.searchParams.get("unlock") === "1";
   const sqlite = db().$client;
-  let rows: unknown[];
+  let rows: NoteRow[];
   if (targetType && targetId) {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE target_type = ? AND target_id = ? ORDER BY created_at DESC`).all(targetType, targetId);
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE target_type = ? AND target_id = ? ORDER BY created_at DESC`).all(targetType, targetId) as NoteRow[];
   } else if (tag) {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE tags LIKE ? ORDER BY created_at DESC`).all(`%${tag}%`);
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE tags LIKE ? ORDER BY created_at DESC`).all(`%${tag}%`) as NoteRow[];
   } else {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note ORDER BY created_at DESC LIMIT 200`).all();
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note ORDER BY created_at DESC LIMIT 200`).all() as NoteRow[];
   }
+  const masked = rows.map((r) => maskNote(r, unlock));
   // Aggregate distinct tags
   const tagsRaw = sqlite.prepare(`SELECT tags FROM note WHERE tags IS NOT NULL AND tags != ''`).all() as Array<{ tags: string }>;
   const tagSet = new Set<string>();
@@ -29,24 +54,29 @@ export async function GET(req: Request) {
     const tt = t.trim();
     if (tt) tagSet.add(tt);
   }
-  return NextResponse.json({ rows, tags: [...tagSet].sort() });
+  return NextResponse.json({ rows: masked, tags: [...tagSet].sort() });
 }
 
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
-  const body = await req.json() as { id?: number; targetType: string; targetId: string; body: string; tags?: string };
+  const body = await req.json() as { id?: number; targetType: string; targetId: string; body: string; tags?: string; private?: boolean };
   if (!body.targetType || !body.targetId || !body.body) return NextResponse.json({ error: "missing fields" }, { status: 400 });
   const sqlite = db().$client;
   const tags = (body.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).join(",");
   const now = Date.now();
+  // If `private` flag is set, encrypt body. If body already encrypted, keep as-is.
+  let storedBody = body.body;
+  if (body.private && !isEncrypted(storedBody)) {
+    storedBody = encryptField(storedBody);
+  }
   if (body.id) {
-    sqlite.prepare(`UPDATE note SET body = ?, tags = ?, updated_at = ? WHERE id = ?`).run(body.body, tags, now, body.id);
+    sqlite.prepare(`UPDATE note SET body = ?, tags = ?, updated_at = ? WHERE id = ?`).run(storedBody, tags, now, body.id);
     return NextResponse.json({ ok: true, id: body.id });
   }
   const r = sqlite.prepare(`INSERT INTO note (target_type, target_id, body, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(body.targetType, body.targetId, body.body, tags, now, now);
+    .run(body.targetType, body.targetId, storedBody, tags, now, now);
   return NextResponse.json({ ok: true, id: Number(r.lastInsertRowid) });
 }
 
@@ -60,3 +90,4 @@ export async function DELETE(req: Request) {
   db().$client.prepare(`DELETE FROM note WHERE id = ?`).run(id);
   return NextResponse.json({ ok: true });
 }
+

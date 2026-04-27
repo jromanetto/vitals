@@ -7,6 +7,7 @@
  *   - 15% trends (5-year direction of LDL, HOMA, CRP, ferritine, TSH, vit D).
  */
 import { db } from "@/lib/db";
+import { decryptProfile } from "@/lib/crypto-fields";
 
 export type ScoreBreakdown = {
   total: number;
@@ -72,7 +73,7 @@ export function computeLongevityScore(): ScoreBreakdown {
 
   // ---------- 3. Lifestyle (20%) ----------
   const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
-  const profile: Record<string, unknown> = profileRow ? JSON.parse(profileRow.data) : {};
+  const profile: Record<string, unknown> = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
 
   const lifestyleChecks: { label: string; ok: boolean; weight: number }[] = [
     { label: "Activité ≥ modérée", weight: 4, ok: ["Modéré (3-4x/sem)", "Intense (5-6x/sem)", "Athlète"].includes(String(profile.activityLevel ?? "")) },

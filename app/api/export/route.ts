@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,11 +11,11 @@ export const maxDuration = 60;
  * Returns a JSON snapshot of all user data.
  * Includes everything except auth.json (security) and PDFs (size).
  */
-export async function GET() {
+export async function GET(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
-  const sqlite = db().$client;
+  const sqlite = (db() as any).$client;
 
   const profile = sqlite.prepare(`SELECT data, updated_at FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string; updated_at: number } | undefined;
   const biomarkers = sqlite.prepare(`SELECT name, slug, category, value, unit, ref_low, ref_high, date, source FROM biomarker ORDER BY date DESC`).all();
@@ -46,7 +45,8 @@ export async function GET() {
     },
   };
 
-  // Return as downloadable JSON
+  logAudit("export_data", `${biomarkers.length}bm/${dnaInsights.length}dna/${reports.length}rpt`, req);
+
   const stamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-");
   return new NextResponse(JSON.stringify(exportObj, null, 2), {
     headers: {

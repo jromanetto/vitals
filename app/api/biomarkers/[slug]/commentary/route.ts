@@ -5,6 +5,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
+import { decryptProfile } from "@/lib/crypto-fields";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!apiKey) return NextResponse.json({ body: "Clé Anthropic manquante." });
 
   const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
-  const profile = profileRow ? JSON.parse(profileRow.data) : {};
+  const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
 
   const client = new Anthropic({ apiKey });
   const sys = "Tu es médecin de santé fonctionnelle. Tu commentes UN biomarqueur en français, en markdown court (3-5 paragraphes max). Tu cites les chiffres réels du patient et la cible optimale. Tu termines par 2-3 actions concrètes personnalisées.";
