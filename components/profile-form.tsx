@@ -1,5 +1,8 @@
 "use client";
 import { EnvironmentSection } from "@/components/environment-section";
+import { VaccinationsList, type VaccinationEntry } from "@/components/vaccinations-list";
+import { SportsStructured, type SportEntry } from "@/components/sports-structured";
+import { SpecialistsList, type SpecialistEntry } from "@/components/specialists-list";
 import {
   MedicationList, AllergyList,
   migrateMedications, migrateAllergies,
@@ -21,7 +24,10 @@ type Field =
   | { id: string; label: string; type: "multi"; options: string[] }
   | { id: string; label: string; type: "checkbox" }
   | { id: string; label: string; type: "medications" }
-  | { id: string; label: string; type: "allergies" };
+  | { id: string; label: string; type: "allergies" }
+  | { id: string; label: string; type: "vaccinationsStructured" }
+  | { id: string; label: string; type: "sportsStructured" }
+  | { id: string; label: string; type: "specialistsStructured" };
 
 const SECTIONS: Section[] = [
   { id: "identity", title: "Identité", description: "Identification de base.", fields: [
@@ -46,7 +52,7 @@ const SECTIONS: Section[] = [
   ]},
   { id: "lifestyle", title: "Mode de vie", fields: [
     { id: "activityLevel", label: "Niveau d'activité", type: "select", options: ["", "Sédentaire", "Léger (1-2x/sem)", "Modéré (3-4x/sem)", "Intense (5-6x/sem)", "Athlète"], col: 1 },
-    { id: "sportsPracticed", label: "Sports pratiqués", type: "multi", options: ["Course", "Cyclisme", "Natation", "Musculation", "Yoga", "HIIT", "Escalade", "Tennis", "Football", "Boxe", "Crossfit", "Marche", "Randonnée"] },
+    { id: "sportsList", label: "Sports pratiqués", type: "sportsStructured" },
     { id: "trainingHoursWeek", label: "Heures de sport / semaine", type: "number", suffix: "h", col: 1 },
     { id: "sleepHours", label: "Sommeil moyen / nuit", type: "number", suffix: "h", col: 1 },
     { id: "sleepQuality", label: "Qualité de sommeil", type: "select", options: ["", "Excellente", "Bonne", "Moyenne", "Mauvaise"], col: 1 },
@@ -77,7 +83,7 @@ const SECTIONS: Section[] = [
     { id: "allergies", label: "Allergies (médicaments, alimentaires, environnement, contact)", type: "allergies" },
     { id: "medications", label: "Médicaments actuels", type: "medications" },
     { id: "supplements", label: "Compléments alimentaires", type: "textarea", rows: 3 },
-    { id: "vaccinations", label: "Vaccinations à jour", type: "textarea", rows: 2 },
+    { id: "vaccinationsList", label: "Vaccinations à jour", type: "vaccinationsStructured" },
     { id: "lastCheckup", label: "Dernier checkup complet", type: "date", col: 1 },
     { id: "lastDental", label: "Dernier dentiste", type: "date", col: 1 },
     { id: "lastEye", label: "Dernier ophtalmo", type: "date", col: 1 },
@@ -113,7 +119,7 @@ const SECTIONS: Section[] = [
   ]},
   { id: "providers", title: "Praticiens & suivi", fields: [
     { id: "primaryDoctor", label: "Médecin traitant", type: "text" },
-    { id: "specialists", label: "Spécialistes consultés", type: "textarea", rows: 3 },
+    { id: "specialistsList", label: "Spécialistes consultés", type: "specialistsStructured" },
     { id: "preferredLab", label: "Labo de prédilection", type: "text", col: 1 },
     { id: "insurance", label: "Mutuelle / assurance", type: "text", col: 1 },
   ]},
@@ -257,6 +263,30 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
 function FieldRow({ field, value, onChange, onMulti }: {
   field: Field; value: unknown; onChange: (v: unknown) => void; onMulti: (opt: string) => void;
 }) {
+  if (field.type === "vaccinationsStructured") {
+    return (
+      <VaccinationsList
+        value={(Array.isArray(value) ? value : []) as VaccinationEntry[]}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
+  if (field.type === "sportsStructured") {
+    return (
+      <SportsStructured
+        value={(Array.isArray(value) ? value : []) as SportEntry[]}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
+  if (field.type === "specialistsStructured") {
+    return (
+      <SpecialistsList
+        value={(Array.isArray(value) ? value : []) as SpecialistEntry[]}
+        onChange={(v) => onChange(v)}
+      />
+    );
+  }
   const colSpan = (field as { col?: 1 | 2 }).col === 2 ? "md:col-span-2" : (field as { col?: 1 | 2 }).col === 1 ? "" : "md:col-span-2";
   if (field.type === "medications") {
     const rows: MedRow[] = migrateMedications(value);
