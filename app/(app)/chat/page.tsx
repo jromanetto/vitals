@@ -3,37 +3,10 @@ import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Send, Sparkles, Plus, Trash2, MessageSquare, Wrench } from "lucide-react";
+import { ChatMarkdown } from "@/components/chat-markdown";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: { path: string; snippet?: string }[]; streaming?: boolean; toolCalls?: { name: string; input: unknown }[] };
 type Session = { id: number; title: string; created_at: number; updated_at: number };
-
-function renderCitations(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  const regex = /\[(bm|dna|doc):([^\]\s]+)\]/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let key = 0;
-  while ((m = regex.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const [full, kind, ref] = m;
-    let href = "#";
-    if (kind === "bm") href = `/biomarkers#${ref}`;
-    else if (kind === "dna") href = `/dna?rsid=${ref}`;
-    else if (kind === "doc") href = `/files?doc=${ref}`;
-    parts.push(
-      <Link
-        key={`cite-${key++}`}
-        href={href}
-        className="inline-flex items-center px-1 py-0 mx-0.5 rounded text-[0.7rem] font-mono bg-emerald/15 text-emerald hover:bg-emerald/25 transition border border-emerald/30 align-baseline"
-      >
-        {full}
-      </Link>
-    );
-    last = m.index + full.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
 
 export default function ChatPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -188,10 +161,14 @@ export default function ChatPage() {
                       ))}
                     </div>
                   )}
-                  <div className="whitespace-pre-wrap">
-                    {m.role === "assistant" ? renderCitations(m.content) : m.content}
-                    {m.streaming && <span className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom bg-emerald animate-pulse" />}
-                  </div>
+                  {m.role === "assistant" ? (
+                    <div className="text-sm">
+                      <ChatMarkdown text={m.content} />
+                      {m.streaming && <span className="inline-block w-1.5 h-4 ml-0.5 align-text-bottom bg-emerald animate-pulse" />}
+                    </div>
+                  ) : (
+                    <div className="whitespace-pre-wrap">{m.content}</div>
+                  )}
                   {m.sources && m.sources.length > 0 && (
                     <div className="mt-3 pt-3 border-t border-border/60 space-y-1">
                       {m.sources.map((s, j) => (
