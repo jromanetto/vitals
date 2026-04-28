@@ -29,6 +29,10 @@ export function middleware(req: NextRequest) {
   }
 
   const res = NextResponse.next();
+  // Prevent Cloudflare/browser from caching app HTML — chunk hashes change at every build.
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  res.headers.set("CDN-Cache-Control", "no-store");
+  res.headers.set("Cloudflare-CDN-Cache-Control", "no-store");
   res.cookies.set("vitals_active", "1", {
     httpOnly: true,
     secure: true,
