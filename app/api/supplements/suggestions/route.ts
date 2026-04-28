@@ -16,10 +16,13 @@ type Suggestion = {
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
   coveredBy?: { id: number; name: string; nutrient: string } | null;
+  kind: "supplement" | "avoid";
+  avoidNutrients?: string[];
+  conflictsWith?: { id: number; name: string; nutrient: string }[];
 };
 
 // === Biomarker-driven suggestions ===
-const BIOMARKER_RULES: Record<string, Omit<Suggestion, "source" | "biomarker" | "biomarkerSlug" | "value" | "unit"> & { trigger: (latest: { value: number; refLow: number | null; refHigh: number | null; opt?: { lo: number | null; hi: number | null } }) => boolean }> = {
+const BIOMARKER_RULES: Record<string, Omit<Suggestion, "source" | "biomarker" | "biomarkerSlug" | "value" | "unit" | "kind" | "coveredBy" | "avoidNutrients" | "conflictsWith"> & { trigger: (latest: { value: number; refLow: number | null; refHigh: number | null; opt?: { lo: number | null; hi: number | null } }) => boolean }> = {
   "vitamine-d-25-oh": {
     supplement: "Vitamine D3 + K2",
     reason: "Vitamine D 25-OH sub-optimale (cible 40-80 ng/mL)",
@@ -226,6 +229,17 @@ const DNA_RULES: DnaRule[] = [
     dose: "Abstinence alcool", timing: "—", priority: "high" },
 ];
 
+const AVOID_RSID_NUTRIENTS: Record<string, string[]> = {
+  // HFE — iron overload variants → ne PAS supplémenter en fer
+  "rs1799945": ["iron"],
+  "rs1800562": ["iron"],
+};
+
+function isAvoidSuggestion(supplementText: string, dose: string, timing: string): boolean {
+  if (dose === "—" && timing === "—") return true;
+  return /\b(éviter|eviter|surveillance|vigilance|abstinence|ne pas supplémenter|ne PAS supplémenter)\b/i.test(supplementText);
+}
+
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -254,6 +268,7 @@ export async function GET() {
         biomarker: r.name, biomarkerSlug: r.slug, value: r.value, unit: r.unit ?? undefined,
         dose: rec.dose, timing: rec.timing, priority: rec.priority,
         coveredBy: findCoverage(rec.supplement, activeIndex),
+        kind: "supplement",
       });
     }
   }
@@ -268,12 +283,23 @@ export async function GET() {
     const sortedG = found.user_genotype.split("").sort().join("");
     const isRisk = !rule.riskGenotypes || rule.riskGenotypes.some((g) => g.split("").sort().join("") === sortedG);
     if (!isRisk) continue;
+    const kind: "supplement" | "avoid" = isAvoidSuggestion(rule.supplement, rule.dose, rule.timing) ? "avoid" : "supplement";
+    const avoidNutrients = AVOID_RSID_NUTRIENTS[rule.rsid] ?? [];
+    const conflictsWith = kind === "avoid" && avoidNutrients.length > 0
+      ? activeIndex.filter((sup) => avoidNutrients.some((n) => sup.nutrients.has(n))).map((sup) => ({
+          id: sup.id, name: sup.name,
+          nutrient: avoidNutrients.find((n) => sup.nutrients.has(n)) ?? avoidNutrients[0],
+        }))
+      : [];
     out.push({
       source: "dna", supplement: rule.supplement,
       reason: rule.reason(found.user_genotype, found.trait),
       rsid: rule.rsid, trait: found.trait, genotype: found.user_genotype,
       dose: rule.dose, timing: rule.timing, priority: rule.priority,
-      coveredBy: rule.dose !== "—" ? findCoverage(rule.supplement, activeIndex) : null,
+      coveredBy: kind === "supplement" ? findCoverage(rule.supplement, activeIndex) : null,
+      kind,
+      avoidNutrients: kind === "avoid" ? avoidNutrients : undefined,
+      conflictsWith,
     });
   }
 

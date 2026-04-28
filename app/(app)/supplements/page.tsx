@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, Check, X, Activity, Dna } from "lucide-react";
+import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
 import { AdherenceCalendar } from "@/components/adherence-calendar";
 import { InteractionsCard } from "@/components/interactions-card";
 import { SupplementCoverage } from "@/components/supplement-coverage";
@@ -24,6 +24,9 @@ type Suggestion = {
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
   coveredBy?: { id: number; name: string; nutrient: string } | null;
+  kind?: "supplement" | "avoid";
+  avoidNutrients?: string[];
+  conflictsWith?: { id: number; name: string; nutrient: string }[];
 };
 
 const PRIORITY_STYLES = {
@@ -83,12 +86,22 @@ export default function SupplementsPage() {
 
   const active = rows.filter((r) => r.endedAt === null);
   const ended = rows.filter((r) => r.endedAt !== null);
-  const baseFiltered = filter === "all" ? suggestions : suggestions.filter((s) => s.source === filter);
+  const supplementSuggestions = suggestions.filter((s) => (s.kind ?? "supplement") === "supplement");
+  const avoidSuggestions = suggestions.filter((s) => s.kind === "avoid");
+  const baseFiltered = filter === "all" ? supplementSuggestions : supplementSuggestions.filter((s) => s.source === filter);
   const filteredSuggestions = showCovered ? baseFiltered : baseFiltered.filter((s) => !s.coveredBy);
   const coveredHiddenCount = baseFiltered.length - filteredSuggestions.length;
+  // Aggregate conflicts: which active supplement IDs conflict with avoid SNPs
+  const conflictMap: Record<number, { name: string; reasons: string[] }> = {};
+  for (const av of avoidSuggestions) {
+    for (const c of av.conflictsWith ?? []) {
+      if (!conflictMap[c.id]) conflictMap[c.id] = { name: c.name, reasons: [] };
+      conflictMap[c.id].reasons.push(`${av.trait ?? av.supplement} (${av.rsid ?? ""}): contient ${c.nutrient}`);
+    }
+  }
 
-  const bmCount = suggestions.filter((s) => s.source === "biomarker").length;
-  const dnaCount = suggestions.filter((s) => s.source === "dna").length;
+  const bmCount = supplementSuggestions.filter((s) => s.source === "biomarker").length;
+  const dnaCount = supplementSuggestions.filter((s) => s.source === "dna").length;
 
   return (
     <div className="space-y-7">
@@ -109,13 +122,13 @@ export default function SupplementsPage() {
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-emerald" />
-              <h2 className="text-sm font-medium">Suggestions personnalisées ({suggestions.length})</h2>
+              <h2 className="text-sm font-medium">Suggestions personnalisées ({supplementSuggestions.length})</h2>
             </div>
             <div className="flex items-center gap-1.5 text-xs flex-wrap">
               {(["all", "biomarker", "dna"] as const).map((f) => (
                 <button key={f} onClick={() => setFilter(f)}
                         className={`px-2.5 py-1 rounded-full border transition ${filter === f ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}>
-                  {f === "all" ? `Tous (${suggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : `ADN (${dnaCount})`}
+                  {f === "all" ? `Tous (${supplementSuggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : `ADN (${dnaCount})`}
                 </button>
               ))}
               {coveredHiddenCount > 0 && !showCovered && (
@@ -166,6 +179,45 @@ export default function SupplementsPage() {
         </section>
       )}
 
+      {avoidSuggestions.length > 0 && (
+        <section className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <ShieldAlert className="h-4 w-4 text-amber-400" />
+            <h2 className="text-sm font-medium">À éviter ({avoidSuggestions.length})</h2>
+            <span className="text-[10px] text-muted-foreground ml-auto">Variants ADN imposant des restrictions</span>
+          </div>
+          <div className="space-y-2">
+            {avoidSuggestions.map((s, i) => (
+              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                          className="rounded-md border border-amber-500/30 bg-card/40 p-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Dna className="h-3 w-3 text-amber-400 shrink-0" />
+                      <span className="font-medium text-sm">{s.supplement}</span>
+                      {s.conflictsWith && s.conflictsWith.length > 0 && (
+                        <span className="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400">
+                          <AlertTriangle className="h-2.5 w-2.5" /> Conflit avec {s.conflictsWith.length} supplément{s.conflictsWith.length > 1 ? "s" : ""} actif{s.conflictsWith.length > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground leading-relaxed mt-1">{s.reason}</div>
+                    <div className="text-[10px] text-muted-foreground mt-1">{s.rsid} · {s.genotype}</div>
+                    {s.conflictsWith && s.conflictsWith.length > 0 && (
+                      <div className="mt-2 text-[11px] text-red-400 space-y-0.5">
+                        {s.conflictsWith.map((c, j) => (
+                          <div key={j}>⚠ <span className="font-medium">{c.name}</span> contient {c.nutrient} — à reconsidérer</div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <SupplementCoverage refreshKey={rows.length} />
 
       <section>
@@ -192,6 +244,12 @@ export default function SupplementsPage() {
                     <img src={`https://www.google.com/s2/favicons?domain=${(() => { try { return new URL(r.url).hostname; } catch { return ""; } })()}&sz=32`} alt="" className="h-3 w-3 rounded-sm" />
                     Voir produit ↗
                   </a>}
+                  {conflictMap[r.id] && (
+                    <div className="mt-1 rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-400">
+                      <div className="font-medium flex items-center gap-1"><AlertTriangle className="h-3 w-3" /> Conflit ADN détecté</div>
+                      {conflictMap[r.id].reasons.map((reason, j) => <div key={j} className="text-[10px] mt-0.5">{reason}</div>)}
+                    </div>
+                  )}
                   {r.notes && <div className="mt-1">{r.notes}</div>}
                   {r.servingSize && <div className="mt-1 text-emerald">{r.servingSize}</div>}
                   {Array.isArray(r.ingredients) && r.ingredients.length > 0 && (
