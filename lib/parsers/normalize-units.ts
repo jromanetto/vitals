@@ -73,7 +73,14 @@ const TBL: Record<string, Conversion> = {
     sane: { min: 40, max: 500 },
     infer: (v) => v < 12 ? "mmol/L" : v < 5 ? "g/L" : "mg/dL",
   },
-  "hba1c": {
+  "insuline": {
+    canonical: "μUI/mL",
+    factors: { "μUI/mL": 1, "uUI/mL": 1, "mUI/L": 1, "mU/L": 1, "pmol/L": 1/6.945, "pmol/l": 1/6.945 },
+    sane: { min: 0.5, max: 50 },
+    // If value > 50 with no unit or generic unit, assume pmol/L (typical lab)
+    infer: (v) => v > 50 ? "pmol/L" : "μUI/mL",
+  },
+    "hba1c": {
     canonical: "%",
     factors: { "%": 1 },
     sane: { min: 3.5, max: 15 },
