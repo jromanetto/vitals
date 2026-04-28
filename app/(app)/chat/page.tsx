@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { Send, Sparkles, Plus, Trash2, MessageSquare } from "lucide-react";
@@ -16,6 +17,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => { fetch("/api/chat/sessions").then((r) => r.json()).then((d) => setSessions(d.sessions ?? [])); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
@@ -104,6 +107,21 @@ export default function ChatPage() {
     }
   }
 
+  /* auto-ask */
+
+  useEffect(() => {
+    const ask = searchParams.get("ask");
+    if (!ask) return;
+    setInput(ask);
+    // strip the param so it doesn't re-fire on remount
+    const t = setTimeout(() => {
+      const btn = document.getElementById("chat-send-btn") as HTMLButtonElement | null;
+      btn?.click();
+      router.replace("/chat");
+    }, 60);
+    return () => clearTimeout(t);
+  }, [searchParams, router]);
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6 h-[calc(100vh-9rem)]">
       <aside className="rounded-xl border border-border bg-card p-3 flex flex-col min-h-0">
@@ -181,7 +199,7 @@ export default function ChatPage() {
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="mt-3 flex gap-2">
           <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Parle à ton panel médical…"
                  className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2.5 outline-none focus:border-primary transition" />
-          <button className="px-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !input.trim()}>
+          <button id="chat-send-btn" className="px-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !input.trim()}>
             <Send className="h-4 w-4" />
           </button>
         </form>

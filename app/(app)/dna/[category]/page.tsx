@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import Link from "next/link";
 import { NotesWidget } from "@/components/notes-widget";
+import { HelpPill } from "@/components/help-pill";
 
 export const dynamic = "force-dynamic";
 
@@ -29,12 +30,23 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
         {rows.map((r) => (
           <article key={r.rsid + r.trait} className="rounded-xl border border-border bg-card p-5 space-y-3">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-medium tracking-tight">{r.trait}</h3>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-medium tracking-tight">{r.trait}</h3>
+                  <HelpPill
+                    question={`J'ai le variant ${r.rsid} (${r.trait}) avec le génotype ${r.userGenotype ?? "inconnu"}. Explique-moi en termes simples ce que ça veut dire pour ma santé, et quelles actions concrètes je peux prendre (nutrition, supplémentation, sport, sommeil, monitoring biomarqueurs).`}
+                    label={`Demander au panel médical à propos de ${r.trait}`}
+                  />
+                </div>
                 <div className="text-xs text-muted-foreground font-mono mt-0.5">{r.rsid} · génotype {r.userGenotype ?? "?"}</div>
               </div>
-              {r.hasRisk === 1 && <span className="px-2 py-0.5 rounded-full text-xs border bg-amber-500/15 text-amber-400 border-amber-500/30">À surveiller</span>}
-              {r.hasRisk === 0 && <span className="px-2 py-0.5 rounded-full text-xs border bg-emerald/15 text-emerald border-emerald/30">Favorable</span>}
+              {r.isProtective === 1 ? (
+                <span className="px-2 py-0.5 rounded-full text-xs border bg-emerald/15 text-emerald border-emerald/30 shrink-0">Protecteur</span>
+              ) : r.hasRisk === 1 ? (
+                <span className="px-2 py-0.5 rounded-full text-xs border bg-amber-500/15 text-amber-400 border-amber-500/30 shrink-0">À surveiller</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-xs border bg-secondary text-muted-foreground border-border shrink-0">Standard</span>
+              )}
             </div>
             {r.effect && <p className="text-sm">{r.effect}</p>}
             {r.summary && <p className="text-sm text-muted-foreground leading-relaxed">{r.summary}</p>}

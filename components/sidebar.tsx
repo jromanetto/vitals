@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare,
-  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield,
+  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
