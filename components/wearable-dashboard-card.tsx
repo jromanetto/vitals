@@ -51,7 +51,7 @@ export function WearableDashboardCard({ refreshKey }: { refreshKey?: number }) {
         <Link href="/" className="text-xs text-emerald hover:underline flex items-center gap-1">Voir le dashboard <ArrowRight className="h-3 w-3" /></Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={`grid gap-4 ${data.sources.length === 1 ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"}`}>
         {data.sources.map((src) => {
           const headlineKinds = ["hrv", "rhr", "recovery", "sleep_total_min"].filter((k) => data.series[`${src.source}:${k}`]?.length);
           return (
@@ -71,10 +71,10 @@ export function WearableDashboardCard({ refreshKey }: { refreshKey?: number }) {
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px]">
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <Calendar className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{src.days.toLocaleString()} jours · {fmtDate(src.firstDate)} → {fmtDate(src.lastDate)}</span>
+                  <span>{src.days.toLocaleString()} jours · {fmtDate(src.firstDate)} → {fmtDate(src.lastDate)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-muted-foreground">
                   <BarChart3 className="h-3 w-3 shrink-0" />
@@ -85,7 +85,7 @@ export function WearableDashboardCard({ refreshKey }: { refreshKey?: number }) {
               {headlineKinds.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-border/40">
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Tendance 60 jours</div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className={`grid gap-4 ${data.sources.length === 1 ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 lg:grid-cols-4"}`}>
                     {headlineKinds.map((k) => {
                       const series = data.series[`${src.source}:${k}`];
                       const values = series.map((p) => p.value);
