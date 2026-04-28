@@ -18,22 +18,22 @@ export type BiomarkerMeta = {
 
 export const BIOMARKER_META: BiomarkerMeta[] = [
   // === LIPIDS ===
-  { slug: "cholesterol-total", unit: "g/L", optimalLow: 1.40, optimalHigh: 2.00, longevityLow: 1.40, longevityHigh: 1.90,
+  { slug: "cholesterol-total", unit: "mg/dL", optimalLow: 140, optimalHigh: 200, longevityLow: 140, longevityHigh: 190,
     whyMatters: "Cholestérol total brut — peu informatif seul. Privilégier ApoB et LDL.",
     related: ["LDL", "HDL", "Triglycérides", "ApoB"] },
-  { slug: "ldl", unit: "g/L", optimalLow: 0, optimalHigh: 1.00, longevityLow: 0, longevityHigh: 0.70,
+  { slug: "ldl", unit: "mg/dL", optimalLow: 0, optimalHigh: 100, longevityLow: 0, longevityHigh: 70,
     whyMatters: "Lipoprotéines pro-athérogènes. Cible longévité <0.70 g/L (Attia, ESC). Effet cumulatif sur l'athérosclérose.",
     related: ["ApoB", "Lp(a)", "HDL"] },
-  { slug: "hdl", unit: "g/L", optimalLow: 0.50, optimalHigh: 1.00, longevityLow: 0.55, longevityHigh: 0.90,
+  { slug: "hdl", unit: "mg/dL", optimalLow: 50, optimalHigh: 100, longevityLow: 55, longevityHigh: 90,
     whyMatters: "Cholestérol 'bénéfique' — anti-athérogène. Trop bas (<0.40) ou trop haut (>1.20) = signal alerte.",
     related: ["LDL", "Triglycérides", "ApoA1"] },
-  { slug: "triglycerides", unit: "g/L", optimalLow: 0.50, optimalHigh: 1.00, longevityLow: 0.50, longevityHigh: 0.80,
+  { slug: "triglycerides", unit: "mg/dL", optimalLow: 50, optimalHigh: 100, longevityLow: 50, longevityHigh: 80,
     whyMatters: "Marqueur clé d'insulinorésistance. Cible longévité <0.80. Ratio TG/HDL <2 idéal.",
     related: ["HOMA-IR", "Glycémie", "HbA1c"] },
-  { slug: "apo-b", unit: "g/L", optimalLow: 0.60, optimalHigh: 0.90, longevityLow: 0.60, longevityHigh: 0.80,
+  { slug: "apo-b", unit: "mg/dL", optimalLow: 60, optimalHigh: 90, longevityLow: 60, longevityHigh: 80,
     whyMatters: "Meilleur prédicteur de risque cardio que LDL. Compte les particules athérogènes (LDL+VLDL+IDL+Lp(a)).",
     related: ["LDL", "Lp(a)", "ApoA1"] },
-  { slug: "apo-a1", unit: "g/L", optimalLow: 1.30, optimalHigh: 1.80, longevityLow: 1.40, longevityHigh: 1.80,
+  { slug: "apo-a1", unit: "mg/dL", optimalLow: 130, optimalHigh: 180, longevityLow: 140, longevityHigh: 180,
     whyMatters: "Composante principale du HDL. Ratio ApoB/ApoA1 = puissant prédicteur cardio.",
     related: ["ApoB", "HDL"] },
   { slug: "lp-a", unit: "mg/dL", optimalLow: 0, optimalHigh: 30, longevityLow: 0, longevityHigh: 30,
@@ -44,7 +44,7 @@ export const BIOMARKER_META: BiomarkerMeta[] = [
     related: [] },
 
   // === METABOLIC ===
-  { slug: "glycemie", unit: "g/L", optimalLow: 0.70, optimalHigh: 0.95, longevityLow: 0.75, longevityHigh: 0.90,
+  { slug: "glycemie", unit: "mg/dL", optimalLow: 70, optimalHigh: 95, longevityLow: 75, longevityHigh: 90,
     whyMatters: "Glucose à jeun. >1.00 = pré-diabète risque. Cible longévité 0.75-0.90.",
     related: ["HbA1c", "Insuline", "HOMA-IR"] },
   { slug: "hba1c", unit: "%", optimalLow: 4.5, optimalHigh: 5.4, longevityLow: 4.8, longevityHigh: 5.2,

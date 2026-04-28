@@ -76,6 +76,17 @@ export function BiomarkerTable() {
     return t;
   }, [filtered]);
 
+  // Reference date: most recent date across all biomarkers
+  const latestDate = useMemo(() => {
+    if (!rows || rows.length === 0) return null;
+    return Math.max(...rows.map((r) => r.date));
+  }, [rows]);
+  const SIX_MONTHS_MS = 180 * 86400000;
+  function freshness(date: number): "current" | "stale" {
+    if (!latestDate) return "current";
+    return latestDate - date > SIX_MONTHS_MS ? "stale" : "current";
+  }
+
   useEffect(() => {
     if (orderedSystems.length > 0 && Object.keys(openSystems).length === 0) {
       const init: Record<string, boolean> = {};
@@ -158,48 +169,57 @@ export function BiomarkerTable() {
               <div className="border-t border-border divide-y divide-border/50">
                 {items.map((r) => {
                   const cfg = STATUS_CFG[r.status];
+                  const fresh = freshness(r.date);
                   return (
-                    <div key={r.slug} className="px-4 py-3 hover:bg-secondary/20 transition">
-                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 md:gap-4 items-start">
+                    <div key={r.slug} className="px-4 py-4 hover:bg-secondary/20 transition">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 md:gap-5 items-start">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Link href={`/biomarkers/${r.slug}`} className="text-sm font-medium hover:text-emerald transition truncate">{r.name}</Link>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link href={`/biomarkers/${r.slug}`} className="text-sm font-medium hover:text-emerald transition">{r.name}</Link>
                             <HelpPill
                               title={r.name}
                               explanation={BIOMARKER_EXPLANATIONS[r.slug] ?? `${r.name} — biomarqueur sanguin. Clique pour demander à ton panel médical une explication détaillée et adaptée à ton profil.`}
                               question={`Mon ${r.name} est à ${fmtValue(r.value)} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. labo ${r.refLow}–${r.refHigh})` : ""}${r.longevityLow != null && r.longevityHigh != null ? ` (cible longévité ${r.longevityLow}–${r.longevityHigh})` : ""}. Statut: ${cfg.label}. Explique-moi ce que ça veut dire pour ma santé, et comment l'optimiser concrètement (nutrition, supplémentation, lifestyle).`}
                             />
+                            {fresh === "stale" && (
+                              <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-muted-foreground/30 bg-secondary/40 text-muted-foreground" title={`Donnée ancienne (${new Date(r.date).toLocaleDateString("fr-FR")}). Pour comparer, refais ce dosage.`}>
+                                ⏱ ancienne
+                              </span>
+                            )}
                           </div>
-                          <div className={`text-[10px] uppercase tracking-wider mt-0.5 ${cfg.cls}`}>{cfg.label}</div>
-                          <div className="mt-2">
-                            <BiomarkerStatusBar
-                              value={r.value}
-                              refLow={r.refLow} refHigh={r.refHigh}
-                              longevityLow={r.longevityLow} longevityHigh={r.longevityHigh}
-                              status={r.status}
-                            />
-                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1.5 flex-wrap">
-                              {r.refLow != null && r.refHigh != null && (
-                                <span className="flex items-center gap-1">
-                                  <span className="h-1.5 w-2 rounded-sm bg-sky-500/40" />
-                                  <span>Labo {fmtRef(r.refLow, r.refHigh)} {r.unit}</span>
-                                </span>
-                              )}
-                              {r.longevityLow != null && r.longevityHigh != null && (
-                                <span className="flex items-center gap-1">
-                                  <span className="h-1.5 w-2 rounded-sm bg-emerald/60" />
-                                  <span>Longévité {fmtRef(r.longevityLow, r.longevityHigh)} {r.unit}</span>
-                                </span>
-                              )}
-                            </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-[10px] uppercase tracking-wider ${cfg.cls}`}>{cfg.label}</span>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">·</span>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">{new Date(r.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</span>
                           </div>
+
+                          {/* Reference legend (above bar for context) */}
+                          <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-2 flex-wrap">
+                            {r.refLow != null && r.refHigh != null && (
+                              <span className="flex items-center gap-1">
+                                <span className="h-1.5 w-3 rounded-sm bg-sky-500/40" />
+                                <span>Labo <span className="font-mono tabular-nums">{fmtRef(r.refLow, r.refHigh)}</span></span>
+                              </span>
+                            )}
+                            {r.longevityLow != null && r.longevityHigh != null && (
+                              <span className="flex items-center gap-1">
+                                <span className="h-1.5 w-3 rounded-sm bg-emerald/60" />
+                                <span>Longévité <span className="font-mono tabular-nums">{fmtRef(r.longevityLow, r.longevityHigh)}</span></span>
+                              </span>
+                            )}
+                            {r.unit && <span className="text-muted-foreground/70">{r.unit}</span>}
+                          </div>
+
+                          <BiomarkerStatusBar
+                            value={r.value}
+                            refLow={r.refLow} refHigh={r.refHigh}
+                            longevityLow={r.longevityLow} longevityHigh={r.longevityHigh}
+                            status={r.status}
+                          />
                         </div>
-                        <div className="text-right min-w-[5rem]">
-                          <div className={`text-base font-mono tabular-nums ${cfg.cls}`}>{fmtValue(r.value)}</div>
-                          <div className="text-[10px] text-muted-foreground">{r.unit}</div>
-                        </div>
-                        <div className="text-[10px] text-muted-foreground tabular-nums shrink-0 self-center">
-                          {new Date(r.date).toLocaleDateString("fr-FR")}
+                        <div className="text-right min-w-[6rem] shrink-0">
+                          <div className={`text-2xl font-semibold tabular-nums leading-none ${cfg.cls}`}>{fmtValue(r.value)}</div>
+                          <div className="text-[10px] text-muted-foreground mt-1">{r.unit}</div>
                         </div>
                       </div>
                     </div>
