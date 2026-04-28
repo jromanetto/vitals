@@ -10,7 +10,7 @@ export async function GET() {
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
-  const rows = sqlite.prepare(`SELECT id, name, dose, unit, timing, frequency, started_at as startedAt, ended_at as endedAt, notes, target_biomarker as targetBiomarker, target_snp as targetSnp, url, brand, image_url as imageUrl, ingredients, serving_size as servingSize, suggested_use as suggestedUse, price, created_at as createdAt FROM supplement ORDER BY (CASE WHEN ended_at IS NULL THEN 0 ELSE 1 END), name`).all();
+  const rows = sqlite.prepare(`SELECT id, name, dose, unit, timing, frequency, started_at as startedAt, ended_at as endedAt, notes, target_biomarker as targetBiomarker, target_snp as targetSnp, url, brand, image_url as imageUrl, ingredients, serving_size as servingSize, suggested_use as suggestedUse, price, duration, created_at as createdAt FROM supplement ORDER BY (CASE WHEN ended_at IS NULL THEN 0 ELSE 1 END), name`).all();
   // Parse ingredients JSON for each row
   const parsed = (rows as Array<{ ingredients: string | null }>).map((r) => ({ ...r, ingredients: r.ingredients ? safeParse(r.ingredients) : null }));
   const today = new Date().toISOString().slice(0, 10);
@@ -28,12 +28,12 @@ export async function POST(req: Request) {
   const sqlite = db().$client;
   const ingredientsJson = body.ingredients ? (typeof body.ingredients === "string" ? body.ingredients : JSON.stringify(body.ingredients)) : null;
   if (body.id) {
-    sqlite.prepare(`UPDATE supplement SET name=?, dose=?, unit=?, timing=?, frequency=?, started_at=?, ended_at=?, notes=?, target_biomarker=?, target_snp=?, url=?, brand=?, image_url=?, ingredients=?, serving_size=?, suggested_use=?, price=? WHERE id=?`)
-      .run(body.name, body.dose ?? null, body.unit ?? null, body.timing ?? null, body.frequency ?? null, body.startedAt ?? null, body.endedAt ?? null, body.notes ?? null, body.targetBiomarker ?? null, body.targetSnp ?? null, body.url ?? null, body.brand ?? null, body.imageUrl ?? null, ingredientsJson, body.servingSize ?? null, body.suggestedUse ?? null, body.price ?? null, body.id);
+    sqlite.prepare(`UPDATE supplement SET name=?, dose=?, unit=?, timing=?, frequency=?, started_at=?, ended_at=?, notes=?, target_biomarker=?, target_snp=?, url=?, brand=?, image_url=?, ingredients=?, serving_size=?, suggested_use=?, price=?, duration=? WHERE id=?`)
+      .run(body.name, body.dose ?? null, body.unit ?? null, body.timing ?? null, body.frequency ?? null, body.startedAt ?? null, body.endedAt ?? null, body.notes ?? null, body.targetBiomarker ?? null, body.targetSnp ?? null, body.url ?? null, body.brand ?? null, body.imageUrl ?? null, ingredientsJson, body.servingSize ?? null, body.suggestedUse ?? null, body.price ?? null, body.duration ?? null, body.id);
     return NextResponse.json({ ok: true, id: body.id });
   }
-  const r = sqlite.prepare(`INSERT INTO supplement (name, dose, unit, timing, frequency, started_at, ended_at, notes, target_biomarker, target_snp, url, brand, image_url, ingredients, serving_size, suggested_use, price) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(body.name, body.dose ?? null, body.unit ?? null, body.timing ?? null, body.frequency ?? null, body.startedAt ?? Date.now(), body.endedAt ?? null, body.notes ?? null, body.targetBiomarker ?? null, body.targetSnp ?? null, body.url ?? null, body.brand ?? null, body.imageUrl ?? null, ingredientsJson, body.servingSize ?? null, body.suggestedUse ?? null, body.price ?? null);
+  const r = sqlite.prepare(`INSERT INTO supplement (name, dose, unit, timing, frequency, started_at, ended_at, notes, target_biomarker, target_snp, url, brand, image_url, ingredients, serving_size, suggested_use, price, duration) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run(body.name, body.dose ?? null, body.unit ?? null, body.timing ?? null, body.frequency ?? null, body.startedAt ?? Date.now(), body.endedAt ?? null, body.notes ?? null, body.targetBiomarker ?? null, body.targetSnp ?? null, body.url ?? null, body.brand ?? null, body.imageUrl ?? null, ingredientsJson, body.servingSize ?? null, body.suggestedUse ?? null, body.price ?? null, body.duration ?? null);
   return NextResponse.json({ ok: true, id: Number(r.lastInsertRowid) });
 }
 

@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
-import { AdherenceCalendar } from "@/components/adherence-calendar";
 import { InteractionsCard } from "@/components/interactions-card";
 import { SupplementCoverage } from "@/components/supplement-coverage";
 
@@ -13,7 +12,7 @@ type Supplement = {
   notes: string | null; targetBiomarker: string | null; targetSnp: string | null;
   url: string | null; brand: string | null; imageUrl: string | null;
   ingredients: { name: string; dose?: string; unit?: string; nrv?: number; category?: string }[] | null;
-  servingSize: string | null; suggestedUse: string | null; price: string | null;
+  servingSize: string | null; suggestedUse: string | null; price: string | null; duration: string | null;
 };
 
 type Suggestion = {
@@ -43,8 +42,9 @@ export default function SupplementsPage() {
   const [showForm, setShowForm] = useState(false);
   const [inputMode, setInputMode] = useState<"url" | "manual">("url");
   const [editing, setEditing] = useState<Supplement | null>(null);
-  const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
+  const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "", duration: "continu" });
   const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
+  const [bloodHelp, setBloodHelp] = useState<{ biomarker: string; status: string; nutrient: string }[]>([]);
   const [showCovered, setShowCovered] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -55,6 +55,16 @@ export default function SupplementsPage() {
     setTaken(new Set(d.takenToday ?? []));
     const sg = await fetch("/api/supplements/suggestions");
     setSuggestions((await sg.json()).suggestions ?? []);
+    // Pull last blood-panel statuses to tag nutrients that fill a gap
+    try {
+      const br = await fetch("/api/biomarkers/latest");
+      const bd = await br.json();
+      const rows = (bd.rows ?? []) as Array<{ slug: string; status: string }>;
+      const help = rows
+        .filter((row) => row.status === "low" || row.status === "slightly-off" || row.status === "attention")
+        .map((row) => ({ biomarker: row.slug, status: row.status, nutrient: row.slug }));
+      setBloodHelp(help);
+    } catch {}
   }
   useEffect(() => { load(); }, []);
 
@@ -62,7 +72,7 @@ export default function SupplementsPage() {
     if (!form.name) return;
     await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editing?.id }) });
     setShowForm(false); setEditing(null);
-    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "" });
+    setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "", duration: "continu" });
     load();
   }
   async function del(id: number) {
@@ -218,7 +228,7 @@ export default function SupplementsPage() {
         </section>
       )}
 
-      <SupplementCoverage refreshKey={rows.length} />
+      <SupplementCoverage refreshKey={rows.length} bloodHelp={bloodHelp} />
 
       <section>
         <h2 className="text-sm font-medium mb-3 flex items-center gap-2">
@@ -277,8 +287,7 @@ export default function SupplementsPage() {
         </div>
       </section>
 
-      {active.length > 0 && <AdherenceCalendar supplements={active.map((r) => ({ id: r.id, name: r.name, startedAt: r.startedAt }))} />}
-
+      
       {ended.length > 0 && (
         <section>
           <h2 className="text-sm font-medium mb-3 text-muted-foreground">Anciens ({ended.length})</h2>
@@ -412,6 +421,15 @@ export default function SupplementsPage() {
                   <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                   <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
                 </div>
+                <select value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary">
+                  <option value="continu">Continu (à vie / quotidien)</option>
+                  <option value="3 mois">Cure 3 mois</option>
+                  <option value="2 mois">Cure 2 mois</option>
+                  <option value="1 mois">Cure 1 mois</option>
+                  <option value="6 semaines">6 semaines</option>
+                  <option value="hiver">Hiver uniquement</option>
+                  <option value="ponctuel">Ponctuel (au besoin)</option>
+                </select>
                 <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
               </div>
               <div className="flex justify-end gap-2">

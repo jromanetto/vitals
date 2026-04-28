@@ -56,7 +56,7 @@ export function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS chat_memory_active_idx ON chat_memory(active)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
-  for (const c of ["url", "brand", "image_url"]) {
+  for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {
     try { d.run(sql.raw(`ALTER TABLE supplement ADD COLUMN ${c} TEXT`)); } catch {}
   }
   try { d.run(sql.raw(`ALTER TABLE dna_insight ADD COLUMN is_protective INTEGER DEFAULT 0`)); } catch {}
