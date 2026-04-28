@@ -80,6 +80,11 @@ const TBL: Record<string, Conversion> = {
     // If value > 50 with no unit or generic unit, assume pmol/L (typical lab)
     infer: (v) => v > 50 ? "pmol/L" : "μUI/mL",
   },
+    "ldh": {
+    canonical: "UI/L",
+    factors: { "UI/L": 1, "U/L": 1, "IU/L": 1 },
+    sane: { min: 50, max: 800 },
+  },
     "hba1c": {
     canonical: "%",
     factors: { "%": 1 },
