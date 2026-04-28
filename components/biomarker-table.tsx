@@ -4,12 +4,31 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { SkeletonRow } from "./skeleton";
 import { HelpPill } from "./help-pill";
+import { BiomarkerStatusBar } from "./biomarker-status-bar";
 import { BODY_SYSTEMS, biomarkerSystem } from "@/lib/body-systems";
 import { BIOMARKER_EXPLANATIONS } from "@/lib/biomarker-explanations";
 
+type Status = "optimal" | "normal" | "slightly-off" | "attention" | "unknown";
+
+type Row = {
+  slug: string; name: string; category: string | null;
+  value: number; unit: string | null;
+  refLow: number | null; refHigh: number | null;
+  optimalLow: number | null; optimalHigh: number | null;
+  longevityLow: number | null; longevityHigh: number | null;
+  date: number; status: Status;
+};
+
+const STATUS_CFG: Record<Status, { label: string; cls: string }> = {
+  optimal:        { label: "Optimal",     cls: "text-emerald" },
+  normal:         { label: "Normal",      cls: "text-sky-400" },
+  "slightly-off": { label: "Légèrement hors plage", cls: "text-amber-400" },
+  attention:      { label: "À surveiller", cls: "text-red-400" },
+  unknown:        { label: "—",            cls: "text-muted-foreground" },
+};
+
 function fmtValue(v: number): string {
   if (!Number.isFinite(v)) return String(v);
-  // Round to 4 significant figures to remove float garbage like 220.03230000000002
   const abs = Math.abs(v);
   let rounded: number;
   if (abs >= 100) rounded = Math.round(v);
@@ -19,19 +38,12 @@ function fmtValue(v: number): string {
   return String(rounded);
 }
 
-type Row = {
-  slug: string; name: string; category: string | null;
-  value: number; unit: string | null;
-  refLow: number | null; refHigh: number | null;
-  date: number; status: "low" | "ok" | "high" | "unknown";
-};
-
-const STATUS_TIPS = {
-  low: "Sous le range de référence du laboratoire",
-  ok: "Dans le range de référence du laboratoire",
-  high: "Au-dessus du range de référence du laboratoire",
-  unknown: "Pas de range de référence dans le rapport source",
-};
+function fmtRef(lo: number | null, hi: number | null): string {
+  if (lo == null && hi == null) return "—";
+  if (lo == null) return `< ${fmtValue(hi!)}`;
+  if (hi == null) return `> ${fmtValue(lo)}`;
+  return `${fmtValue(lo)}–${fmtValue(hi)}`;
+}
 
 export function BiomarkerTable() {
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -58,17 +70,34 @@ export function BiomarkerTable() {
 
   const orderedSystems = BODY_SYSTEMS.filter((s) => grouped[s.id]?.length > 0);
 
-  // Auto-open first 3 systems by default
+  const totals = useMemo(() => {
+    const t = { optimal: 0, normal: 0, "slightly-off": 0, attention: 0, unknown: 0 };
+    for (const r of filtered) t[r.status]++;
+    return t;
+  }, [filtered]);
+
   useEffect(() => {
     if (orderedSystems.length > 0 && Object.keys(openSystems).length === 0) {
       const init: Record<string, boolean> = {};
-      orderedSystems.slice(0, 3).forEach((s) => { init[s.id] = true; });
+      orderedSystems.slice(0, 4).forEach((s) => { init[s.id] = true; });
       setOpenSystems(init);
     }
   }, [orderedSystems.length]); // eslint-disable-line
 
   return (
     <div className="space-y-4">
+      {/* Top summary pills */}
+      {!loading && filtered.length > 0 && (
+        <div className="flex items-center flex-wrap gap-1.5 text-[10px] uppercase tracking-wider">
+          {totals.optimal > 0 && <span className="px-2 py-1 rounded-full border border-emerald/30 bg-emerald/10 text-emerald">{totals.optimal} optimal</span>}
+          {totals.normal > 0 && <span className="px-2 py-1 rounded-full border border-sky-500/30 bg-sky-500/10 text-sky-400">{totals.normal} normal</span>}
+          {totals["slightly-off"] > 0 && <span className="px-2 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400">{totals["slightly-off"]} légèrement hors</span>}
+          {totals.attention > 0 && <span className="px-2 py-1 rounded-full border border-red-500/30 bg-red-500/10 text-red-400">{totals.attention} à surveiller</span>}
+          {totals.unknown > 0 && <span className="px-2 py-1 rounded-full border border-border bg-secondary/30 text-muted-foreground">{totals.unknown} sans réf.</span>}
+          <span className="ml-1 text-muted-foreground normal-case">· Optimal = plage longévité atteinte</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 flex-wrap">
         <input
           placeholder="Filtrer par nom ou catégorie…" value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -101,8 +130,8 @@ export function BiomarkerTable() {
 
       {!loading && orderedSystems.map((sys, sysIdx) => {
         const items = grouped[sys.id];
-        const okCount = items.filter((r) => r.status === "ok").length;
-        const altCount = items.filter((r) => r.status !== "ok" && r.status !== "unknown").length;
+        const optCount = items.filter((r) => r.status === "optimal").length;
+        const altCount = items.filter((r) => r.status === "slightly-off" || r.status === "attention").length;
         const isOpen = !!openSystems[sys.id];
 
         return (
@@ -117,74 +146,70 @@ export function BiomarkerTable() {
                 <div className="text-sm font-medium">{sys.label}</div>
                 <div className="text-[11px] text-muted-foreground">{sys.description}</div>
               </div>
-              <div className="flex items-center gap-2 text-[10px] shrink-0">
-                {okCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-emerald/15 text-emerald border border-emerald/30">{okCount} ok</span>}
-                {altCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">{altCount} hors range</span>}
+              <div className="flex items-center gap-1.5 text-[10px] shrink-0">
+                {optCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-emerald/15 text-emerald border border-emerald/30">{optCount} optimal</span>}
+                {altCount > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">{altCount} hors plage</span>}
                 <span className="text-muted-foreground tabular-nums">{items.length}</span>
               </div>
               <span className={`text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}>▾</span>
             </button>
 
             {isOpen && (
-              <div className="border-t border-border">
-                <table className="w-full text-sm">
-                  <thead className="text-xs uppercase tracking-wider text-muted-foreground bg-secondary/20">
-                    <tr>
-                      <th className="text-left px-4 py-2 font-medium">Marqueur</th>
-                      <th className="text-right px-4 py-2 font-medium">Valeur</th>
-                      <th className="text-left px-4 py-2 font-medium">Réf.</th>
-                      <th className="text-left px-4 py-2 font-medium">Statut</th>
-                      <th className="text-right px-4 py-2 font-medium">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((r) => (
-                      <tr key={r.slug} className="border-t border-border/50 hover:bg-secondary/20 transition">
-                        <td className="px-4 py-2">
+              <div className="border-t border-border divide-y divide-border/50">
+                {items.map((r) => {
+                  const cfg = STATUS_CFG[r.status];
+                  return (
+                    <div key={r.slug} className="px-4 py-3 hover:bg-secondary/20 transition">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-2 md:gap-4 items-start">
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <Link href={`/biomarkers/${r.slug}`} className="hover:text-emerald transition truncate">{r.name}</Link>
+                            <Link href={`/biomarkers/${r.slug}`} className="text-sm font-medium hover:text-emerald transition truncate">{r.name}</Link>
                             <HelpPill
                               title={r.name}
                               explanation={BIOMARKER_EXPLANATIONS[r.slug] ?? `${r.name} — biomarqueur sanguin. Clique pour demander à ton panel médical une explication détaillée et adaptée à ton profil.`}
-                              question={`Mon ${r.name} est à ${fmtValue(r.value)} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. ${r.refLow}–${r.refHigh})` : ""}. Statut: ${r.status}. Explique-moi ce que ça veut dire pour ma santé, ce qu'il faut surveiller et comment l'optimiser concrètement.`}
-                              label={`Demander au panel médical à propos de ${r.name}`}
+                              question={`Mon ${r.name} est à ${fmtValue(r.value)} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. labo ${r.refLow}–${r.refHigh})` : ""}${r.longevityLow != null && r.longevityHigh != null ? ` (cible longévité ${r.longevityLow}–${r.longevityHigh})` : ""}. Statut: ${cfg.label}. Explique-moi ce que ça veut dire pour ma santé, et comment l'optimiser concrètement (nutrition, supplémentation, lifestyle).`}
                             />
                           </div>
-                        </td>
-                        <td className="px-4 py-2 text-right font-mono">
-                          {fmtValue(r.value)} <span className="text-muted-foreground text-xs">{r.unit}</span>
-                        </td>
-                        <td className="px-4 py-2 text-muted-foreground text-xs">
-                          {r.refLow != null && r.refHigh != null ? `${r.refLow}–${r.refHigh}` : "—"}
-                        </td>
-                        <td className="px-4 py-2"><StatusBadge s={r.status} /></td>
-                        <td className="px-4 py-2 text-right text-muted-foreground text-xs">
+                          <div className={`text-[10px] uppercase tracking-wider mt-0.5 ${cfg.cls}`}>{cfg.label}</div>
+                          <div className="mt-2">
+                            <BiomarkerStatusBar
+                              value={r.value}
+                              refLow={r.refLow} refHigh={r.refHigh}
+                              longevityLow={r.longevityLow} longevityHigh={r.longevityHigh}
+                              status={r.status}
+                            />
+                            <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1.5 flex-wrap">
+                              {r.refLow != null && r.refHigh != null && (
+                                <span className="flex items-center gap-1">
+                                  <span className="h-1.5 w-2 rounded-sm bg-sky-500/40" />
+                                  <span>Labo {fmtRef(r.refLow, r.refHigh)} {r.unit}</span>
+                                </span>
+                              )}
+                              {r.longevityLow != null && r.longevityHigh != null && (
+                                <span className="flex items-center gap-1">
+                                  <span className="h-1.5 w-2 rounded-sm bg-emerald/60" />
+                                  <span>Longévité {fmtRef(r.longevityLow, r.longevityHigh)} {r.unit}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right min-w-[5rem]">
+                          <div className={`text-base font-mono tabular-nums ${cfg.cls}`}>{fmtValue(r.value)}</div>
+                          <div className="text-[10px] text-muted-foreground">{r.unit}</div>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground tabular-nums shrink-0 self-center">
                           {new Date(r.date).toLocaleDateString("fr-FR")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </motion.section>
         );
       })}
     </div>
-  );
-}
-
-function StatusBadge({ s }: { s: Row["status"] }) {
-  const map = {
-    low: { label: "Bas", cls: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
-    ok: { label: "Normal", cls: "bg-emerald/15 text-emerald border-emerald/30" },
-    high: { label: "Haut", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-    unknown: { label: "—", cls: "bg-secondary text-muted-foreground border-border" },
-  } as const;
-  const m = map[s];
-  return (
-    <span title={STATUS_TIPS[s]} className={`inline-flex px-2 py-0.5 rounded-full text-xs border cursor-help ${m.cls}`}>
-      {m.label}
-    </span>
   );
 }

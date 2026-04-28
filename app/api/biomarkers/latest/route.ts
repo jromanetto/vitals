@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { sql } from "drizzle-orm";
+import { META_BY_SLUG } from "@/lib/biomarker-meta";
 
 export const runtime = "nodejs";
 
@@ -33,13 +34,36 @@ export async function GET() {
   const deduped = [...bySlug.values()];
 
   const enriched = deduped.map((r) => {
-    let status: "low" | "ok" | "high" | "unknown" = "unknown";
-    if (r.refLow != null && r.refHigh != null) {
-      if (r.value < r.refLow) status = "low";
-      else if (r.value > r.refHigh) status = "high";
-      else status = "ok";
+    const meta = META_BY_SLUG[r.slug];
+    const optimalLow = meta?.optimalLow ?? null;
+    const optimalHigh = meta?.optimalHigh ?? null;
+    const longevityLow = meta?.longevityLow ?? null;
+    const longevityHigh = meta?.longevityHigh ?? null;
+
+    // 4-level status: optimal (in longevity range) > normal (in lab range or optimal) > slightly-off (within 15% of nearest bound) > attention (significantly out)
+    let status: "optimal" | "normal" | "slightly-off" | "attention" | "unknown" = "unknown";
+    const nearest = (lo: number | null, hi: number | null): number | null => {
+      if (lo == null || hi == null) return null;
+      if (r.value < lo) return Math.abs((lo - r.value) / lo);
+      if (r.value > hi) return Math.abs((r.value - hi) / hi);
+      return 0;
+    };
+    const inLab = r.refLow != null && r.refHigh != null && r.value >= r.refLow && r.value <= r.refHigh;
+    const inLongevity = longevityLow != null && longevityHigh != null && r.value >= longevityLow && r.value <= longevityHigh;
+    const inOptimal = optimalLow != null && optimalHigh != null && r.value >= optimalLow && r.value <= optimalHigh;
+
+    if (inLongevity) status = "optimal";
+    else if (inOptimal || inLab) status = "normal";
+    else {
+      const offsetLab = nearest(r.refLow, r.refHigh);
+      const offsetOpt = nearest(optimalLow, optimalHigh);
+      const offset = offsetLab ?? offsetOpt;
+      if (offset == null) status = "unknown";
+      else if (offset <= 0.15) status = "slightly-off";
+      else status = "attention";
     }
-    return { ...r, status };
+
+    return { ...r, status, optimalLow, optimalHigh, longevityLow, longevityHigh };
   });
   return NextResponse.json({ rows: enriched });
 }

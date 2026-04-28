@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { IdleKeepalive } from "@/components/idle-keepalive";
+import { FloatingChat } from "@/components/floating-chat";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -17,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+      <FloatingChat />
     </div>
   );
 }
