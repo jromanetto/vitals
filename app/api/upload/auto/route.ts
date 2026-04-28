@@ -7,6 +7,18 @@ import path from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 
+async function pdfParse(buf: Buffer): Promise<string> {
+  try {
+    const mod = (await import("pdf-parse")) as unknown as { default: (b: Buffer) => Promise<{ text: string }> };
+    const fn = (mod as { default?: (b: Buffer) => Promise<{ text: string }> }).default ?? (mod as unknown as (b: Buffer) => Promise<{ text: string }>);
+    const r = await fn(buf);
+    return (r?.text ?? "").slice(0, 8000);
+  } catch { return ""; }
+}
+
+const BLOOD_TEST_MARKERS = /\b(cholest[ée]rol|hdl|ldl|trigly|h[ée]moglobin|h[ée]matocr|leucocyt|plaquett|cr[ée]atinin|gly[cé]mie|hba1c|insulin[ea]|tsh|t3 ?libre|t4 ?libre|alat|asat|gamma ?gt|ggt|ferritin|fer ?s[ée]rique|transferrin|crp|hscrp|magn[ée]sium|vitamin[ea]? ?d|vitamin[ea]? ?b12|folate|homocyst[ée]in|testost[ée]ron|oestradiol|cortisol|dhea|igf-?1|apolipoprot[ée]in|apo ?b|apo ?a|lp\(?a\)?)\b/i;
+
+
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
@@ -262,11 +274,24 @@ export async function POST(req: Request) {
         const inserted = insertWearables(rows);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "pdf-document" || detected === "image" || detected === "spreadsheet" || detected === "dna-23andme") {
-        const targetFolder = detected === "dna-23andme" ? "genetique" : (folder ?? "divers");
+        let targetFolder = detected === "dna-23andme" ? "genetique" : (folder ?? "divers");
+        let bloodSwitched = false;
         const buf = await f.arrayBuffer();
+        // Content-based blood test detection on PDFs that landed in divers/ — move to analyses-sang if it looks like a lab
+        if (detected === "pdf-document" && targetFolder === "divers") {
+          const peek = await pdfParse(Buffer.from(buf));
+          if (peek && BLOOD_TEST_MARKERS.test(peek)) {
+            targetFolder = "analyses-sang";
+            bloodSwitched = true;
+            reason = "PDF · analyse sanguine (détecté par contenu)";
+          }
+        }
         const dest = await saveBinary(targetFolder, filename, buf);
         needsIngest = true;
-        results.push({ filename, size, detected, reason, status: "ok", message: `Sauvegardé dans data/${targetFolder}/ — ingestion en cours…`, destination: dest });
+        const msg = bloodSwitched
+          ? `Reclassé en analyse sanguine (détection auto). Ingestion + compte-rendu en cours…`
+          : `Sauvegardé dans data/${targetFolder}/ — ingestion en cours…`;
+        results.push({ filename, size, detected, reason, status: "ok", message: msg, destination: dest });
       } else if (detected === "markdown-note") {
         const buf = await f.arrayBuffer();
         const dest = await saveBinary("knowledge-base", filename, buf);

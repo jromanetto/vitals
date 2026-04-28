@@ -33,6 +33,9 @@ export default function ImportPage() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [summary, setSummary] = useState<Summary[]>([]);
+  const [ingestionPolling, setIngestionPolling] = useState(false);
+  const [latestPanelDate, setLatestPanelDate] = useState<number | null>(null);
+  const [ingestionDone, setIngestionDone] = useState(false);
 
   async function loadSummary() {
     try {
@@ -42,6 +45,29 @@ export default function ImportPage() {
     } catch {}
   }
   useEffect(() => { loadSummary(); }, []);
+
+  useEffect(() => {
+    if (!ingestionPolling || latestPanelDate == null) return;
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const lr = await fetch("/api/biomarkers/latest");
+        const ld = await lr.json();
+        const dates = ((ld.rows ?? []) as Array<{ date: number }>).map((r) => r.date);
+        const newest = dates.length ? Math.max(...dates) : 0;
+        if (newest > latestPanelDate) {
+          setIngestionPolling(false);
+          setIngestionDone(true);
+          clearInterval(interval);
+          loadSummary();
+        }
+      } catch {}
+      // Stop after 4 minutes
+      if (attempts > 80) { setIngestionPolling(false); clearInterval(interval); }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [ingestionPolling, latestPanelDate]);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
@@ -71,6 +97,17 @@ export default function ImportPage() {
         setResults(d.results ?? []);
         setQueue([]);
         loadSummary();
+        const hasIngest = (d.results ?? []).some((res: any) => ["pdf-document", "image", "markdown-note", "dna-23andme", "spreadsheet"].includes(res.detected));
+        if (hasIngest) {
+          // Capture current latest panel date as baseline
+          const lr = await fetch("/api/biomarkers/latest");
+          const ld = await lr.json();
+          const dates = ((ld.rows ?? []) as Array<{ date: number }>).map((r) => r.date);
+          const baseline = dates.length ? Math.max(...dates) : 0;
+          setLatestPanelDate(baseline);
+          setIngestionPolling(true);
+          setIngestionDone(false);
+        }
       } else {
         setResults([{ filename: "—", size: 0, detected: "unknown", reason: "", status: "error", message: d.error ?? "Erreur" }]);
       }
@@ -175,6 +212,31 @@ export default function ImportPage() {
           </motion.section>
         )}
       </AnimatePresence>
+
+      {ingestionPolling && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-4 flex items-center gap-3">
+          <Loader2 className="h-4 w-4 text-sky-400 animate-spin shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-sky-400">Analyse en cours…</div>
+            <div className="text-xs text-muted-foreground">Le pipeline extrait les biomarqueurs et génère le compte-rendu IA. Ça peut prendre 30 sec à 2 minutes selon le nombre de pages.</div>
+          </div>
+        </motion.div>
+      )}
+
+      {ingestionDone && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl border border-emerald/40 bg-emerald/10 p-4 flex items-center gap-3">
+          <Check className="h-4 w-4 text-emerald shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-emerald">Nouvelle prise de sang ingérée !</div>
+            <div className="text-xs text-muted-foreground">Le compte-rendu IA dédié est prêt sur la page Biomarqueurs.</div>
+          </div>
+          <Link href="/biomarkers" className="text-xs text-emerald hover:underline flex items-center gap-1 shrink-0">
+            Voir le compte-rendu <ArrowRight className="h-3 w-3" />
+          </Link>
+        </motion.div>
+      )}
 
       <WearableDashboardCard refreshKey={results.length} />
     </div>
