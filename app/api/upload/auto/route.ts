@@ -5,6 +5,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
 import path from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
+import { spawn } from "node:child_process";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -171,6 +172,19 @@ async function saveBinary(folder: string, filename: string, buf: ArrayBuffer): P
   return target;
 }
 
+function triggerIngest() {
+  // Detached background ingest. Don't await it.
+  try {
+    const cwd = process.cwd();
+    const tsx = path.join(cwd, "node_modules", ".bin", "tsx");
+    const script = path.join(cwd, "scripts", "ingest.ts");
+    const proc = spawn(tsx, [script], { cwd, env: process.env, detached: true, stdio: "ignore" });
+    proc.unref();
+  } catch (e) {
+    console.error("[upload-auto] failed to spawn ingest", e);
+  }
+}
+
 function ensureWearableTable() {
   const sqlite = db().$client;
   sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
@@ -207,6 +221,7 @@ export async function POST(req: Request) {
   if (files.length === 0) return NextResponse.json({ error: "no files" }, { status: 400 });
 
   const results: FileResult[] = [];
+  let needsIngest = false;
 
   for (const f of files) {
     const filename = f.name;
@@ -250,11 +265,13 @@ export async function POST(req: Request) {
         const targetFolder = detected === "dna-23andme" ? "genetique" : (folder ?? "divers");
         const buf = await f.arrayBuffer();
         const dest = await saveBinary(targetFolder, filename, buf);
-        results.push({ filename, size, detected, reason, status: "ok", message: `Sauvegardé dans data/${targetFolder}/`, destination: dest });
+        needsIngest = true;
+        results.push({ filename, size, detected, reason, status: "ok", message: `Sauvegardé dans data/${targetFolder}/ — ingestion en cours…`, destination: dest });
       } else if (detected === "markdown-note") {
         const buf = await f.arrayBuffer();
         const dest = await saveBinary("knowledge-base", filename, buf);
-        results.push({ filename, size, detected, reason, status: "ok", message: "Sauvegardé dans la knowledge base", destination: dest });
+        needsIngest = true;
+        results.push({ filename, size, detected, reason, status: "ok", message: "Sauvegardé dans la knowledge base — ingestion en cours…", destination: dest });
       } else {
         const buf = await f.arrayBuffer();
         const dest = await saveBinary("divers", filename, buf);
@@ -266,5 +283,6 @@ export async function POST(req: Request) {
   }
 
   logAudit("upload-auto", `files=${files.length}`, req);
-  return NextResponse.json({ results });
+  if (needsIngest) triggerIngest();
+  return NextResponse.json({ results, ingestionTriggered: needsIngest });
 }

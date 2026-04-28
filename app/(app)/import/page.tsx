@@ -137,9 +137,9 @@ export default function ImportPage() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-emerald">
-              {results.reduce((acc, r) => acc + (r.inserted ?? 0), 0).toLocaleString()} mesures ingérées dans la base
+              {results.reduce((acc, r) => acc + (r.inserted ?? 0), 0).toLocaleString()} mesures ingérées · {results.filter((r) => r.detected.startsWith("pdf") || r.detected === "markdown-note" || r.detected === "dna-23andme").length} document(s) en cours d&apos;analyse
             </div>
-            <div className="text-xs text-muted-foreground">Tu peux retrouver tes tendances HRV / FC repos / sommeil sur le dashboard.</div>
+            <div className="text-xs text-muted-foreground">Tendances HRV / FC repos / sommeil sur le dashboard. Le compte-rendu IA du dernier bilan apparaît sur Biomarqueurs dès que l&apos;ingestion est terminée (~30 sec).</div>
           </div>
           <Link href="/" className="text-xs text-emerald hover:underline flex items-center gap-1 shrink-0">
             Dashboard <ArrowRight className="h-3 w-3" />
