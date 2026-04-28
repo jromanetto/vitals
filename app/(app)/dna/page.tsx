@@ -6,6 +6,8 @@ import { DnaCategoryCard } from "@/components/dna-category-card";
 import { DnaTopFindings } from "@/components/dna-top-findings";
 import { DnaOverview } from "@/components/dna-overview";
 import { DnaStrengths } from "@/components/dna-strengths";
+import { PageHeader } from "@/components/page-header";
+import { Dna as DnaIcon } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -55,14 +57,15 @@ export default async function DnaPage() {
   const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts();
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">DNA Analysis</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          {totalVariants > 0
-            ? `${totalVariants.toLocaleString()} SNPs analysés depuis ton 23andMe.`
-            : "Aucun ADN ingéré. Lance l'ingestion DNA depuis Profile pour démarrer."}
-        </p>
-      </div>
+      <PageHeader
+        title="Analyse ADN"
+        description={
+          totalVariants > 0
+            ? `${totalVariants.toLocaleString()} SNPs analysés depuis ton 23andMe — répartis par système corporel avec leurs forces et points d'attention.`
+            : "Aucun ADN ingéré. Lance l'ingestion DNA depuis Profile pour démarrer."
+        }
+        icon={<DnaIcon className="h-5 w-5 text-emerald" />}
+      />
 
       {totalAnalyzed > 0 && (
         <DnaOverview

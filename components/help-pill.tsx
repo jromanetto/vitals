@@ -61,7 +61,7 @@ export function HelpPill({ question, label = "Demander au panel médical", title
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -2, scale: 0.97 }}
             transition={{ duration: 0.15 }}
-            className="absolute left-0 top-5 z-50 w-72 rounded-xl border border-border bg-popover shadow-xl p-3 space-y-2 text-left"
+            className="absolute left-0 top-5 z-50 w-72 rounded-xl border border-border bg-card shadow-2xl shadow-black/40 backdrop-blur-md p-3 space-y-2 text-left"
             onClick={(e) => e.stopPropagation()}
           >
             {title && (
