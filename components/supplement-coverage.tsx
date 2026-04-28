@@ -1,14 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Gauge, AlertTriangle, Check, ArrowUp, ArrowDown, Activity, Apple } from "lucide-react";
+import { Gauge, AlertTriangle, Check, ArrowUp, Activity, Apple, Pill, Sparkles } from "lucide-react";
 
 type Coverage = {
   key: string;
   label: string;
   unit: "mg" | "mcg" | "g" | "IU";
   amount: number;
-  target: { label: string; unit: string; low: number; optimal: [number, number]; high: number; notes?: string; primarySource?: "food" | "supplement" | "both" };
+  target: {
+    label: string;
+    unit: string;
+    low: number;
+    optimal: [number, number];
+    high: number;
+    notes?: string;
+    primarySource?: "food" | "supplement" | "both";
+    dietaryDefault?: number;
+    essential?: boolean;
+  };
   status: "low" | "optimal" | "above-optimal" | "high" | "complement";
   contributions: { supplementId: number; supplementName: string; rawAmount: number; rawUnit: string; daily: number }[];
 };
@@ -17,16 +27,16 @@ type BloodHelp = { biomarker: string; status: string; nutrient: string };
 
 type Resp = {
   coverage: Coverage[];
-  summary: { low: number; optimal: number; "above-optimal": number; high: number };
+  summary: { low: number; optimal: number; "above-optimal": number; high: number; complement?: number };
   activeCount: number;
 };
 
 const STATUS_META = {
-  low: { label: "Sous-dosé", color: "text-amber-400", border: "border-amber-500/40", bg: "bg-amber-500/5", fill: "bg-amber-400", icon: ArrowDown },
-  optimal: { label: "Optimal", color: "text-emerald", border: "border-emerald/40", bg: "bg-emerald/5", fill: "bg-emerald", icon: Check },
-  "above-optimal": { label: "Au-dessus", color: "text-sky-400", border: "border-sky-500/40", bg: "bg-sky-500/5", fill: "bg-sky-400", icon: ArrowUp },
-  high: { label: "Excessif", color: "text-red-400", border: "border-red-500/40", bg: "bg-red-500/5", fill: "bg-red-500", icon: AlertTriangle },
-  complement: { label: "Complément", color: "text-sky-300", border: "border-sky-500/30", bg: "bg-card", fill: "bg-sky-300/70", icon: Apple },
+  low:           { label: "Sous-dosé",   color: "text-amber-400" },
+  optimal:       { label: "Optimal",     color: "text-emerald" },
+  "above-optimal": { label: "Au-dessus", color: "text-sky-400" },
+  high:          { label: "Excessif",    color: "text-red-400" },
+  complement:    { label: "Complément",  color: "text-sky-300" },
 };
 
 function format(v: number): string {
@@ -35,7 +45,6 @@ function format(v: number): string {
   return v.toFixed(2);
 }
 
-// Simple nutrient → biomarker hint mapping for "comble une carence" tagging.
 const NUTRIENT_TO_BIOMARKER: Record<string, string[]> = {
   "vitamin-d": ["vitamine-d-25-oh"],
   "b12": ["vitamine-b12", "holotranscobalamine-active-b12"],
@@ -61,7 +70,6 @@ export function SupplementCoverage({ refreshKey, bloodHelp = [] }: { refreshKey?
   const total = data.coverage.length;
   const sum = data.summary;
 
-  // Map each nutrient to whether it fills a gap from the last blood test
   function fillsGap(key: string): BloodHelp | null {
     const linked = NUTRIENT_TO_BIOMARKER[key];
     if (!linked) return null;
@@ -71,108 +79,161 @@ export function SupplementCoverage({ refreshKey, bloodHelp = [] }: { refreshKey?
   return (
     <motion.section initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
                     className="rounded-2xl border border-border bg-card p-5">
-      <header className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <Gauge className="h-4 w-4 text-emerald" />
-            <h2 className="text-base font-semibold">Bilan nutritionnel de ta stack</h2>
+      <header className="mb-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2">
+              <Gauge className="h-4 w-4 text-emerald" />
+              <h2 className="text-base font-semibold">Bilan nutritionnel</h2>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-            Apport quotidien <span className="font-medium text-foreground">via les suppléments uniquement</span> — l'alimentation n'est pas comptée. Pour les nutriments majoritairement alimentaires (potassium, lutéine, choline, vitamine C…), un apport modeste apparaît comme <span className="text-sky-300">Complément</span> (ce qui est normal). Pour les nutriments difficiles à obtenir via la nourriture (D3, B12, oméga-3), on évalue par rapport à la cible.
-          </p>
+          <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+            {sum.optimal > 0 && <span className="px-2 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald">{sum.optimal} optimal</span>}
+            {(sum.complement ?? 0) > 0 && <span className="px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300">{sum.complement} complément</span>}
+            {sum.low > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400">{sum.low} sous-dosé{sum.low > 1 ? "s" : ""}</span>}
+            {sum.high > 0 && <span className="px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400">{sum.high} excessif</span>}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
-          {sum.optimal > 0 && <span className="px-2 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald">{sum.optimal} optimal</span>}
-          {(sum as any).complement > 0 && <span className="px-2 py-0.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300">{(sum as any).complement} complément alimentaire</span>}
-          {sum.low > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400">{sum.low} sous-dosé{sum.low > 1 ? "s" : ""}</span>}
-          {sum["above-optimal"] > 0 && <span className="px-2 py-0.5 rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-400">{sum["above-optimal"]} au-dessus</span>}
-          {sum.high > 0 && <span className="px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400">{sum.high} excessif{sum.high > 1 ? "s" : ""}</span>}
+
+        {/* Inline legend */}
+        <div className="mt-3 flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-4 rounded-sm bg-sky-500/70" />
+            <Apple className="h-3 w-3" /> Apport alimentaire estimé
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-4 rounded-sm bg-emerald" />
+            <Pill className="h-3 w-3" /> Apport supplément (toi)
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-4 rounded-sm border-2 border-emerald/60 bg-transparent" />
+            Plage optimale
+          </span>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {data.coverage.map((c, i) => {
           const meta = STATUS_META[c.status];
-          const Icon = meta.icon;
           const opt = c.target.optimal;
           const max = c.target.high;
-          // Bar uses target.high as the "100%" right edge.
-          // User fill: how full are they relative to plafond.
-          const fillPct = Math.max(0, Math.min(100, (c.amount / max) * 100));
-          // Zone boundaries (% of max)
-          const lowPct = (c.target.low / max) * 100;
-          const optMinPct = (opt[0] / max) * 100;
-          const optMaxPct = (opt[1] / max) * 100;
+          const dietary = c.target.dietaryDefault ?? 0;
+          const fromSup = c.amount;
+          const totalIntake = dietary + fromSup;
+
+          // Bar scale: max of (high, totalIntake) for context
+          const scale = Math.max(max, totalIntake) * 1.05;
+          const dietPct = Math.max(0, Math.min(100, (dietary / scale) * 100));
+          const supPct = Math.max(0, Math.min(100, (fromSup / scale) * 100));
+          const optMinPct = (opt[0] / scale) * 100;
+          const optMaxPct = (opt[1] / scale) * 100;
+          const lowPct = (c.target.low / scale) * 100;
+
           const gap = fillsGap(c.key);
+          const isEssential = c.target.essential;
+          const inOptimal = totalIntake >= opt[0] && totalIntake <= opt[1];
+          const aboveOptimal = totalIntake > opt[1];
+          const belowOptimal = totalIntake < opt[0];
 
           return (
             <motion.div
               key={c.key}
               initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
-              className={`rounded-md border ${meta.border} ${meta.bg} p-3 space-y-2`}
+              className="rounded-md border border-border bg-card/40 p-3 space-y-2.5"
             >
-              {/* Header row */}
+              {/* Top row: name + status badges */}
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <Icon className={`h-3.5 w-3.5 shrink-0 ${meta.color}`} />
                     <span className="text-sm font-medium">{c.label}</span>
-                    <span className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${meta.color} ${meta.border}`}>{meta.label}</span>
-                    {c.target.primarySource === "food" && (
-                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-card border border-border/60 text-muted-foreground" title="Source principale: alimentation">
-                        <Apple className="h-2.5 w-2.5" /> alimentation
-                      </span>
-                    )}
-                    {c.target.primarySource === "supplement" && (
-                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-card border border-border/60 text-muted-foreground" title="Difficile à obtenir via l'alimentation seule">
-                        💊 supplémentation requise
+                    {isEssential && (
+                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald" title="Recommandé pour tous (alimentation seule rarement suffisante)">
+                        <Sparkles className="h-2.5 w-2.5" /> Essentiel
                       </span>
                     )}
                     {gap && (
-                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald" title={`Comble la carence ${gap.biomarker}`}>
-                        <Activity className="h-2.5 w-2.5" /> Comble une carence
+                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-400" title={`Carence détectée dans ta dernière prise: ${gap.biomarker}`}>
+                        <Activity className="h-2.5 w-2.5" /> Carence prise de sang
+                      </span>
+                    )}
+                    {!gap && c.target.primarySource === "food" && (
+                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-card border border-border/60 text-muted-foreground" title="Source principale: alimentation">
+                        <Apple className="h-2.5 w-2.5" /> alim.
                       </span>
                     )}
                   </div>
-                  {c.target.notes && <div className="text-[10px] text-muted-foreground italic mt-0.5">{c.target.notes}</div>}
                 </div>
                 <div className="text-right shrink-0">
-                  <div className={`text-base font-semibold tabular-nums leading-none ${meta.color}`}>{format(c.amount)}</div>
-                  <div className="text-[10px] text-muted-foreground">{c.unit}/jour</div>
+                  <div className={`text-base font-semibold tabular-nums leading-none ${meta.color}`}>
+                    {format(totalIntake)}
+                    <span className="text-[10px] font-normal text-muted-foreground ml-1">{c.unit}/j</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">
+                    {format(dietary)} alim. + {format(fromSup)} suppl.
+                  </div>
                 </div>
               </div>
 
-              {/* Smart fill bar with zone backgrounds */}
-              <div className="relative">
-                <div className="relative h-4 w-full rounded-md bg-secondary/40 overflow-hidden">
-                  {/* Zone backgrounds (subtle) */}
-                  <div className="absolute inset-y-0 bg-amber-500/15" style={{ left: 0, width: `${lowPct}%` }} />
-                  <div className="absolute inset-y-0 bg-emerald/20" style={{ left: `${optMinPct}%`, width: `${optMaxPct - optMinPct}%` }} />
-                  <div className="absolute inset-y-0 bg-sky-500/15" style={{ left: `${optMaxPct}%`, right: 0 }} />
-                  {/* User fill (solid color, status-tinted) */}
+              {/* Stacked bar */}
+              <div className="relative pt-3 pb-4">
+                {/* Optimal range bracket above bar */}
+                <div className="absolute top-0 -translate-y-0.5 text-[8px] text-emerald font-mono tabular-nums whitespace-nowrap"
+                     style={{ left: `${optMinPct}%`, width: `${optMaxPct - optMinPct}%` }}>
+                  <div className="flex items-center w-full">
+                    <span className="h-2 w-px bg-emerald/60" />
+                    <span className="flex-1 h-px bg-emerald/40" />
+                    <span className="px-1 text-[8px] text-emerald uppercase tracking-wider whitespace-nowrap">Optimal</span>
+                    <span className="flex-1 h-px bg-emerald/40" />
+                    <span className="h-2 w-px bg-emerald/60" />
+                  </div>
+                </div>
+
+                {/* Bar background + emerald optimal zone overlay */}
+                <div className="relative h-3 w-full rounded-md bg-secondary/40 overflow-hidden">
+                  {/* Optimal range subtle overlay */}
+                  <div className="absolute inset-y-0 bg-emerald/15 border-x border-emerald/30"
+                       style={{ left: `${optMinPct}%`, width: `${optMaxPct - optMinPct}%` }} />
+                  {/* Diet portion (sky) */}
                   <motion.div
-                    initial={{ width: 0 }} animate={{ width: `${fillPct}%` }} transition={{ duration: 0.5, ease: "easeOut", delay: 0.05 + i * 0.02 }}
-                    className={`absolute inset-y-0 left-0 ${meta.fill} opacity-90`}
+                    initial={{ width: 0 }} animate={{ width: `${dietPct}%` }} transition={{ duration: 0.4, delay: 0.05 + i * 0.02 }}
+                    className="absolute inset-y-0 left-0 bg-sky-500/70"
                   />
-                  {/* End cap on user fill */}
+                  {/* Supplement portion (emerald) — stacks on top of diet */}
                   <motion.div
-                    initial={{ left: 0, opacity: 0 }} animate={{ left: `${fillPct}%`, opacity: 1 }} transition={{ duration: 0.5, ease: "easeOut", delay: 0.05 + i * 0.02 }}
-                    className="absolute top-0 bottom-0 w-0.5 bg-foreground/80 -translate-x-px"
+                    initial={{ width: 0 }} animate={{ width: `${supPct}%` }} transition={{ duration: 0.4, delay: 0.15 + i * 0.02 }}
+                    className="absolute inset-y-0 bg-emerald"
+                    style={{ left: `${dietPct}%` }}
                   />
                 </div>
-                {/* Tick marks below bar */}
-                <div className="relative h-3 mt-0.5 text-[8px] text-muted-foreground font-mono tabular-nums">
-                  <div className="absolute -translate-x-1/2" style={{ left: `${lowPct}%` }}>{c.target.low}</div>
-                  <div className="absolute -translate-x-1/2 text-emerald" style={{ left: `${optMinPct}%` }}>{opt[0]}</div>
-                  <div className="absolute -translate-x-1/2 text-emerald" style={{ left: `${optMaxPct}%` }}>{opt[1]}</div>
-                  <div className="absolute right-0 text-red-400/70">{max}</div>
+
+                {/* Tick labels below bar */}
+                <div className="relative h-3 mt-0.5">
+                  <div className="absolute -translate-x-1/2 text-[8px] text-emerald font-mono tabular-nums" style={{ left: `${optMinPct}%` }}>{opt[0]}</div>
+                  <div className="absolute -translate-x-1/2 text-[8px] text-emerald font-mono tabular-nums" style={{ left: `${optMaxPct}%` }}>{opt[1]}</div>
+                  <div className="absolute right-0 text-[8px] text-red-400/70 font-mono tabular-nums">{max}</div>
                 </div>
               </div>
 
-              {/* Sources line — compact */}
+              {/* Status text */}
+              <div className="text-[11px] leading-relaxed">
+                {inOptimal && <span className="text-emerald">✓ Total dans la plage optimale</span>}
+                {aboveOptimal && totalIntake < max && <span className="text-sky-400">↑ Au-dessus de la cible (sans danger)</span>}
+                {totalIntake >= max && <span className="text-red-400">⚠ Au-dessus du plafond — réduire</span>}
+                {belowOptimal && c.target.primarySource === "food" && !gap && (
+                  <span className="text-muted-foreground">Apport alimentaire seul devrait suffire — supplément en bonus.</span>
+                )}
+                {belowOptimal && (c.target.primarySource === "supplement" || c.target.primarySource === "both") && !gap && (
+                  <span className="text-amber-400">↓ Sous l'optimal — augmente la dose ou ajoute un supplément.</span>
+                )}
+                {gap && (
+                  <span className="text-red-400 font-medium">↓ Ta dernière prise indique une carence — augmente la dose.</span>
+                )}
+              </div>
+
+              {/* Sources line */}
               {c.contributions.length > 0 && (
                 <div className="text-[10px] text-muted-foreground/80 border-t border-border/40 pt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                  <span className="font-medium">Sources :</span>
+                  <span className="font-medium">Source supplément :</span>
                   {c.contributions.map((ct, j) => (
                     <span key={j} className="font-mono">{ct.supplementName.length > 18 ? ct.supplementName.slice(0, 18) + "…" : ct.supplementName} <span className="text-muted-foreground/60">+{format(ct.daily)}{c.unit}</span></span>
                   ))}
