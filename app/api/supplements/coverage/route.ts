@@ -96,12 +96,18 @@ export async function GET() {
   }
 
   // Compute status + sort by status severity (low first, then high, then above-optimal, then optimal)
-  const list = Object.values(accum).map((c) => ({ ...c, status: statusOf(c.target, c.amount) }));
-  const order: Record<CoverageStatus, number> = { low: 0, high: 1, "above-optimal": 2, optimal: 3 };
+  const list = Object.values(accum).map((c) => {
+    const baseStatus = statusOf(c.target, c.amount);
+    // For food-sourced nutrients, never report low: a positive supplement contribution is a Complement
+    let status = baseStatus;
+    if (baseStatus === "low" && c.target.primarySource === "food") status = "complement" as CoverageStatus;
+    return { ...c, status };
+  });
+  const order: Record<string, number> = { low: 0, high: 1, "above-optimal": 2, optimal: 3, complement: 4 };
   list.sort((a, b) => order[a.status] - order[b.status] || a.label.localeCompare(b.label));
 
   // Summary counts
-  const summary = list.reduce((acc, c) => { acc[c.status]++; return acc; }, { low: 0, optimal: 0, "above-optimal": 0, high: 0 } as Record<CoverageStatus, number>);
+  const summary = list.reduce((acc, c) => { acc[c.status as string] = (acc[c.status as string] ?? 0) + 1; return acc; }, { low: 0, optimal: 0, "above-optimal": 0, high: 0, complement: 0 } as Record<string, number>);
 
   return NextResponse.json({ coverage: list, summary, activeCount: rows.length });
 }
