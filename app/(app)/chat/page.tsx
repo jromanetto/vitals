@@ -3,9 +3,10 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { Send, Sparkles, Plus, Trash2, MessageSquare } from "lucide-react";
+import { Send, Sparkles, Plus, Trash2, MessageSquare, MessagesSquare, FileSearch } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat-markdown";
 import { ChatThinking } from "@/components/chat-thinking";
+import { KnowledgeSearch } from "@/components/knowledge-search";
 
 type Msg = { role: "user" | "assistant"; content: string; sources?: { path: string; snippet?: string }[]; streaming?: boolean; toolCalls?: { name: string; input: unknown }[] };
 type Session = { id: number; title: string; created_at: number; updated_at: number };
@@ -15,6 +16,7 @@ export default function ChatPage() {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
+  const [sidebarTab, setSidebarTab] = useState<"conversations" | "docs">("conversations");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchParams = useSearchParams();
@@ -110,6 +112,11 @@ export default function ChatPage() {
   /* auto-ask */
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "docs") setSidebarTab("docs");
+  }, [searchParams]);
+
+  useEffect(() => {
     const ask = searchParams.get("ask");
     if (!ask) return;
     setInput(ask);
@@ -125,21 +132,42 @@ export default function ChatPage() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6 h-[calc(100vh-9rem)]">
       <aside className="rounded-xl border border-border bg-card p-3 flex flex-col min-h-0">
-        <button onClick={newSession} className="flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-secondary/40 hover:bg-secondary text-sm transition mb-2">
-          <Plus className="h-4 w-4" /> Nouvelle conversation
-        </button>
-        <div className="flex-1 overflow-y-auto scrollbar-thin space-y-0.5">
-          {sessions.length === 0 && <div className="text-xs text-muted-foreground text-center py-6">Aucune conversation</div>}
-          {sessions.map((s) => (
-            <div key={s.id} className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition cursor-pointer ${activeId === s.id ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/30 hover:text-foreground"}`} onClick={() => loadSession(s.id)}>
-              <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate">{s.title}</span>
-              <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 transition p-0.5 hover:text-red-400" aria-label="Supprimer">
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+        <div className="flex gap-1 p-1 bg-secondary/30 rounded-md border border-border mb-2">
+          <button onClick={() => setSidebarTab("conversations")}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition ${sidebarTab === "conversations" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <MessagesSquare className="h-3 w-3" /> Conversations
+          </button>
+          <button onClick={() => setSidebarTab("docs")}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition ${sidebarTab === "docs" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <FileSearch className="h-3 w-3" /> Documents
+          </button>
         </div>
+        {sidebarTab === "conversations" ? (
+          <>
+            <button onClick={newSession} className="flex items-center justify-center gap-2 px-3 py-2 rounded-md bg-secondary/40 hover:bg-secondary text-sm transition mb-2">
+              <Plus className="h-4 w-4" /> Nouvelle conversation
+            </button>
+            <div className="flex-1 overflow-y-auto scrollbar-thin space-y-0.5">
+              {sessions.length === 0 && <div className="text-xs text-muted-foreground text-center py-6">Aucune conversation</div>}
+              {sessions.map((s) => (
+                <div key={s.id} className={`group flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition cursor-pointer ${activeId === s.id ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/30 hover:text-foreground"}`} onClick={() => loadSession(s.id)}>
+                  <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                  <span className="flex-1 truncate">{s.title}</span>
+                  <button onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} className="opacity-0 group-hover:opacity-100 transition p-0.5 hover:text-red-400" aria-label="Supprimer">
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 overflow-y-auto scrollbar-thin">
+            <div className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
+              Recherche directe dans tes documents indexés (rapports, consultations, notes). Pour creuser, demande au panel médical.
+            </div>
+            <KnowledgeSearch compact />
+          </div>
+        )}
       </aside>
 
       <div className="flex flex-col min-h-0">

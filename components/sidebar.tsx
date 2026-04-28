@@ -39,7 +39,6 @@ const groups: Group[] = [
     label: "Données",
     items: [
       { href: "/notes", label: "Notes", icon: StickyNote },
-      { href: "/knowledge", label: "Knowledge base", icon: BookOpen },
       { href: "/memory", label: "Memory", icon: Brain },
       { href: "/import", label: "Import", icon: Upload },
     ],
