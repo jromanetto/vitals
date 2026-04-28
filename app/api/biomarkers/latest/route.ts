@@ -21,7 +21,18 @@ export async function GET() {
     ORDER BY LOWER(b.name)
   `).all() as Array<{ slug: string; name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
 
-  const enriched = rows.map((r) => {
+  // Dedupe: when multiple rows tie on (slug, max(date)), keep the one with reference data; otherwise the first.
+  const bySlug = new Map<string, typeof rows[number]>();
+  for (const r of rows) {
+    const prev = bySlug.get(r.slug);
+    if (!prev) { bySlug.set(r.slug, r); continue; }
+    const prevHasRef = prev.refLow != null && prev.refHigh != null;
+    const curHasRef = r.refLow != null && r.refHigh != null;
+    if (curHasRef && !prevHasRef) bySlug.set(r.slug, r);
+  }
+  const deduped = [...bySlug.values()];
+
+  const enriched = deduped.map((r) => {
     let status: "low" | "ok" | "high" | "unknown" = "unknown";
     if (r.refLow != null && r.refHigh != null) {
       if (r.value < r.refLow) status = "low";

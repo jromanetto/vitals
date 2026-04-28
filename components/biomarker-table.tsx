@@ -4,7 +4,20 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { SkeletonRow } from "./skeleton";
 import { HelpPill } from "./help-pill";
-import { BODY_SYSTEMS, biomarkerSystem, SYSTEM_BY_ID } from "@/lib/body-systems";
+import { BODY_SYSTEMS, biomarkerSystem } from "@/lib/body-systems";
+import { BIOMARKER_EXPLANATIONS } from "@/lib/biomarker-explanations";
+
+function fmtValue(v: number): string {
+  if (!Number.isFinite(v)) return String(v);
+  // Round to 4 significant figures to remove float garbage like 220.03230000000002
+  const abs = Math.abs(v);
+  let rounded: number;
+  if (abs >= 100) rounded = Math.round(v);
+  else if (abs >= 10) rounded = Math.round(v * 10) / 10;
+  else if (abs >= 1) rounded = Math.round(v * 100) / 100;
+  else rounded = Math.round(v * 1000) / 1000;
+  return String(rounded);
+}
 
 type Row = {
   slug: string; name: string; category: string | null;
@@ -131,13 +144,15 @@ export function BiomarkerTable() {
                           <div className="flex items-center gap-2">
                             <Link href={`/biomarkers/${r.slug}`} className="hover:text-emerald transition truncate">{r.name}</Link>
                             <HelpPill
-                              question={`Mon ${r.name} est à ${r.value} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. ${r.refLow}–${r.refHigh})` : ""}. Statut: ${r.status}. Explique-moi ce que ça veut dire pour ma santé, ce qu'il faut surveiller et comment l'optimiser concrètement.`}
+                              title={r.name}
+                              explanation={BIOMARKER_EXPLANATIONS[r.slug] ?? `${r.name} — biomarqueur sanguin. Clique pour demander à ton panel médical une explication détaillée et adaptée à ton profil.`}
+                              question={`Mon ${r.name} est à ${fmtValue(r.value)} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. ${r.refLow}–${r.refHigh})` : ""}. Statut: ${r.status}. Explique-moi ce que ça veut dire pour ma santé, ce qu'il faut surveiller et comment l'optimiser concrètement.`}
                               label={`Demander au panel médical à propos de ${r.name}`}
                             />
                           </div>
                         </td>
                         <td className="px-4 py-2 text-right font-mono">
-                          {r.value} <span className="text-muted-foreground text-xs">{r.unit}</span>
+                          {fmtValue(r.value)} <span className="text-muted-foreground text-xs">{r.unit}</span>
                         </td>
                         <td className="px-4 py-2 text-muted-foreground text-xs">
                           {r.refLow != null && r.refHigh != null ? `${r.refLow}–${r.refHigh}` : "—"}
