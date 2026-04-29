@@ -131,3 +131,13 @@
     text-shadow: none !important;
   }
 }
+
+@media print {
+  @page { margin: 14mm; }
+  .no-print { display: none !important; }
+  nav { display: none !important; }
+  .praticien-doc { font-family: Georgia, 'Times New Roman', Times, serif !important; color: #000 !important; }
+  .praticien-doc table { page-break-inside: avoid; }
+  .praticien-doc section { page-break-inside: avoid; }
+  .praticien-doc h1, .praticien-doc h2 { color: #000 !important; }
+}

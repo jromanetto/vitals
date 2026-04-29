@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare,
-  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target,
+  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target, Printer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +31,7 @@ const groups: Group[] = [
     items: [
       { href: "/chat", label: "Panel médical", icon: MessageSquare },
       { href: "/reports", label: "Rapports", icon: FileText },
+      { href: "/praticien", label: "Vue praticien", icon: Printer },
       { href: "/correlations", label: "Corrélations", icon: GitMerge },
       { href: "/timeline", label: "Timeline", icon: Clock },
     ],
