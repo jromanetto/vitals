@@ -49,7 +49,7 @@ export function MissingBiomarkersCard() {
       </div>
       <div className="space-y-2">
         {visible.map((r, i) => (
-          <motion.div key={r.slug} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+          <motion.div key={r.slug} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                       className={`p-3 rounded-md border ${PRIORITY_CLASS[r.priority]}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">

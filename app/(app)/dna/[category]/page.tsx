@@ -19,7 +19,7 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
   const { category } = await params;
   const rows = await load(category);
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Link href="/dna" className="text-sm text-muted-foreground hover:text-foreground">← Toutes les catégories</Link>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight capitalize">{category}</h1>

@@ -80,7 +80,7 @@ export default function MemoryPage() {
   for (const m of memories) (grouped[m.kind] ??= []).push(m);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center gap-3">
         <Brain className="h-6 w-6 text-emerald" />
         <h1 className="text-2xl font-semibold tracking-tight">Mémoire long-terme</h1>

@@ -48,7 +48,7 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
   const sb = statusBadge();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <Link href="/biomarkers" className="text-sm text-muted-foreground hover:text-foreground">← Tous les biomarkers</Link>
       {!meta && (
         <div className="rounded-xl border border-border p-8 bg-card text-muted-foreground">Aucune donnée pour ce marqueur.</div>

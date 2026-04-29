@@ -135,7 +135,7 @@ export function BloodReportCard({ panelDate }: { panelDate?: number }) {
               const Icon = cfg.icon;
               return (
                 <motion.div
-                  key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                  key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                   className={`rounded-md border ${cfg.cls} p-3 flex items-start gap-2.5`}
                 >
                   <Icon className={`h-3.5 w-3.5 ${cfg.iconCls} shrink-0 mt-0.5`} />
@@ -188,7 +188,7 @@ export function BloodReportCard({ panelDate }: { panelDate?: number }) {
               const pr = PR_CFG[a.priority];
               return (
                 <motion.div
-                  key={i} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
+                  key={i} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                   className="rounded-md border border-border/40 bg-card/50 px-3 py-2"
                 >
                   <div className="flex items-center justify-between gap-2">

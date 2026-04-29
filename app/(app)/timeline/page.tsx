@@ -20,7 +20,7 @@ async function buildTimeline(): Promise<Event[]> {
 export default async function TimelinePage() {
   const events = await buildTimeline();
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Timeline</h1>
         <p className="text-muted-foreground mt-1 text-sm">Tous les événements santé classés du plus récent au plus ancien.</p>

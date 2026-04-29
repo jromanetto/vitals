@@ -18,7 +18,7 @@ export default async function FamilyPage() {
   const profile = await getProfile();
   const pedigree = (profile.pedigree as Record<string, unknown>) ?? {};
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-8 max-w-4xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Pedigree familial</h1>
         <p className="text-muted-foreground mt-1 text-sm">

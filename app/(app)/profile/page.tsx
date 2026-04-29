@@ -17,7 +17,7 @@ async function getProfile() {
 export default async function ProfilePage() {
   const initial = await getProfile();
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-8 max-w-3xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
         <p className="text-muted-foreground mt-1 text-sm">

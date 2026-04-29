@@ -69,7 +69,7 @@ export default function SymptomsPage() {
   }
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Symptômes</h1>
         <p className="text-muted-foreground mt-1 text-sm">Auto-évaluation rapide quotidienne. Clique un nom pour voir le détail + overlay biomarker.</p>

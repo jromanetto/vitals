@@ -20,7 +20,7 @@ export function DnaTopFindings({ findings }: { findings: Finding[] }) {
           <Link key={f.rsid + f.trait} href={`/dna/${f.category}`} className="group">
             <motion.div
               initial={{ opacity: 0, y: 4 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              transition={{ duration: 0.3, delay: i * 0.04 }}
+              transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.4) }}
               className="rounded-xl border border-border bg-card p-4 hover:border-amber-500/40 transition"
             >
               <div className="flex items-start justify-between gap-2">

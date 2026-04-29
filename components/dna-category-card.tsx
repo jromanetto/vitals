@@ -27,7 +27,7 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
         initial={{ opacity: 0, y: 6 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.3, delay: idx * 0.04 }}
+        transition={{ duration: 0.3, delay: Math.min(idx * 0.04, 0.4) }}
         className={`rounded-xl border ${borderTone} bg-card p-5 transition relative overflow-hidden`}
       >
         <div className="flex items-start justify-between gap-2">

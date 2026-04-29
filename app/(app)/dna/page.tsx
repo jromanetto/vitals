@@ -56,7 +56,7 @@ async function counts() {
 export default async function DnaPage() {
   const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts();
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         title="Analyse ADN"
         description={

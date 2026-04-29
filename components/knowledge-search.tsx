@@ -83,7 +83,7 @@ export function KnowledgeSearch({ compact = false }: { compact?: boolean } = {})
           <div className="space-y-3">
             {hits.map((h, i) => (
               <motion.article key={h.chunkId}
-                              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: i * 0.02 }}
+                              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.4) }}
                               className={`rounded-${compact ? "lg" : "xl"} border border-border bg-card ${compact ? "p-2.5" : "p-4"}`}>
                 <div className={`flex items-center justify-between text-muted-foreground ${compact ? "text-[10px]" : "text-xs"}`}>
                   <span className="truncate">{h.category} · {h.path.split("/").slice(-1)[0]}</span>

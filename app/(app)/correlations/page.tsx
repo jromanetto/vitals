@@ -60,7 +60,7 @@ export default function CorrelationsPage() {
   const counts = data.counts;
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-8 max-w-5xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Corrélations</h1>
         <p className="text-muted-foreground mt-1 text-sm">Spearman entre tes signaux quotidiens. Plus tu loggues, plus c'est fiable.</p>

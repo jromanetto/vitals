@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BiomarkersPage() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <PageHeader
         title="Biomarqueurs"
         description="Tous tes bilans sanguins, regroupés par système corporel. Chaque biomarqueur affiche la référence labo et la cible longévité."

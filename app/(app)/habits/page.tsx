@@ -66,7 +66,7 @@ export default function HabitsPage() {
   }
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Habitudes</h1>
         <p className="text-muted-foreground mt-1 text-sm">Coche ce que tu fais aujourd'hui. Streaks et heatmap 60 jours en dessous.</p>
@@ -83,7 +83,7 @@ export default function HabitsPage() {
             return (
               <motion.button
                 key={h.key} onClick={() => toggle(h.key)}
-                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                 className={`flex items-center gap-3 p-3 rounded-md border transition text-left ${isDone ? "bg-emerald/15 border-emerald/40" : "bg-secondary/30 border-border hover:border-emerald/30"}`}
               >
                 <div className={`h-8 w-8 rounded-full flex items-center justify-center ${isDone ? "bg-emerald text-primary-foreground" : "bg-secondary"}`}>
@@ -107,7 +107,7 @@ export default function HabitsPage() {
         <h2 className="text-sm font-medium mb-4">Heatmap 60 jours</h2>
         <div className="space-y-1">
           {HABITS.map((h, i) => (
-            <motion.div key={h.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
+            <motion.div key={h.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.03, 0.4) }}
                         className="flex items-center gap-2 text-xs">
               <div className="w-40 truncate text-muted-foreground shrink-0">{h.label}</div>
               <div className="flex gap-px flex-1">

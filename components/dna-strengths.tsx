@@ -22,7 +22,7 @@ export function DnaStrengths({ strengths }: { strengths: Strength[] }) {
           <Link key={f.rsid + f.trait} href={`/dna/${f.category}`} className="group">
             <motion.div
               initial={{ opacity: 0, y: 4 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              transition={{ duration: 0.3, delay: i * 0.04 }}
+              transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.4) }}
               className="rounded-xl border border-border bg-card p-4 hover:border-emerald/40 transition relative overflow-hidden"
             >
               <div className="absolute top-3 right-3"><Shield className="h-3.5 w-3.5 text-emerald/60" /></div>

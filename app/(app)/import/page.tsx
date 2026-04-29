@@ -117,7 +117,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="space-y-7 max-w-5xl">
+    <div className="space-y-8 max-w-5xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Import unifié</h1>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -194,7 +194,7 @@ export default function ImportPage() {
               const tone = r.status === "ok" ? "border-emerald/30 bg-emerald/5" : r.status === "skipped" ? "border-border bg-secondary/30" : "border-red-500/30 bg-red-500/5";
               const accent = r.status === "ok" ? "text-emerald" : r.status === "skipped" ? "text-muted-foreground" : "text-red-400";
               return (
-                <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                <motion.div key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                             className={`rounded-md border ${tone} p-3 flex items-start gap-3`}>
                   <Icon className={`h-4 w-4 ${accent} shrink-0 mt-0.5`} />
                   <div className="flex-1 min-w-0">

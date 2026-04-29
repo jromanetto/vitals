@@ -35,7 +35,7 @@ export function SupplementEffectsCard() {
       <h2 className="text-sm font-medium flex items-center gap-2 mb-4"><TrendingUp className="h-4 w-4 text-emerald" />Effets des suppléments ({withBefore.length})</h2>
       <div className="space-y-2">
         {withBefore.map((e, i) => (
-          <motion.div key={e.supplementId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+          <motion.div key={e.supplementId} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                       className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto_auto] gap-3 items-center p-3 rounded-md bg-secondary/30 border border-border">
             <div className="min-w-0">
               <div className="font-medium text-sm truncate">{e.supplement}</div>

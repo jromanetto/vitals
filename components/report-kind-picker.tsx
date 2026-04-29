@@ -41,7 +41,7 @@ export function ReportKindPicker({ kinds }: { kinds: Kind[] }) {
         {kinds.map((k, i) => (
           <motion.button key={k.id} onClick={() => go(k.id)} disabled={!!generating}
                          initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                         transition={{ duration: 0.25, delay: i * 0.03 }}
+                         transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.4) }}
                          className="text-left rounded-xl border border-border bg-card hover:border-emerald/40 p-4 transition disabled:opacity-50">
             <div className="flex items-center justify-between">
               <span className="font-medium text-sm">{k.label}</span>

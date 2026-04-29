@@ -33,7 +33,7 @@ export default function ProfileImportPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-8 max-w-3xl">
       <div>
         <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-emerald" /><h1 className="text-2xl font-semibold tracking-tight">Importer un texte</h1></div>
         <p className="text-muted-foreground mt-1 text-sm">Colle une lettre de médecin, un résumé de bilan, ou n'importe quel texte santé. Claude extrait les infos pour remplir ton profil.</p>

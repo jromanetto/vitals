@@ -114,7 +114,7 @@ export default function SupplementsPage() {
   const dnaCount = supplementSuggestions.filter((s) => s.source === "dna").length;
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Suppléments</h1>
@@ -157,7 +157,7 @@ export default function SupplementsPage() {
           </div>
           <div className="space-y-2">
             {filteredSuggestions.map((s, i) => (
-              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                           className={`flex items-start justify-between gap-4 p-3 rounded-md border transition ${PRIORITY_STYLES[s.priority]} ${s.coveredBy ? "opacity-60" : ""}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -198,7 +198,7 @@ export default function SupplementsPage() {
           </div>
           <div className="space-y-2">
             {avoidSuggestions.map((s, i) => (
-              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+              <motion.div key={i + s.supplement} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
                           className="rounded-md border border-amber-500/30 bg-card/40 p-3">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex-1 min-w-0">

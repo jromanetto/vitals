@@ -146,7 +146,7 @@ export function BiomarkerTable() {
         const isOpen = !!openSystems[sys.id];
 
         return (
-          <motion.section key={sys.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: sysIdx * 0.04 }}
+          <motion.section key={sys.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, delay: Math.min(sysIdx * 0.04, 0.4) }}
                           className="rounded-xl border border-border bg-card overflow-hidden">
             <button
               onClick={() => setOpenSystems((s) => ({ ...s, [sys.id]: !s[sys.id] }))}

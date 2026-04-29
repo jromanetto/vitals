@@ -24,6 +24,10 @@
     --input: 240 6% 90%;
     --ring: 160 84% 39%;
     --radius: 0.6rem;
+    --status-success: 160 84% 39%;
+    --status-warning: 38 92% 50%;
+    --status-danger: 0 84% 60%;
+    --status-info: 199 89% 48%;
   }
   .dark {
     --background: 0 0% 4%;
@@ -45,6 +49,10 @@
     --border: 240 5% 15%;
     --input: 240 5% 15%;
     --ring: 160 84% 39%;
+    --status-success: 160 84% 39%;
+    --status-warning: 38 92% 50%;
+    --status-danger: 0 84% 60%;
+    --status-info: 199 89% 48%;
   }
 }
 
@@ -81,6 +89,14 @@
   }
 }
 
+@layer utilities {
+  .h-display { @apply text-3xl md:text-4xl font-semibold tracking-tight; }
+  .h-page { @apply text-2xl md:text-3xl font-semibold tracking-tight; }
+  .h-section { @apply text-lg font-semibold tracking-tight; }
+  .h-card { @apply text-base font-medium tracking-tight; }
+  .eyebrow { @apply text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium; }
+}
+
 .glass {
   background: linear-gradient(180deg, hsl(var(--card) / 0.6), hsl(var(--card) / 0.6));
   backdrop-filter: blur(20px);
@@ -96,7 +112,22 @@
 .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
 
 @media print {
-  aside, header { display: none !important; }
+  aside,
+  header[class*="border-b"],
+  #sidebar,
+  .floating-chat,
+  [data-bottom-nav] {
+    display: none !important;
+  }
   main { padding: 0 !important; max-width: none !important; }
-  body { background: white !important; color: black !important; }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: Georgia, "Times New Roman", Times, serif !important;
+  }
+  * {
+    box-shadow: none !important;
+    background-image: none !important;
+    text-shadow: none !important;
+  }
 }

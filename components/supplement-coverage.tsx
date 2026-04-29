@@ -138,7 +138,7 @@ export function SupplementCoverage({ refreshKey, bloodHelp = [] }: { refreshKey?
           return (
             <motion.div
               key={c.key}
-              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.025 }}
+              initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.025, 0.4) }}
               className="rounded-md border border-border bg-card/40 p-3 space-y-2.5"
             >
               {/* Top row: name + status badges */}
