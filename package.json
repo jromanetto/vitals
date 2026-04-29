@@ -24,6 +24,7 @@
     "better-sqlite3": "^11.5.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "drizzle-orm": "^0.36.4",
     "framer-motion": "^11.11.17",
     "iron-session": "^8.0.4",

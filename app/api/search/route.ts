@@ -5,24 +5,41 @@ import { ensureSchema } from "@/lib/db/migrate";
 
 export const runtime = "nodejs";
 
-type Hit = { kind: "biomarker" | "dna" | "report" | "doc" | "page" | "note" | "supplement" | "habit"; title: string; subtitle?: string; href: string };
+type Hit = { kind: "biomarker" | "dna" | "report" | "doc" | "page" | "note" | "supplement" | "habit" | "action" | "reminder"; title: string; subtitle?: string; href: string };
 
 const PAGES: Hit[] = [
   { kind: "page", title: "Dashboard", href: "/" },
-  { kind: "page", title: "Biomarkers", href: "/biomarkers" },
-  { kind: "page", title: "DNA Analysis", href: "/dna" },
-  { kind: "page", title: "Reports", href: "/reports" },
+  { kind: "page", title: "Biomarqueurs", subtitle: "tous tes bilans sanguins", href: "/biomarkers" },
+  { kind: "page", title: "Comparer bilans", subtitle: "deltas entre 2 panels", href: "/biomarkers/compare" },
+  { kind: "page", title: "ADN", subtitle: "variants génétiques par catégorie", href: "/dna" },
+  { kind: "page", title: "Plan d'action", subtitle: "sommeil · sport · nutrition", href: "/action-plan" },
+  { kind: "page", title: "Vue praticien", subtitle: "résumé imprimable pour ton médecin", href: "/praticien" },
+  { kind: "page", title: "Panel médical", subtitle: "discuter de tes données", href: "/chat" },
+  { kind: "page", title: "Documents", subtitle: "recherche dans tes documents", href: "/chat?tab=docs" },
+  { kind: "page", title: "Rapports", href: "/reports" },
   { kind: "page", title: "Timeline", href: "/timeline" },
-  { kind: "page", title: "Knowledge", href: "/knowledge" },
   { kind: "page", title: "Corrélations", href: "/correlations" },
   { kind: "page", title: "Notes", href: "/notes" },
-  { kind: "page", title: "AI Chat", href: "/chat" },
   { kind: "page", title: "Suppléments", href: "/supplements" },
   { kind: "page", title: "Symptômes", href: "/symptoms" },
   { kind: "page", title: "Habitudes", href: "/habits" },
-  { kind: "page", title: "Import wearables", href: "/import" },
-  { kind: "page", title: "Profile", href: "/profile" },
+  { kind: "page", title: "Rappels", subtitle: "échéances santé", href: "/reminders" },
+  { kind: "page", title: "Import", subtitle: "drag-drop tout fichier", href: "/import" },
+  { kind: "page", title: "Memory", href: "/memory" },
+  { kind: "page", title: "Profil", href: "/profile" },
   { kind: "page", title: "Pedigree familial", href: "/profile/family" },
+  { kind: "page", title: "Sécurité", subtitle: "2FA · clé de chiffrement", href: "/profile/security" },
+];
+
+const ACTIONS: Hit[] = [
+  { kind: "action", title: "+ Nouveau supplément", subtitle: "ajouter à ta stack", href: "/supplements?new=1" },
+  { kind: "action", title: "+ Nouveau rappel", subtitle: "prise de sang, cure, RDV", href: "/reminders?new=1" },
+  { kind: "action", title: "+ Nouvelle note", subtitle: "saisir une note libre", href: "/notes?new=1" },
+  { kind: "action", title: "+ Nouveau symptôme", subtitle: "logger un événement santé", href: "/symptoms?new=1" },
+  { kind: "action", title: "↑ Importer un fichier", subtitle: "PDF, ADN, CSV wearable", href: "/import" },
+  { kind: "action", title: "💬 Demander au panel médical", subtitle: "question libre", href: "/chat" },
+  { kind: "action", title: "📋 Générer un rapport longévité", subtitle: "synthèse complète", href: "/reports" },
+  { kind: "action", title: "🖨 Imprimer ma vue praticien", subtitle: "résumé pour mon médecin", href: "/praticien" },
 ];
 
 export async function GET(req: Request) {
@@ -31,12 +48,22 @@ export async function GET(req: Request) {
   ensureSchema();
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").toLowerCase().trim();
-  if (!q) return NextResponse.json({ hits: PAGES });
+  if (!q) return NextResponse.json({ hits: [...ACTIONS, ...PAGES] });
 
   const sqlite = db().$client;
   const hits: Hit[] = [];
 
-  for (const p of PAGES) if (p.title.toLowerCase().includes(q)) hits.push(p);
+  for (const a of ACTIONS) if (a.title.toLowerCase().includes(q) || (a.subtitle ?? "").toLowerCase().includes(q)) hits.push(a);
+  for (const p of PAGES) if (p.title.toLowerCase().includes(q) || (p.subtitle ?? "").toLowerCase().includes(q)) hits.push(p);
+
+  // Reminders
+  try {
+    const reminders = sqlite.prepare(`SELECT id, title, description, due_at, done FROM reminder WHERE LOWER(title) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ? ORDER BY done ASC, due_at ASC LIMIT 5`).all(`%${q}%`, `%${q}%`) as Array<{ id: number; title: string; description: string | null; due_at: number; done: number }>;
+    for (const r of reminders) {
+      const dueStr = new Date(r.due_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+      hits.push({ kind: "reminder", title: r.title, subtitle: `${r.done ? "fait" : "à faire"} · ${dueStr}`, href: "/reminders" });
+    }
+  } catch {}
 
   const bms = sqlite.prepare(`SELECT DISTINCT slug, name, category FROM biomarker WHERE LOWER(name) LIKE ? OR LOWER(category) LIKE ? LIMIT 8`).all(`%${q}%`, `%${q}%`) as Array<{ slug: string; name: string; category: string | null }>;
   for (const b of bms) hits.push({ kind: "biomarker", title: b.name, subtitle: b.category ?? "biomarker", href: `/biomarkers/${b.slug}` });
