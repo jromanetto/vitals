@@ -1,6 +1,7 @@
 "use client";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceArea, CartesianGrid } from "recharts";
 import { motion } from "framer-motion";
+import { CHART_COLORS, tooltipStyle, axisStyle } from "@/lib/charts/theme";
 
 type Series = { date: number; value: number; source: string | null }[];
 
@@ -32,21 +33,21 @@ export function BiomarkerChart({
       <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke={CHART_COLORS.grid} strokeDasharray="3 3" vertical={false} />
             {refLow != null && refHigh != null && (
               <ReferenceArea y1={refLow} y2={refHigh} fill="hsl(220 5% 50% / 0.06)" stroke="hsl(220 5% 40% / 0.18)" />
             )}
             {optimalLow != null && optimalHigh != null && (
-              <ReferenceArea y1={optimalLow} y2={optimalHigh} fill="hsl(160 84% 39% / 0.10)" stroke="hsl(160 84% 39% / 0.25)" />
+              <ReferenceArea y1={optimalLow} y2={optimalHigh} fill={CHART_COLORS.primary} fillOpacity={0.10} stroke={CHART_COLORS.primary} strokeOpacity={0.25} />
             )}
             {longevityLow != null && longevityHigh != null && (
-              <ReferenceArea y1={longevityLow} y2={longevityHigh} fill="hsl(160 84% 39% / 0.20)" stroke="hsl(160 84% 39% / 0.45)" />
+              <ReferenceArea y1={longevityLow} y2={longevityHigh} fill={CHART_COLORS.primary} fillOpacity={0.20} stroke={CHART_COLORS.primary} strokeOpacity={0.45} />
             )}
-            <XAxis dataKey="dateLabel" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} stroke="hsl(var(--border))" />
-            <YAxis domain={[minVal - pad, maxVal + pad]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} stroke="hsl(var(--border))" />
-            <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+            <XAxis dataKey="dateLabel" tick={{ fill: axisStyle.stroke, fontSize: 11 }} stroke={axisStyle.stroke} />
+            <YAxis domain={[minVal - pad, maxVal + pad]} tick={{ fill: axisStyle.stroke, fontSize: 11 }} stroke={axisStyle.stroke} />
+            <Tooltip contentStyle={tooltipStyle}
                      formatter={(v: number) => [`${v} ${unit}`, "Valeur"]} />
-            <Line type="monotone" dataKey="value" stroke="hsl(160 84% 39%)" strokeWidth={2.2} dot={{ r: 3, fill: "hsl(160 84% 39%)" }} activeDot={{ r: 5 }} />
+            <Line type="monotone" dataKey="value" stroke={CHART_COLORS.primary} strokeWidth={2.2} dot={{ r: 3, fill: CHART_COLORS.primary }} activeDot={{ r: 5 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

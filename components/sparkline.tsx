@@ -1,5 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
+import { CHART_COLORS } from "@/lib/charts/theme";
 
 export function Sparkline({ values, width = 120, height = 36, trend }: { values: number[]; width?: number; height?: number; trend?: "up" | "down" | "flat" }) {
   if (!values || values.length === 0) return <div style={{ width, height }} className="text-[10px] text-muted-foreground italic flex items-center">no data</div>;
@@ -10,7 +11,8 @@ export function Sparkline({ values, width = 120, height = 36, trend }: { values:
   const range = max - min || 1;
   const stepX = width / (values.length - 1);
   const points = values.map((v, i) => `${i * stepX},${height - ((v - min) / range) * (height - 4) - 2}`).join(" ");
-  const color = trend === "up" ? "rgb(248, 113, 113)" : trend === "down" ? "rgb(16, 185, 129)" : "rgb(156, 163, 175)";
+  // "up" trend = bad direction (red), "down" = good (emerald), "flat" = muted.
+  const color = trend === "up" ? CHART_COLORS.danger : trend === "down" ? CHART_COLORS.primary : CHART_COLORS.muted;
 
   return (
     <svg width={width} height={height} className="block">

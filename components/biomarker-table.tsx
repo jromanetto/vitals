@@ -5,6 +5,7 @@ import Link from "next/link";
 import { SkeletonRow } from "./skeleton";
 import { HelpPill } from "./help-pill";
 import { BiomarkerStatusBar } from "./biomarker-status-bar";
+import { InlineSparkline, type SparkPoint } from "./inline-sparkline";
 import { BODY_SYSTEMS, biomarkerSystem } from "@/lib/body-systems";
 import { BIOMARKER_EXPLANATIONS } from "@/lib/biomarker-explanations";
 
@@ -27,6 +28,12 @@ const STATUS_CFG: Record<Status, { label: string; cls: string }> = {
   unknown:        { label: "—",            cls: "text-muted-foreground" },
 };
 
+// Slugs where a higher value is the desired direction (when no optimum band is provided).
+const HIGHER_IS_BETTER = new Set<string>([
+  "hdl", "vitamine-d-25-oh", "testosterone-totale", "testosterone-libre",
+  "dhea-s", "index-omega-3", "apo-a1",
+]);
+
 function fmtValue(v: number): string {
   if (!Number.isFinite(v)) return String(v);
   const abs = Math.abs(v);
@@ -47,12 +54,24 @@ function fmtRef(lo: number | null, hi: number | null): string {
 
 export function BiomarkerTable() {
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [series, setSeries] = useState<Record<string, SparkPoint[]>>({});
   const [filter, setFilter] = useState("");
   const [openSystems, setOpenSystems] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch("/api/biomarkers/latest").then((r) => r.json()).then((d) => setRows(d.rows ?? [])).catch(() => setRows([]));
   }, []);
+
+  // Bulk-fetch sparkline series once we know the full slug list.
+  useEffect(() => {
+    if (!rows || rows.length === 0) return;
+    const slugs = rows.map((r) => r.slug);
+    const params = new URLSearchParams({ slugs: slugs.join(",") });
+    fetch(`/api/biomarkers/series?${params.toString()}`)
+      .then((r) => r.json())
+      .then((d) => setSeries(d.series ?? {}))
+      .catch(() => setSeries({}));
+  }, [rows]);
 
   const loading = rows === null;
   const filtered = (rows ?? []).filter(
@@ -76,7 +95,6 @@ export function BiomarkerTable() {
     return t;
   }, [filtered]);
 
-  // Reference date: most recent date across all biomarkers
   const latestDate = useMemo(() => {
     if (!rows || rows.length === 0) return null;
     return Math.max(...rows.map((r) => r.date));
@@ -97,7 +115,6 @@ export function BiomarkerTable() {
 
   return (
     <div className="space-y-4">
-      {/* Top summary pills */}
       {!loading && filtered.length > 0 && (
         <div className="flex items-center flex-wrap gap-1.5 text-[10px] uppercase tracking-wider">
           {totals.optimal > 0 && <span className="px-2 py-1 rounded-full border border-emerald/30 bg-emerald/10 text-emerald">{totals.optimal} optimal</span>}
@@ -170,9 +187,10 @@ export function BiomarkerTable() {
                 {items.map((r) => {
                   const cfg = STATUS_CFG[r.status];
                   const fresh = freshness(r.date);
+                  const pts = series[r.slug] ?? [];
                   return (
                     <div key={r.slug} className="px-4 py-4 hover:bg-secondary/20 transition">
-                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 md:gap-5 items-start">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 md:gap-4 items-start">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Link href={`/biomarkers/${r.slug}`} className="text-sm font-medium hover:text-emerald transition">{r.name}</Link>
@@ -193,7 +211,6 @@ export function BiomarkerTable() {
                             <span className="text-[10px] text-muted-foreground tabular-nums">{new Date(r.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })}</span>
                           </div>
 
-                          {/* Reference legend (above bar for context) */}
                           <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-2 flex-wrap">
                             {r.refLow != null && r.refHigh != null && (
                               <span className="flex items-center gap-1">
@@ -215,6 +232,18 @@ export function BiomarkerTable() {
                             refLow={r.refLow} refHigh={r.refHigh}
                             longevityLow={r.longevityLow} longevityHigh={r.longevityHigh}
                             status={r.status}
+                          />
+                        </div>
+                        {/* Inline sparkline (last 6 points). Hidden on smallest screens to save horizontal space. */}
+                        <div className="hidden md:flex items-center justify-center self-center">
+                          <InlineSparkline
+                            points={pts}
+                            width={60}
+                            height={24}
+                            optimalLow={r.longevityLow ?? r.optimalLow}
+                            optimalHigh={r.longevityHigh ?? r.optimalHigh}
+                            unit={r.unit}
+                            higherIsBetter={HIGHER_IS_BETTER.has(r.slug)}
                           />
                         </div>
                         <div className="text-right min-w-[6rem] shrink-0">
