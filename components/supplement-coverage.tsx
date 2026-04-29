@@ -216,9 +216,9 @@ export function SupplementCoverage({ refreshKey, bloodHelp = [] }: { refreshKey?
 
               {/* Status text */}
               <div className="text-[11px] leading-relaxed">
-                {inOptimal && <span className="text-emerald">✓ Total dans la plage optimale</span>}
-                {aboveOptimal && totalIntake < max && <span className="text-sky-400">↑ Au-dessus de la cible (sans danger)</span>}
-                {totalIntake >= max && <span className="text-red-400">⚠ Au-dessus du plafond — réduire</span>}
+                {!gap && inOptimal && <span className="text-emerald">✓ Total dans la plage optimale</span>}
+                {!gap && aboveOptimal && totalIntake < max && <span className="text-sky-400">↑ Au-dessus de la cible (sans danger)</span>}
+                {totalIntake >= max && <span className="text-red-400">⚠ Au-dessus du plafond — réduire (risque de toxicité)</span>}
                 {belowOptimal && c.target.primarySource === "food" && !gap && (
                   <span className="text-muted-foreground">Apport alimentaire seul devrait suffire — supplément en bonus.</span>
                 )}
