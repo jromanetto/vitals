@@ -54,6 +54,18 @@ export function ensureSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS chat_memory_kind_idx ON chat_memory(kind)`,
     `CREATE INDEX IF NOT EXISTS chat_memory_active_idx ON chat_memory(active)`,
+    // Sprint 29: reminders system
+    `CREATE TABLE IF NOT EXISTS reminder (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      description TEXT,
+      due_at INTEGER NOT NULL,
+      category TEXT,
+      done INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`,
+    `CREATE INDEX IF NOT EXISTS reminder_due_idx ON reminder(due_at)`,
+    `CREATE INDEX IF NOT EXISTS reminder_done_idx ON reminder(done)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {
