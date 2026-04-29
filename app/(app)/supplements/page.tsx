@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
 import { InteractionsCard } from "@/components/interactions-card";
 import { SupplementCoverage } from "@/components/supplement-coverage";
+import { Button } from "@/components/ui/button";
+import { Input, Textarea, Select } from "@/components/ui/input";
 
 type Supplement = {
   id: number; name: string; dose: string | null; unit: string | null;
@@ -125,9 +127,9 @@ export default function SupplementsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Suppléments</h1>
           <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions personnalisées (biomarkers + ADN) · interactions.</p>
         </div>
-        <button onClick={() => { setEditing(null); setShowForm(true); }} className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90">
-          <Plus className="h-4 w-4" /> Ajouter
-        </button>
+        <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditing(null); setShowForm(true); }}>
+          Ajouter
+        </Button>
       </div>
 
       <InteractionsCard />
@@ -186,7 +188,7 @@ export default function SupplementsPage() {
                 {s.coveredBy ? (
                   <span className="text-[10px] text-muted-foreground shrink-0 self-start italic">déjà pris</span>
                 ) : (
-                  <button onClick={() => addFromSuggestion(s)} className="text-xs px-2 py-1 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0 self-start">+ Ajouter</button>
+                  <Button variant="primary" size="sm" onClick={() => addFromSuggestion(s)} className="shrink-0 self-start">+ Ajouter</Button>
                 )}
               </motion.div>
             ))}
@@ -284,9 +286,9 @@ export default function SupplementsPage() {
                   )}
                 </div>
               </div>
-              <button onClick={() => del(r.id)} className="p-1.5 rounded-md hover:bg-red-500/10 text-muted-foreground hover:text-red-400" aria-label="Supprimer">
+              <Button variant="ghost" size="sm" onClick={() => del(r.id)} className="hover:bg-red-500/10 hover:text-red-400 px-1.5" aria-label="Supprimer">
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -314,7 +316,7 @@ export default function SupplementsPage() {
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl border border-border bg-card p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Nouveau supplément</h3>
-                <button onClick={() => setShowForm(false)}><X className="h-4 w-4 text-muted-foreground" /></button>
+                <Button variant="ghost" size="sm" onClick={() => setShowForm(false)} aria-label="Fermer" className="px-1.5"><X className="h-4 w-4" /></Button>
               </div>
               <div className="flex gap-1 p-1 bg-secondary/30 rounded-lg border border-border">
                 <button type="button" onClick={() => setInputMode("url")}
@@ -333,13 +335,13 @@ export default function SupplementsPage() {
                     <div className="space-y-2">
                       <label className="text-[11px] uppercase tracking-wider text-muted-foreground">URL du produit</label>
                       <div className="flex gap-2">
-                        <input
+                        <Input
                           autoFocus
                           placeholder="https://drstanfield.com/... · iHerb · Amazon · marque"
                           value={form.url}
                           onChange={(e) => setForm({ ...form, url: e.target.value })}
                           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (document.getElementById("sup-import-btn") as HTMLButtonElement)?.click(); } }}
-                          className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                          className="flex-1"
                         />
                         <button
                           id="sup-import-btn"
@@ -413,20 +415,20 @@ export default function SupplementsPage() {
                   </>
                 ) : (
                   <>
-                    <input autoFocus placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                    <input placeholder="Marque (ex: Thorne, Nordic Naturals…)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                    <Input autoFocus placeholder="Nom (ex: Vitamine D3)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                    <Input placeholder="Marque (ex: Thorne, Nordic Naturals…)" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
                   </>
                 )}
 
                 <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Dose (ex: 4000)" value={form.dose} onChange={(e) => setForm({ ...form, dose: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                  <input placeholder="Unité" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <Input placeholder="Dose (ex: 4000)" value={form.dose} onChange={(e) => setForm({ ...form, dose: e.target.value })} />
+                  <Input placeholder="Unité" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
-                  <input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                  <Input placeholder="Timing" value={form.timing} onChange={(e) => setForm({ ...form, timing: e.target.value })} />
+                  <Input placeholder="Fréquence" value={form.frequency} onChange={(e) => setForm({ ...form, frequency: e.target.value })} />
                 </div>
-                <select value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary">
+                <Select value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })}>
                   <option value="continu">Continu (à vie / quotidien)</option>
                   <option value="3 mois">Cure 3 mois</option>
                   <option value="2 mois">Cure 2 mois</option>
@@ -434,12 +436,12 @@ export default function SupplementsPage() {
                   <option value="6 semaines">6 semaines</option>
                   <option value="hiver">Hiver uniquement</option>
                   <option value="ponctuel">Ponctuel (au besoin)</option>
-                </select>
-                <textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                </Select>
+                <Textarea placeholder="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowForm(false)} className="px-3 py-2 rounded-md text-sm">Annuler</button>
-                <button onClick={save} className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium">Enregistrer</button>
+                <Button variant="ghost" onClick={() => setShowForm(false)}>Annuler</Button>
+                <Button variant="primary" size="lg" onClick={save}>Enregistrer</Button>
               </div>
             </motion.div>
           </motion.div>

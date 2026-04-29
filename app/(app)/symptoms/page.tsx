@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { Input } from "@/components/ui/input";
 
 const SYMPTOMS = [
   { key: "energy", label: "Énergie", scale: 10 },
@@ -78,8 +79,12 @@ export default function SymptomsPage() {
       <section className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium">Aujourd'hui — {todayStr}</h2>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Note du jour (optionnel)"
-                 className="text-xs bg-secondary/40 border border-border rounded-md px-2 py-1 outline-none focus:border-primary w-72" />
+          <Input
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Note du jour (optionnel)"
+            className="text-xs px-2 py-1 w-72"
+          />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {SYMPTOMS.map((sym) => (
@@ -98,9 +103,13 @@ export default function SymptomsPage() {
                   ))}
                 </div>
               ) : (
-                <input type="number" placeholder={`Ex: 65 ms`} defaultValue={today[sym.key] ?? ""}
-                       onBlur={(e) => { if (e.target.value) save(sym.key, Number(e.target.value)); }}
-                       className="w-full bg-secondary/40 border border-border rounded-md px-2 py-1.5 text-sm outline-none focus:border-primary" />
+                <Input
+                  type="number"
+                  placeholder="Ex: 65 ms"
+                  defaultValue={today[sym.key] ?? ""}
+                  onBlur={(e) => { if (e.target.value) save(sym.key, Number(e.target.value)); }}
+                  className="px-2 py-1.5"
+                />
               )}
             </div>
           ))}

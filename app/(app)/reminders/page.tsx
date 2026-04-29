@@ -4,6 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Plus, X, Check, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Input, Textarea, Select } from "@/components/ui/input";
 
 type Reminder = {
   id: number;
@@ -43,7 +45,6 @@ function defaultDueAtLocal(): string {
   const d = new Date();
   d.setDate(d.getDate() + 7);
   d.setHours(9, 0, 0, 0);
-  // Format YYYY-MM-DDTHH:MM for datetime-local input
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -143,46 +144,42 @@ export default function RemindersPage() {
           <Plus className="h-4 w-4 text-emerald" />
           Nouveau rappel
         </div>
-        <input
+        <Input
+          ref={_titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Titre (ex: Bilan sanguin trimestriel)"
           required
-          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
         />
-        <textarea
+        <Textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Description (optionnel)"
           rows={2}
-          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary resize-none"
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input
+          <Input
             type="datetime-local"
             value={dueAtLocal}
             onChange={(e) => setDueAtLocal(e.target.value)}
             required
-            className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
           />
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
-          >
+          <Select value={category} onChange={(e) => setCategory(e.target.value)}>
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="flex justify-end">
-          <button
+          <Button
             type="submit"
-            disabled={submitting || !title.trim()}
-            className="px-4 py-2 rounded-md bg-emerald text-emerald-foreground text-sm font-medium hover:bg-emerald/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            variant="primary"
+            size="lg"
+            disabled={!title.trim()}
+            loading={submitting}
           >
             {submitting ? "Ajout…" : "Ajouter"}
-          </button>
+          </Button>
         </div>
       </motion.form>
 
