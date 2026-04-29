@@ -16,11 +16,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, Save, Sparkles } from "lucide-react";
 import Link from "next/link";
 
-type Section = {
+export type Section = {
   id: string; title: string; description?: string;
   fields: Field[];
 };
-type Field =
+export type Field =
   | { id: string; label: string; type: "text" | "email" | "number" | "date" | "tel" | "url"; placeholder?: string; suffix?: string; col?: 1 | 2 }
   | { id: string; label: string; type: "textarea"; placeholder?: string; rows?: number }
   | { id: string; label: string; type: "select"; options: string[]; col?: 1 | 2 }
@@ -32,7 +32,7 @@ type Field =
   | { id: string; label: string; type: "sportsStructured" }
   | { id: string; label: string; type: "specialistsStructured" };
 
-const SECTIONS: Section[] = [
+export const SECTIONS: Section[] = [
   { id: "identity", title: "Identité", description: "Identification de base.", fields: [
     { id: "firstName", label: "Prénom", type: "text", col: 1 },
     { id: "lastName", label: "Nom", type: "text", col: 1 },
@@ -131,7 +131,7 @@ const SECTIONS: Section[] = [
   ]},
 ];
 
-function completion(section: Section, data: Record<string, unknown>): number {
+export function completion(section: Section, data: Record<string, unknown>): number {
   if (section.id === "environment") {
     let filled = 0; const max = 5;
     const cur = data.currentLocation as { countryCode?: string; city?: string } | undefined;
@@ -265,7 +265,7 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
   );
 }
 
-function FieldRow({ field, value, onChange, onMulti }: {
+export function FieldRow({ field, value, onChange, onMulti }: {
   field: Field; value: unknown; onChange: (v: unknown) => void; onMulti: (opt: string) => void;
 }) {
   // Sliders for 0-10 emotional ratings
