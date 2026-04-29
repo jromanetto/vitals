@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { LogOut, Search, Command } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { MobileNav } from "@/components/mobile-nav";
+import { MobileDrawer } from "@/components/mobile-drawer";
 
 export function TopBar({ email }: { email: string }) {
   const router = useRouter();
@@ -18,7 +18,7 @@ export function TopBar({ email }: { email: string }) {
   return (
     <>
       <header className="h-14 border-b border-border flex items-center px-4 md:px-10 gap-3 md:gap-4 bg-background/80 backdrop-blur sticky top-0 z-40">
-        <MobileNav />
+        <MobileDrawer />
         <button onClick={openPalette} className="flex-1 max-w-md flex items-center gap-2 bg-secondary/40 border border-border rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:border-primary/50 transition">
           <Search className="h-4 w-4" />
           <span>Rechercher…</span>

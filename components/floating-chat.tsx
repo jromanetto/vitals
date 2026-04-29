@@ -42,7 +42,7 @@ export function FloatingChat() {
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.25 }}
             onClick={() => setOpen(true)}
-            className="fixed bottom-6 right-6 z-40 group"
+            className="fixed bottom-6 right-6 z-40 group hidden md:flex"
             aria-label="Ouvrir le chat"
           >
             <div className="relative">
