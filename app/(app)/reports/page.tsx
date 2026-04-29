@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import Link from "next/link";
+import { FileText } from "lucide-react";
 import { ReportKindPicker } from "@/components/report-kind-picker";
+import { ReportsGrid, type ReportRow } from "@/components/reports-grid";
+import { EmptyState } from "@/components/empty-state";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +21,19 @@ const KINDS = [
   { id: "next-bloodwork-prep", label: "Prochaine prise de sang", desc: "Marqueurs à demander" },
 ];
 
-async function getAll() {
+async function getAll(): Promise<ReportRow[]> {
   ensureSchema();
   const d = db();
-  return d.$client.prepare(`SELECT id, kind, title, created_at FROM report ORDER BY created_at DESC`).all() as Array<{ id: number; kind: string; title: string; created_at: number }>;
+  const rows = d.$client
+    .prepare(`SELECT id, kind, title, body, created_at, meta FROM report ORDER BY created_at DESC`)
+    .all() as Array<{ id: number; kind: string; title: string; body: string; created_at: number; meta: string | null }>;
+  return rows.map((r) => {
+    let parsed: ReportRow["meta"] = null;
+    if (r.meta) {
+      try { parsed = JSON.parse(r.meta); } catch { parsed = null; }
+    }
+    return { id: r.id, kind: r.kind, title: r.title, body: r.body, created_at: r.created_at, meta: parsed };
+  });
 }
 
 export default async function ReportsPage() {
@@ -31,25 +42,24 @@ export default async function ReportsPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Rapports</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile.</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile.
+        </p>
       </div>
 
       <ReportKindPicker kinds={KINDS} />
 
-      <div className="rounded-xl border border-border bg-card overflow-hidden">
-        {rows.length === 0 && <div className="p-8 text-center text-muted-foreground text-sm">Aucun rapport encore. Choisis un type ci-dessus pour générer ton premier.</div>}
-        {rows.map((r) => (
-          <Link key={r.id} href={`/reports/${r.id}`} className="block px-5 py-3 border-t border-border first:border-0 hover:bg-secondary/30 transition">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-medium">{r.title}</div>
-                <div className="text-xs text-muted-foreground mt-0.5 capitalize">{r.kind.replace(/-/g, " ")} · {new Date(r.created_at).toLocaleString("fr-FR")}</div>
-              </div>
-              <span className="text-muted-foreground text-sm">→</span>
-            </div>
-          </Link>
-        ))}
-      </div>
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<FileText />}
+          title="Aucun rapport"
+          description="Génère ton premier rapport longévité depuis le panel médical."
+          actionLabel="Demander au panel"
+          actionHref="/chat"
+        />
+      ) : (
+        <ReportsGrid rows={rows} />
+      )}
     </div>
   );
 }

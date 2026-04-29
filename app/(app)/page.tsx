@@ -3,16 +3,16 @@ import { db, schema } from "@/lib/db";
 import { sql } from "drizzle-orm";
 import { StatCard } from "@/components/stat-card";
 import { HomeHero } from "@/components/home-hero";
-import { LongevityGauge } from "@/components/longevity-gauge";
 import { computeLongevityScore } from "@/lib/scoring/longevity";
-import { ScoreBreakdownCard } from "@/components/score-breakdown";
+import { HomeScoreCard } from "@/components/home-score-card";
 import { HomeSparklines } from "@/components/home-sparklines";
 import { WearableWidget } from "@/components/wearable-widget";
 import { SleepStageWidget } from "@/components/sleep-stage-widget";
 import { RecoveryWidget } from "@/components/recovery-widget";
 import { StreaksWidget } from "@/components/streaks-widget";
+import { RemindersWidget } from "@/components/reminders-widget";
 import { SectionHeader } from "@/components/section-header";
-import { Activity, Moon, BarChart3, Heart } from "lucide-react";
+import { Activity, Moon, BarChart3, Heart, Bell } from "lucide-react";
 import { OnboardingModal } from "@/components/onboarding-modal";
 
 export const dynamic = "force-dynamic";
@@ -57,18 +57,7 @@ export default async function Home() {
           icon={<Heart className="h-4 w-4 text-emerald" />}
           cta={{ href: "/action-plan", label: "Plan d'action" }}
         />
-        <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-6">
-          <div className="rounded-2xl border border-border bg-card p-6 flex flex-col items-center justify-center min-w-[240px]">
-            <LongevityGauge score={score.total} />
-            <div className="mt-4 text-xs text-center text-muted-foreground max-w-[200px] leading-relaxed">
-              {score.total >= 80 ? "Excellent — continue comme ça." :
-               score.total >= 60 ? "Bon — quelques leviers à optimiser." :
-               score.total >= 40 ? "Mitigé — plusieurs axes à travailler." :
-               "À surveiller — voir le détail des axes."}
-            </div>
-          </div>
-          <ScoreBreakdownCard breakdown={score} />
-        </div>
+        <HomeScoreCard breakdown={score} />
       </section>
 
       {/* Biomarqueurs et tendances */}
@@ -111,6 +100,18 @@ export default async function Home() {
           cta={{ href: "/habits", label: "Toutes les habitudes" }}
         />
         <StreaksWidget />
+      </section>
+
+      {/* Rappels & échéances */}
+      <section>
+        <SectionHeader
+          eyebrow="À ne pas oublier"
+          title="Rappels & échéances"
+          description="Tes prochaines prises de sang, cures et consultations."
+          icon={<Bell className="h-4 w-4 text-emerald" />}
+          cta={{ href: "/reminders", label: "Voir tous" }}
+        />
+        <RemindersWidget />
       </section>
 
       {/* Données indexées */}
