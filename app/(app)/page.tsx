@@ -13,6 +13,7 @@ import { RecoveryWidget } from "@/components/recovery-widget";
 import { StreaksWidget } from "@/components/streaks-widget";
 import { SectionHeader } from "@/components/section-header";
 import { Activity, Moon, BarChart3, Heart } from "lucide-react";
+import { OnboardingModal } from "@/components/onboarding-modal";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,9 @@ export default async function Home() {
     : "—";
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <HomeHero />
+      <OnboardingModal documents={stats.documents} />
 
       {/* Score longévité */}
       <section>

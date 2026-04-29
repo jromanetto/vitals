@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { IdleKeepalive } from "@/components/idle-keepalive";
 import { FloatingChat } from "@/components/floating-chat";
+import { ToastProvider } from "@/components/toast-provider";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </main>
       </div>
       <FloatingChat />
+      <ToastProvider />
     </div>
   );
 }
