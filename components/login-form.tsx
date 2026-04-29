@@ -111,6 +111,9 @@ export function LoginForm() {
               {loading ? "Connexion…" : needTotp ? "Vérifier le code" : "Se connecter"}
             </button>
           </form>
+          <div className="mt-5 pt-4 border-t border-border/40 text-center text-sm text-muted-foreground">
+            Pas encore de compte ? <a href="/signup" className="text-emerald hover:underline">Créer un compte →</a>
+          </div>
         </div>
       </motion.div>
     </div>
