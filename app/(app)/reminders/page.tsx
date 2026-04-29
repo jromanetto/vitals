@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Plus, X, Check, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -51,6 +52,13 @@ export default function RemindersPage() {
   const [items, setItems] = useState<Reminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState("");
+  const _searchParams = useSearchParams();
+  const _titleRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (_searchParams.get("new") === "1") {
+      setTimeout(() => { _titleRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); _titleRef.current?.focus(); }, 200);
+    }
+  }, [_searchParams]);
   const [description, setDescription] = useState("");
   const [dueAtLocal, setDueAtLocal] = useState(defaultDueAtLocal());
   const [category, setCategory] = useState<string>("blood-test");

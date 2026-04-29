@@ -1,4 +1,5 @@
 "use client";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
@@ -40,6 +41,10 @@ export default function SupplementsPage() {
   const [taken, setTaken] = useState<Set<number>>(new Set());
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const _searchParams = useSearchParams();
+  useEffect(() => {
+    if (_searchParams.get("new") === "1") setShowForm(true);
+  }, [_searchParams]);
   const [inputMode, setInputMode] = useState<"url" | "manual">("url");
   const [editing, setEditing] = useState<Supplement | null>(null);
   const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "", duration: "continu" });

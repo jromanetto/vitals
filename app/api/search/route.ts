@@ -34,7 +34,6 @@ const PAGES: Hit[] = [
 const ACTIONS: Hit[] = [
   { kind: "action", title: "+ Nouveau supplément", subtitle: "ajouter à ta stack", href: "/supplements?new=1" },
   { kind: "action", title: "+ Nouveau rappel", subtitle: "prise de sang, cure, RDV", href: "/reminders?new=1" },
-  { kind: "action", title: "+ Nouvelle note", subtitle: "saisir une note libre", href: "/notes?new=1" },
   { kind: "action", title: "+ Nouveau symptôme", subtitle: "logger un événement santé", href: "/symptoms?new=1" },
   { kind: "action", title: "↑ Importer un fichier", subtitle: "PDF, ADN, CSV wearable", href: "/import" },
   { kind: "action", title: "💬 Demander au panel médical", subtitle: "question libre", href: "/chat" },
