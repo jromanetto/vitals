@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
+import { sendEmail, welcomeTemplate, waitlistTemplate } from "@/lib/email";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -52,8 +53,16 @@ export async function POST(req: Request) {
   // For the closed beta we keep enrollment gated: only allow if BETA_OPEN env is true.
   // Otherwise, return a soft notice that signup is currently waitlist-only.
   if (process.env.VITALS_BETA_OPEN !== "true") {
+    // Persist to waitlist table for later invitation
+    try {
+      sqlite.exec(`CREATE TABLE IF NOT EXISTS waitlist (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), invited_at INTEGER)`);
+      sqlite.prepare(`INSERT OR IGNORE INTO waitlist (email) VALUES (?)`).run(email);
+    } catch (e) { console.error("[signup] waitlist insert", e); }
+    // Send waitlist confirmation email (best-effort, non-blocking)
+    sendEmail({ to: email, ...waitlistTemplate(email) }).catch((e) => console.error("[signup] waitlist email", e));
+    logAudit("signup_waitlist", `email=${email}`, req);
     return NextResponse.json({
-      error: "La bêta privée est actuellement complète. Tu as été ajouté à notre liste d'attente — on te contacte par email dès qu'une place se libère.",
+      error: "La bêta privée est actuellement complète. On t'a ajouté à la liste d'attente — un email de confirmation t'a été envoyé.",
       waitlist: true,
     }, { status: 403 });
   }
@@ -68,6 +77,8 @@ export async function POST(req: Request) {
   const res = NextResponse.json({ ok: true, userId });
   res.cookies.set(COOKIE, sealed, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: TTL });
   res.cookies.set("vitals_active", "1", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 15 });
+  // Send welcome email (best-effort)
+  sendEmail({ to: email, ...welcomeTemplate() }).catch((e) => console.error("[signup] welcome email", e));
   logAudit("signup", `userId=${userId} email=${email}`, req);
   return res;
 }

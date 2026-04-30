@@ -3,6 +3,7 @@ import { currentUserId, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import crypto from "node:crypto";
+import { sendEmail, shareLinkTemplate } from "@/lib/email";
 
 export const runtime = "nodejs";
 
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Mode démo en lecture seule." }, { status: 403 });
   }
   ensureSchema();
-  let body: { scope?: string; durationHours?: number } = {};
+  let body: { scope?: string; durationHours?: number; recipientEmail?: string; senderName?: string; note?: string } = {};
   try { body = await req.json(); } catch {}
   const scope = body.scope === "full" ? "full" : "praticien";
   const durationHours = body.durationHours === 168 ? 168 : 24;
@@ -62,7 +63,17 @@ export async function POST(req: Request) {
     .run(userId, token, scope, expiresAt);
   const base = publicBase(req);
   const url = `${base}/share/${token}`;
-  return NextResponse.json({ id: info.lastInsertRowid, url, token, expiresAt, scope });
+
+  // If recipientEmail provided, send the share link via email (best-effort, non-blocking)
+  let emailSent = false;
+  if (body.recipientEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.recipientEmail)) {
+    sendEmail({
+      to: body.recipientEmail,
+      ...shareLinkTemplate({ token, expiresAt, senderName: body.senderName, note: body.note }),
+    }).catch((e) => console.error("[share] email send failed", e));
+    emailSent = true;
+  }
+  return NextResponse.json({ id: info.lastInsertRowid, url, token, expiresAt, scope, emailSent });
 }
 
 export async function DELETE(req: Request) {
