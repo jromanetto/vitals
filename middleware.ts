@@ -21,7 +21,7 @@ const PUBLIC_PATHS = new Set<string>([
 ]);
 
 // Path prefixes that are always public (api auth + health-check)
-const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/"];
+const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
