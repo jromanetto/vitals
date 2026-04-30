@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth";
+import { getSession, isDemoUser } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { ensureSchema } from "@/lib/db/migrate";
 import { searchRag } from "@/lib/rag/search";
@@ -411,6 +411,7 @@ ${context}`;
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+  if (isDemoUser(s.userId)) return new Response(JSON.stringify({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }), { status: 403 });
   ensureSchema();
 
   const { messages, sessionId } = (await req.json()) as { messages: { role: "user" | "assistant"; content: string }[]; sessionId?: number };

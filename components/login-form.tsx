@@ -14,6 +14,17 @@ export function LoginForm() {
   const [loading, setLoading] = useState(false);
   const idle = sp.get("reason") === "idle";
 
+
+  async function demoLogin() {
+    setLoading(true); setErr(null);
+    try {
+      const res = await fetch("/api/auth/demo", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      if (res.ok) { router.push("/dashboard"); router.refresh(); return; }
+      setErr("Mode démo indisponible.");
+    } catch { setErr("Erreur réseau."); }
+    setLoading(false);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setErr(null);
@@ -111,6 +122,12 @@ export function LoginForm() {
               {loading ? "Connexion…" : needTotp ? "Vérifier le code" : "Se connecter"}
             </button>
           </form>
+            <button
+              type="button" onClick={demoLogin} disabled={loading}
+              className="w-full mt-3 border border-emerald/40 bg-emerald/10 hover:bg-emerald/20 text-emerald font-medium py-2.5 rounded-md transition disabled:opacity-50"
+            >
+              Voir la démo (compte fictif)
+            </button>
           <div className="mt-5 pt-4 border-t border-border/40 text-center text-sm text-muted-foreground">
             Pas encore de compte ? <a href="/signup" className="text-emerald hover:underline">Créer un compte →</a>
           </div>

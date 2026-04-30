@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
@@ -226,6 +226,7 @@ type FileResult = {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (isDemoUser(s.userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
   ensureSchema();
 
   const fd = await req.formData();

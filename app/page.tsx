@@ -41,8 +41,8 @@ export default function LandingPage() {
             <Link href="/signup" className="px-5 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition inline-flex items-center gap-2">
               Créer un compte gratuit <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/login" className="px-5 py-3 rounded-md border border-border bg-card hover:bg-secondary/40 transition font-medium">
-              Se connecter
+            <Link href="/login?demo=1" className="px-5 py-3 rounded-md border border-border bg-card hover:bg-secondary/40 transition font-medium">
+              Voir la démo
             </Link>
           </div>
           <p className="text-xs text-muted-foreground mt-4">Données chiffrées · Hébergement EU · Aucune publicité</p>

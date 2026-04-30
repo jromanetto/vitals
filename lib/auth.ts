@@ -148,3 +148,12 @@ export async function currentUserId(): Promise<number | null> {
   const s = await getSession();
   return s?.userId ?? null;
 }
+
+
+/**
+ * Helper: check whether a userId is the seeded demo user (Marie Dupont).
+ * Used by write-routes to enforce read-only behaviour in demo mode.
+ */
+export function isDemoUser(userId: number | null | undefined): boolean {
+  return userId === 999;
+}

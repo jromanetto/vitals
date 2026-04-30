@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId } from "@/lib/auth";
+import { getSession, currentUserId, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -20,6 +20,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
   ensureSchema();
   const body = await req.json() as { date?: string; key: string; value: number; notes?: string };
   const d = body.date ?? new Date().toISOString().slice(0, 10);
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
   ensureSchema();
   const url = new URL(req.url);
   const id = Number(url.searchParams.get("id"));

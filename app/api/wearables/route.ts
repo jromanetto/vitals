@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId } from "@/lib/auth";
+import { getSession, currentUserId, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -107,6 +107,7 @@ function parseGenericCSV(text: string, source: string): Row[] {
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
   ensureSchema();
 
   const ct = req.headers.get("content-type") ?? "";
