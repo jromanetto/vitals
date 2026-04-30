@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -34,18 +34,18 @@ function enrich(row: ReminderRow) {
 }
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const rows = db().$client.prepare(
-    `SELECT id, title, description, due_at, category, done, created_at FROM reminder ORDER BY due_at ASC`
+    `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE user_id = ? ORDER BY due_at ASC`
   ).all() as ReminderRow[];
   return NextResponse.json({ rows: rows.map(enrich) });
 }
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const body = await req.json() as {
     title?: string;
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   const description = body.description?.toString().trim() || null;
   const category = body.category?.toString().trim() || null;
   const info = db().$client.prepare(
-    `INSERT INTO reminder (title, description, due_at, category) VALUES (?, ?, ?, ?)`
+    `INSERT INTO reminder (title, description, due_at, category, user_id) VALUES (?, ?, ?, ?, ?)`
   ).run(title, description, dueAt, category);
   const row = db().$client.prepare(
     `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE id = ?`
@@ -69,14 +69,14 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const body = await req.json() as { id?: number; done?: boolean };
   const id = Number(body.id);
   if (!Number.isFinite(id) || id <= 0) return NextResponse.json({ error: "id required" }, { status: 400 });
   const done = body.done ? 1 : 0;
-  db().$client.prepare(`UPDATE reminder SET done = ? WHERE id = ?`).run(done, id);
+  db().$client.prepare(`UPDATE reminder SET done = ? WHERE id = ? AND user_id = ?`).run(done, id);
   const row = db().$client.prepare(
     `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE id = ?`
   ).get(id) as ReminderRow | undefined;
@@ -85,12 +85,12 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const url = new URL(req.url);
   const id = Number(url.searchParams.get("id"));
   if (!Number.isFinite(id) || id <= 0) return NextResponse.json({ error: "id required" }, { status: 400 });
-  db().$client.prepare(`DELETE FROM reminder WHERE id = ?`).run(id);
+  db().$client.prepare(`DELETE FROM reminder WHERE id = ? AND user_id = ?`).run(id, userId);
   return NextResponse.json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -8,8 +8,8 @@ export const runtime = "nodejs";
 type Point = { date: string; value: number };
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const url = new URL(req.url);
   const slug = url.searchParams.get("slug");
@@ -22,8 +22,8 @@ export async function GET(req: Request) {
     if (slugs.length === 0) return NextResponse.json({ series: {} });
     const placeholders = slugs.map(() => "?").join(",");
     const rows = sqlite.prepare(
-      `SELECT slug, date, value FROM biomarker WHERE slug IN (${placeholders}) ORDER BY slug ASC, date ASC`
-    ).all(...slugs) as Array<{ slug: string; date: number; value: number }>;
+      `SELECT slug, date, value FROM biomarker WHERE user_id = ? AND slug IN (${placeholders}) ORDER BY slug ASC, date ASC`
+    ).all(userId, ...slugs) as Array<{ slug: string; date: number; value: number }>;
     const series: Record<string, Point[]> = {};
     for (const slug of slugs) series[slug] = [];
     for (const r of rows) {
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 
   // Single-slug mode (back-compat)
   if (!slug) return NextResponse.json({ points: [] });
-  const points = sqlite.prepare(`SELECT date, value FROM biomarker WHERE slug = ? ORDER BY date ASC`).all(slug) as Array<{ date: number; value: number }>;
+  const points = sqlite.prepare(`SELECT date, value FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(slug, userId) as Array<{ date: number; value: number }>;
   return NextResponse.json({
     points: points.map((p) => ({ date: new Date(p.date).toISOString().slice(0, 10), value: p.value })),
   });

@@ -19,8 +19,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "locked", retryAfter: lock.retryAfter }, { status: 429, headers: { "Retry-After": String(lock.retryAfter) } });
   }
 
-  const ok = await verifyCredentials(email, password);
-  if (!ok) {
+  const result = await verifyCredentials(email, password);
+  if (!result.ok) {
     recordFail(email, ip);
     logAudit("login_fail", email, req);
     return NextResponse.json({ error: "invalid" }, { status: 401 });
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
   }
 
   recordSuccess(email, ip);
-  await setSession(email);
+  await setSession(email, result.userId);
   logAudit("login", email, req);
   return NextResponse.json({ ok: true });
 }

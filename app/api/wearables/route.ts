@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -105,8 +105,8 @@ function parseGenericCSV(text: string, source: string): Row[] {
 }
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
 
   const ct = req.headers.get("content-type") ?? "";
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
   sqlite.exec(`CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`);
   sqlite.exec(`CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`);
 
-  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit) VALUES (?, ?, ?, ?, ?)`);
+  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit, user_id) VALUES (?, ?, ?, ?, ?, ?)`);
   const tx = sqlite.transaction((items: Row[]) => {
     for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null);
   });
@@ -149,16 +149,16 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
   sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
   const url = new URL(req.url);
   const days = Math.min(365, Number(url.searchParams.get("days") ?? "60"));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE date >= ? ORDER BY date DESC`).all(since);
-  const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric GROUP BY source, kind ORDER BY source, kind`).all();
+  const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE user_id = ? AND date >= ? ORDER BY date DESC`).all(since);
+  const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric WHERE user_id = ? GROUP BY source, kind ORDER BY source, kind`).all();
 
   // Per-source overview: total rows, date range
   const sources = sqlite.prepare(`
@@ -168,9 +168,7 @@ export async function GET(req: Request) {
            COUNT(DISTINCT kind) as kinds,
            MIN(date) as firstDate,
            MAX(date) as lastDate
-    FROM wearable_metric
-    GROUP BY source
-    ORDER BY source
+    FROM wearable_metric WHERE user_id = ? GROUP BY source ORDER BY source
   `).all() as Array<{ source: string; total: number; days: number; kinds: number; firstDate: string; lastDate: string }>;
 
   // 60-day series for headline kinds per source

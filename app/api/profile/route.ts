@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getSession, currentUserId } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
@@ -10,16 +10,16 @@ import fs from "node:fs/promises";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const rows = await db().select().from(schema.profile).orderBy(sql`${schema.profile.updatedAt} desc`).limit(1);
   return NextResponse.json({ data: rows[0]?.data ?? {} });
 }
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const data = await req.json();
   const d = db();

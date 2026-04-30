@@ -3,13 +3,14 @@ import { sealData, unsealData } from "iron-session";
 import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
+import { db } from "@/lib/db";
 
 const COOKIE = "vitals_session";
 const ACTIVE_COOKIE = "vitals_active";
 const TTL = 60 * 60 * 24 * 30; // 30 days
 const IDLE_TTL = 60 * 15; // 15 minutes
 
-export type Session = { email: string; iat: number };
+export type Session = { userId: number; email: string; iat: number };
 
 type Creds = { email: string; hash: string; secret: string; totpSecret?: string | null; anonymizeLLM?: boolean };
 let _creds: Creds | null = null;
@@ -52,20 +53,40 @@ function password(): string {
   return c.secret;
 }
 
+type RawSession = { userId?: number; email: string; iat: number };
+
 export async function getSession(): Promise<Session | null> {
   const c = await cookies();
   const tok = c.get(COOKIE)?.value;
   if (!tok) return null;
   try {
-    const data = await unsealData<Session>(tok, { password: password(), ttl: TTL });
-    return data;
+    const data = await unsealData<RawSession>(tok, { password: password(), ttl: TTL });
+    if (!data?.email) return null;
+    // If userId is missing (legacy sessions sealed before multi-tenant), look it up from user table by email.
+    let userId = data.userId;
+    if (userId == null) {
+      try {
+        const sqlite = db().$client;
+        const row = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(data.email.toLowerCase()) as { id: number } | undefined;
+        userId = row?.id ?? 1; // fallback to legacy single-tenant Julien
+      } catch { userId = 1; }
+    }
+    return { userId, email: data.email, iat: data.iat };
   } catch {
     return null;
   }
 }
 
-export async function setSession(email: string) {
-  const tok = await sealData({ email: email.toLowerCase(), iat: Date.now() }, { password: password(), ttl: TTL });
+export async function setSession(email: string, userId?: number) {
+  let uid = userId;
+  if (uid == null) {
+    try {
+      const sqlite = db().$client;
+      const row = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email.toLowerCase()) as { id: number } | undefined;
+      uid = row?.id ?? 1;
+    } catch { uid = 1; }
+  }
+  const tok = await sealData({ userId: uid, email: email.toLowerCase(), iat: Date.now() }, { password: password(), ttl: TTL });
   const c = await cookies();
   c.set(COOKIE, tok, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: TTL });
   c.set(ACTIVE_COOKIE, "1", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: IDLE_TTL });
@@ -82,10 +103,32 @@ export async function clearSession() {
   c.delete(ACTIVE_COOKIE);
 }
 
-export async function verifyCredentials(email: string, pwd: string): Promise<boolean> {
-  const c = readCredsFresh();
-  if (email.toLowerCase() !== c.email.toLowerCase()) return false;
-  return bcrypt.compare(pwd, c.hash);
+export async function verifyCredentials(email: string, pwd: string): Promise<{ ok: boolean; userId?: number }> {
+  const lower = email.toLowerCase();
+  // 1) Try user table first (multi-tenant)
+  try {
+    const sqlite = db().$client;
+    const row = sqlite.prepare(`SELECT id, hash FROM user WHERE LOWER(email) = ?`).get(lower) as { id: number; hash: string } | undefined;
+    if (row) {
+      const ok = await bcrypt.compare(pwd, row.hash);
+      return ok ? { ok: true, userId: row.id } : { ok: false };
+    }
+  } catch {}
+  // 2) Fallback to legacy auth.json (Julien-only original account)
+  try {
+    const c = readCredsFresh();
+    if (lower !== c.email.toLowerCase()) return { ok: false };
+    const ok = await bcrypt.compare(pwd, c.hash);
+    if (!ok) return { ok: false };
+    // Auto-migrate Julien into user table on first successful login if not present
+    try {
+      const sqlite = db().$client;
+      const existing = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(lower) as { id: number } | undefined;
+      if (existing) return { ok: true, userId: existing.id };
+      sqlite.prepare(`INSERT INTO user (id, email, hash, secret, role) VALUES (1, ?, ?, ?, 'owner') ON CONFLICT DO NOTHING`).run(c.email, c.hash, c.secret);
+      return { ok: true, userId: 1 };
+    } catch { return { ok: true, userId: 1 }; }
+  } catch { return { ok: false }; }
 }
 
 export function getTotpSecret(): string | null {
@@ -95,4 +138,13 @@ export function getTotpSecret(): string | null {
 export function hasTotpEnabled(): boolean {
   const s = getTotpSecret();
   return !!(s && s.length > 0);
+}
+
+/**
+ * Helper: get the current user id from a session, or null if not authenticated.
+ * Use in API routes: `const userId = await currentUserId(); if (!userId) return 401;`
+ */
+export async function currentUserId(): Promise<number | null> {
+  const s = await getSession();
+  return s?.userId ?? null;
 }
