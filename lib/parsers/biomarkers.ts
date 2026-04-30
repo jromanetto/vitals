@@ -402,3 +402,30 @@ export function parseBiomarkersFromText(text: string): Biomarker[] {
   }
   return out;
 }
+
+// Public lookup: resolve a free-text biomarker name to its canonical metadata.
+// Used by the Vision OCR flow (and any other flow that gets a name string from a model).
+// Tries exact normalized match first, then progressively shorter token prefixes,
+// then a fuzzy substring scan over alias keys.
+export function lookupBiomarker(rawName: string): { name: string; slug: string; category: string; unit?: string } | null {
+  if (!rawName) return null;
+  const norm = normalize(rawName);
+  if (!norm) return null;
+  const direct = ALIASES[norm];
+  if (direct) return { name: direct.canonical, slug: slugify(direct.canonical), category: direct.category, unit: direct.unit };
+  // Progressive shorter prefix
+  const tokens = norm.split(' ');
+  for (let len = tokens.length - 1; len >= 1; len--) {
+    const a = ALIASES[tokens.slice(0, len).join(' ')];
+    if (a) return { name: a.canonical, slug: slugify(a.canonical), category: a.category, unit: a.unit };
+  }
+  // Substring fuzzy
+  for (const key of Object.keys(ALIASES)) {
+    if (key.length < 4) continue;
+    if (norm.includes(key) || key.includes(norm)) {
+      const a = ALIASES[key];
+      return { name: a.canonical, slug: slugify(a.canonical), category: a.category, unit: a.unit };
+    }
+  }
+  return null;
+}

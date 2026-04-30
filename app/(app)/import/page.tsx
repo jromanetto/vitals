@@ -4,6 +4,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { WearableDashboardCard } from "@/components/wearable-dashboard-card";
+import { ImageExtractModal } from "@/components/image-extract-modal";
+
+const IMAGE_EXT = /\.(jpe?g|png|webp|heic)$/i;
+function isImageFile(f: File): boolean {
+  return IMAGE_EXT.test(f.name) || /^image\//.test(f.type);
+}
 
 type Summary = { source: string; kind: string; c: number; avg: number };
 type Result = {
@@ -36,6 +42,23 @@ export default function ImportPage() {
   const [ingestionPolling, setIngestionPolling] = useState(false);
   const [latestPanelDate, setLatestPanelDate] = useState<number | null>(null);
   const [ingestionDone, setIngestionDone] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+
+  // When images are dropped/picked, intercept the FIRST one and open the OCR/store modal.
+  // Non-image files in the same batch are queued normally.
+  function handleIncoming(files: File[]) {
+    if (files.length === 0) return;
+    const images = files.filter(isImageFile);
+    const others = files.filter((f) => !isImageFile(f));
+    if (others.length) setQueue((q) => [...q, ...others]);
+    if (images.length && !pendingImage) {
+      setPendingImage(images[0]);
+      // remaining images (if any) are queued; they'll be handled one-by-one
+      if (images.length > 1) setQueue((q) => [...q, ...images.slice(1)]);
+    } else if (images.length) {
+      setQueue((q) => [...q, ...images]);
+    }
+  }
 
   async function loadSummary() {
     try {
@@ -72,12 +95,13 @@ export default function ImportPage() {
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
     const fs = Array.from(e.dataTransfer.files);
-    if (fs.length) setQueue((q) => [...q, ...fs]);
-  }, []);
+    handleIncoming(fs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingImage]);
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fs = Array.from(e.target.files ?? []);
-    if (fs.length) setQueue((q) => [...q, ...fs]);
+    handleIncoming(fs);
     e.target.value = "";
   };
 
@@ -239,6 +263,31 @@ export default function ImportPage() {
       )}
 
       <WearableDashboardCard refreshKey={results.length} />
+
+      {pendingImage && (
+        <ImageExtractModal
+          file={pendingImage}
+          onClose={() => setPendingImage(null)}
+          onStoreAsDocument={(f) => {
+            // Push the image into the regular upload queue and let /api/upload/auto save it under data/divers/
+            setQueue((q) => [...q, f]);
+          }}
+          onInserted={() => {
+            // Force the dashboard polling to surface the new panel
+            (async () => {
+              try {
+                const lr = await fetch("/api/biomarkers/latest");
+                const ld = await lr.json();
+                const dates = ((ld.rows ?? []) as Array<{ date: number }>).map((r) => r.date);
+                const baseline = dates.length ? Math.max(...dates) - 1 : 0;
+                setLatestPanelDate(baseline);
+                setIngestionPolling(true);
+                setIngestionDone(false);
+              } catch {}
+            })();
+          }}
+        />
+      )}
     </div>
   );
 }
