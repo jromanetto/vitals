@@ -66,6 +66,32 @@ export function ensureSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS reminder_due_idx ON reminder(due_at)`,
     `CREATE INDEX IF NOT EXISTS reminder_done_idx ON reminder(done)`,
+    // Sprint 30: share links (read-only doctor share)
+    `CREATE TABLE IF NOT EXISTS share_link (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      scope TEXT NOT NULL DEFAULT 'praticien',
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      expires_at INTEGER NOT NULL,
+      views INTEGER DEFAULT 0,
+      last_viewed_at INTEGER,
+      revoked INTEGER DEFAULT 0
+    )`,
+    `CREATE INDEX IF NOT EXISTS share_link_token_idx ON share_link(token)`,
+    `CREATE INDEX IF NOT EXISTS share_link_user_idx ON share_link(user_id)`,
+    // Sprint 31: web push notifications
+    `CREATE TABLE IF NOT EXISTS push_subscription (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      user_agent TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      last_used_at INTEGER
+    )`,
+    `CREATE INDEX IF NOT EXISTS push_sub_user_idx ON push_subscription(user_id)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {
@@ -79,5 +105,9 @@ export function ensureSchema() {
   } catch {}
   try {
     d.run(sql.raw(`ALTER TABLE note ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0`));
+  } catch {}
+  // Sprint 31: notified_at on reminder for push cron deduplication
+  try {
+    d.run(sql.raw(`ALTER TABLE reminder ADD COLUMN notified_at INTEGER`));
   } catch {}
 }

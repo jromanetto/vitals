@@ -124,6 +124,27 @@ npm run ingest                # process data/ folder
 - Health data (`data/`) is gitignored — never committed to repo
 - HTTPS via Let's Encrypt
 
+## Web push notifications
+
+VAPID keys live in `data/auth.json` (`vapidPublicKey`, `vapidPrivateKey`,
+`vapidSubject`). To regenerate: `npx web-push generate-vapid-keys --json` and
+merge into `auth.json` (don't overwrite the file).
+
+Subscriptions are stored in the `push_subscription` SQLite table. Users opt in
+from `/profile/security` ("Notifications push" panel) — the browser registers
+`/sw.js`, asks permission, then POSTs the subscription to `/api/push/subscribe`.
+Test pushes go through `/api/push/test`.
+
+To deliver reminder pushes, run the cron (hourly):
+
+```cron
+0 * * * * cd /home/script/vitals && node scripts/send_reminders.mjs >> logs/reminders-cron.log 2>&1
+```
+
+The script sends a push for every reminder due within the next 24h that is not
+done and not yet notified, then sets `reminder.notified_at` to dedupe. Expired
+endpoints (HTTP 410/404) are pruned automatically.
+
 ## License
 
 MIT — built for personal use, fork freely.
