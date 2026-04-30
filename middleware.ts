@@ -46,15 +46,10 @@ export function middleware(req: NextRequest) {
   const active = req.cookies.get("vitals_active")?.value;
   const isAuthed = Boolean(session && active);
 
-  // Authenticated user landing on the public landing page → send to dashboard.
-  if (isAuthed && pathname === "/") {
-    return NextResponse.redirect(buildRedirect(req, "/dashboard"));
-  }
-
-  // Authenticated user visiting /login or /signup → send to dashboard too.
-  if (isAuthed && (pathname === "/login" || pathname === "/signup")) {
-    return NextResponse.redirect(buildRedirect(req, "/dashboard"));
-  }
+  // Note: we deliberately do NOT auto-redirect authenticated users away from /, /signup, /login.
+  // - Demo users need to access /signup to upgrade to a real account.
+  // - All users may legitimately want to revisit the landing or login pages.
+  // The pages themselves render context-appropriate UI based on the session.
 
   // Public path → allow through, no auth required.
   if (isPublic(pathname)) {
