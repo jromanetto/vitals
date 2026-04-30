@@ -39,7 +39,7 @@ export async function GET() {
   ensureSchema();
   const rows = db().$client.prepare(
     `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE user_id = ? ORDER BY due_at ASC`
-  ).all() as ReminderRow[];
+  ).all(userId) as ReminderRow[];
   return NextResponse.json({ rows: rows.map(enrich) });
 }
 

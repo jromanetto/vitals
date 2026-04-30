@@ -13,17 +13,20 @@ export async function GET() {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
-  const rows = await db().select().from(schema.profile).orderBy(sql`${schema.profile.updatedAt} desc`).limit(1);
-  return NextResponse.json({ data: rows[0]?.data ?? {} });
+  const sqlite = db().$client;
+  const row = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
+  const data = row ? (typeof row.data === "string" ? JSON.parse(row.data) : row.data) : {};
+  return NextResponse.json({ data });
 }
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
-  const data = await req.json();
-  const d = db();
-  await d.insert(schema.profile).values({ data, updatedAt: new Date() });
+  const body = await req.json();
+  const data = body?.data ?? body;
+  const sqlite = db().$client;
+  sqlite.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(data), Date.now(), userId);
 
   // also write a profile.md mirror for easy backup / offline reading
   const mdPath = path.join(process.cwd(), "data", "profile.md");

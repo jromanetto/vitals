@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const days = Math.min(365, Number(url.searchParams.get("days") ?? "90"));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
   const sqlite = db().$client;
-  const rows = sqlite.prepare(`SELECT id, date, key, value, notes, created_at as createdAt FROM symptom_log WHERE user_id = ? AND date >= ? ORDER BY date DESC, key`).all(since);
+  const rows = sqlite.prepare(`SELECT id, date, key, value, notes, created_at as createdAt FROM symptom_log WHERE user_id = ? AND date >= ? ORDER BY date DESC, key`).all(userId, since);
   return NextResponse.json({ rows });
 }
 

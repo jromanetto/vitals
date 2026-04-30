@@ -141,7 +141,7 @@ export async function POST(req: Request) {
 
   const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit, user_id) VALUES (?, ?, ?, ?, ?, ?)`);
   const tx = sqlite.transaction((items: Row[]) => {
-    for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null);
+    for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null, userId);
   });
   tx(rows);
 
@@ -157,8 +157,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const days = Math.min(365, Number(url.searchParams.get("days") ?? "60"));
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE user_id = ? AND date >= ? ORDER BY date DESC`).all(since);
-  const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric WHERE user_id = ? GROUP BY source, kind ORDER BY source, kind`).all();
+  const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE user_id = ? AND date >= ? ORDER BY date DESC`).all(userId, since);
+  const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric WHERE user_id = ? GROUP BY source, kind ORDER BY source, kind`).all(userId);
 
   // Per-source overview: total rows, date range
   const sources = sqlite.prepare(`
@@ -169,7 +169,7 @@ export async function GET(req: Request) {
            MIN(date) as firstDate,
            MAX(date) as lastDate
     FROM wearable_metric WHERE user_id = ? GROUP BY source ORDER BY source
-  `).all() as Array<{ source: string; total: number; days: number; kinds: number; firstDate: string; lastDate: string }>;
+  `).all(userId) as Array<{ source: string; total: number; days: number; kinds: number; firstDate: string; lastDate: string }>;
 
   // 60-day series for headline kinds per source
   const headlineKinds = ["hrv", "rhr", "recovery", "sleep_total_min", "sleep_score", "readiness"];
