@@ -31,6 +31,13 @@ A self-hosted, AI-powered platform that aggregates 15+ years of personal health 
 - **Symptoms diary** with 60-day heatmap (energy, mood, focus, sleep, gut, skin, anxiety, libido, HRV)
 - **Habits** with 7 daily checks, streak counter, 60-day heatmap
 
+### Nutrition
+- **Personalized food recommendations** — `/nutrition` page driven by 35 biomarker rules + 35 DNA rules, hybrid rules-engine + Claude synthesis
+- **Diet pattern picker** — 10 patterns (Mediterranean, MIND, low-carb, DASH, anti-inflammatory, low-FODMAP, ...) auto-selected from data + user prefs
+- **Tabs UI** : overview (rationale + macros) · favor (grouped by benefit) · avoid (grouped by reason) · meal ideas · sources (linked to source biomarker/SNP)
+- **Inline prefs panel** : diet type, allergies, aversions, budget, favourite cuisines — persisted in `nutrition_pref` table
+- **30-day cache** keyed on data + prefs hash via `report` table, force-regen button
+
 ### UX
 - **Cmd-K command palette** searching biomarkers / DNA / reports / files / pages
 - **PDF inline viewer** with extracted biomarkers sidebar

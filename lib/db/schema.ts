@@ -107,3 +107,13 @@ export const ingestLog = sqliteTable("ingest_log", {
   durationMs: integer("duration_ms"),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(sql`(unixepoch() * 1000)`),
 });
+
+export const nutritionPref = sqliteTable("nutrition_pref", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  dietType: text("diet_type").notNull().default("omnivore"),
+  allergies: text("allergies").notNull().default("[]"),
+  aversions: text("aversions").notNull().default(""),
+  budget: text("budget").notNull().default("medium"),
+  cuisines: text("cuisines").notNull().default("[]"),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(sql`(unixepoch() * 1000)`),
+});

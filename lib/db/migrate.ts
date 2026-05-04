@@ -92,6 +92,16 @@ export function ensureSchema() {
       last_used_at INTEGER
     )`,
     `CREATE INDEX IF NOT EXISTS push_sub_user_idx ON push_subscription(user_id)`,
+    // Sprint 32: nutrition preferences
+    `CREATE TABLE IF NOT EXISTS nutrition_pref (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      diet_type TEXT NOT NULL DEFAULT 'omnivore',
+      allergies TEXT NOT NULL DEFAULT '[]',
+      aversions TEXT NOT NULL DEFAULT '',
+      budget TEXT NOT NULL DEFAULT 'medium',
+      cuisines TEXT NOT NULL DEFAULT '[]',
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {

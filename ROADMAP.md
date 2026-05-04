@@ -158,6 +158,16 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 
 ---
 
+## Phase 32 — Nutrition module [DONE]
+- [x] DB: `nutrition_pref` table (single-row) for diet type / allergies / aversions / budget / cuisines.
+- [x] `lib/nutrition/`: food-database (~150 foods), diet-patterns (10), catalog (35 biomarker rules), dna-rules (35 SNP rules), rules-engine (filters by prefs + scoring), prompt (Claude synthesis with JSON output + fallback).
+- [x] APIs: `/api/nutrition/plan` (orchestrate + 30j cache via `report` kind=nutrition with dataHash + force=1) and `/api/nutrition/prefs` (GET/POST).
+- [x] Page `/nutrition` with 5 tabs (overview / favor / avoid / meals / sources) + collapsible inline prefs panel + regen button.
+- [x] Sidebar entry + `/api/search` static page entry for Cmd-K palette.
+- [x] Design doc in `docs/plans/2026-05-04-nutrition-design.md`.
+
+---
+
 ## After all phases
 
 Write `COMPLETE.md` summarizing what's been built. Stop.

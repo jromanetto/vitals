@@ -13,7 +13,8 @@ Personal health intelligence platform built across **27 autonomous overnight spr
 - **9 symptoms** + **7 habits** tracked with 60-day heatmaps
 - **4 wearable parsers** (Oura, Whoop, generic CSV, Apple Health structure ready)
 - **21 age-gated biomarker recommendations** + **16 SNP→biomarker mappings** for missing tests
-- **19 pages** + **17 API endpoints** — all smoke-tested 200 OK
+- **35 biomarker → food rules + 35 SNP → food rules** with ~150-food curated database, 10 diet patterns, hybrid rules-engine + Claude synthesis on `/nutrition`
+- **20 pages** + **19 API endpoints** — all smoke-tested 200 OK
 
 ## Stack
 Next.js 15 App Router · React 19 · TypeScript strict · Tailwind v3 · Framer Motion · Recharts · Drizzle + better-sqlite3 · iron-session · Anthropic SDK (claude-sonnet-4-5-20250929) · pdf-parse · next-themes · lucide-react · PM2 + Nginx + Let's Encrypt · GitHub Actions deploy.
