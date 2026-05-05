@@ -35,7 +35,7 @@ export function LoginForm() {
       body: JSON.stringify(body),
     });
     if (res.ok) {
-      router.push(sp.get("from") || "/");
+      router.push(sp.get("from") || "/dashboard");
       router.refresh();
       return;
     }
