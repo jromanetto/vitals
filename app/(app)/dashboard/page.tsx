@@ -44,7 +44,7 @@ export default async function Home() {
     : "—";
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-14 md:space-y-16">
       <HomeHero />
       <OnboardingModal documents={stats.documents} />
 
@@ -81,9 +81,9 @@ export default async function Home() {
           icon={<Activity className="h-4 w-4 text-emerald" />}
           cta={{ href: "/import", label: "Import wearables" }}
         />
-        <div className="space-y-4">
+        <div className="space-y-6">
           <WearableWidget />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <SleepStageWidget />
             <RecoveryWidget />
           </div>
@@ -121,7 +121,7 @@ export default async function Home() {
           title="Données indexées"
           description="Tout ce que Vitals connaît sur toi à ce jour."
         />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <StatCard label="Biomarqueurs" value={stats.biomarkersUnique.toLocaleString()} hint={`${stats.biomarkersTotal} mesures totales`} delay={0.05} accent />
           <StatCard label="Documents" value={stats.documents.toLocaleString()} hint="rapports indexés" delay={0.1} />
           <StatCard label="Variants ADN" value={stats.dnaVariants.toLocaleString()} hint={`${stats.dnaInsights} insights`} delay={0.15} />

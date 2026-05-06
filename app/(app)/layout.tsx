@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar email={session.email} />
-        <main id="main" tabIndex={-1} className="flex-1 px-6 md:px-10 py-8 pb-20 md:pb-8 max-w-7xl w-full mx-auto focus:outline-none">
+        <main id="main" tabIndex={-1} className="flex-1 px-6 md:px-12 py-10 md:py-14 lg:py-16 pb-24 md:pb-16 max-w-6xl w-full mx-auto focus:outline-none">
           {children}
         </main>
       </div>

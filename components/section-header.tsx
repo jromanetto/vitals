@@ -18,23 +18,23 @@ export function SectionHeader({ eyebrow, title, description, cta, icon, delay = 
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
-      className="flex items-end justify-between gap-4 mb-3"
+      className="flex items-end justify-between gap-4 mb-5"
     >
       <div className="min-w-0">
         {eyebrow && (
-          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-1">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">
             {eyebrow}
           </div>
         )}
         <div className="flex items-center gap-2">
           {icon}
-          <h2 className="text-base md:text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-lg md:text-xl font-semibold tracking-tight">{title}</h2>
         </div>
-        {description && <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-2xl">{description}</p>}
+        {description && <p className="text-sm text-muted-foreground mt-2 leading-relaxed max-w-2xl">{description}</p>}
       </div>
       {cta && (
-        <Link href={cta.href} className="text-xs text-emerald hover:underline shrink-0 inline-flex items-center gap-1 mb-1">
-          {cta.label} <ArrowRight className="h-3 w-3" />
+        <Link href={cta.href} className="text-sm text-emerald hover:underline shrink-0 inline-flex items-center gap-1 mb-1">
+          {cta.label} <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       )}
     </motion.header>
