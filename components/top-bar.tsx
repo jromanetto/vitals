@@ -17,14 +17,14 @@ export function TopBar({ email }: { email: string }) {
   }
   return (
     <>
-      <header className="h-14 border-b border-border flex items-center px-4 md:px-10 gap-3 md:gap-4 bg-background/80 backdrop-blur sticky top-0 z-40">
+      <header className="h-16 border-b border-border flex items-center px-4 md:px-12 gap-3 md:gap-4 bg-background/80 backdrop-blur-md sticky top-0 z-40">
         <MobileDrawer />
-        <button onClick={openPalette} className="flex-1 max-w-md flex items-center gap-2 bg-secondary/40 border border-border rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:border-primary/50 transition">
+        <button onClick={openPalette} className="flex-1 max-w-md flex items-center gap-2 bg-secondary/40 border border-border rounded-lg px-3.5 py-2 text-sm text-muted-foreground hover:border-primary/40 hover:bg-secondary/60 transition">
           <Search className="h-4 w-4" />
           <span>Rechercher…</span>
           <span className="ml-auto hidden sm:flex items-center gap-0.5 text-[10px]">
-            <kbd className="px-1 py-0.5 rounded bg-secondary border border-border"><Command className="h-2.5 w-2.5 inline" /></kbd>
-            <kbd className="px-1 py-0.5 rounded bg-secondary border border-border">K</kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border"><Command className="h-2.5 w-2.5 inline" /></kbd>
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary border border-border">K</kbd>
           </span>
         </button>
         <div className="flex items-center gap-2">
