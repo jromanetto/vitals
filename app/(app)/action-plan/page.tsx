@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { Sparkles, RefreshCw, Loader2, Target, AlertCircle, Shield, ArrowRight } from "lucide-react";
 import { HelpPill } from "@/components/help-pill";
+import { PageHeader } from "@/components/page-header";
 
 type Action = { title: string; detail: string; priority: "high" | "medium" | "low" };
 type Pillar = {
@@ -55,22 +56,19 @@ export default function ActionPlanPage() {
   useEffect(() => { load(); }, []);
 
   return (
-    <div className="space-y-8 max-w-5xl">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Target className="h-6 w-6 text-emerald" /> Plan d'action longévité
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Synthèse de tes biomarqueurs, ADN, suppléments et wearables — 3 piliers actionables : sommeil, sport, nutrition.
-          </p>
-        </div>
-        <button onClick={() => load(true)} disabled={refreshing}
-                className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-secondary/40 hover:bg-secondary text-xs disabled:opacity-50">
-          {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          Régénérer
-        </button>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Plan d'action longévité"
+        description="Synthèse de tes biomarqueurs, ADN, suppléments et wearables — 3 piliers actionables : sommeil, sport, nutrition."
+        icon={<Target className="h-5 w-5 text-emerald" />}
+        actions={
+          <button onClick={() => load(true)} disabled={refreshing}
+                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-border bg-secondary/40 hover:bg-secondary text-sm transition disabled:opacity-50">
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Régénérer
+          </button>
+        }
+      />
 
       {loading && (
         <div className="rounded-2xl border border-border bg-card p-12 flex items-center justify-center gap-3 text-muted-foreground">
@@ -107,7 +105,7 @@ export default function ActionPlanPage() {
           </motion.section>
 
           {/* Pillars */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plan.pillars.map((p, i) => {
               const cfg = STATUS_CFG[p.status];
               return (
@@ -154,7 +152,7 @@ export default function ActionPlanPage() {
           </div>
 
           {/* Risks + Strengths */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <section className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">
               <h2 className="text-sm font-medium flex items-center gap-2 mb-3">
                 <AlertCircle className="h-4 w-4 text-amber-400" /> Points d'attention

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select } from "@/components/ui/input";
 import { FOOD_BY_SLUG } from "@/lib/nutrition/food-database";
 import type { NutritionPlan, NutritionPref, RuleHit } from "@/lib/nutrition/types";
+import { PageHeader } from "@/components/page-header";
 
 const TABS = [
   { key: "overview", label: "Vue d'ensemble" },
@@ -83,28 +84,24 @@ export default function NutritionPage() {
   useEffect(() => { void loadPrefs(); void loadPlan(); }, []);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex items-center gap-2.5">
-            <Salad className="h-7 w-7 text-emerald" />
-            Nutrition
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Recommandations personnalisées basées sur ton dernier bilan, ton ADN et tes préférences.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setPrefsOpen((o) => !o)}>
-            {prefsOpen ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
-            Mes préférences
-          </Button>
-          <Button onClick={() => loadPlan(true)} disabled={regenerating}>
-            {regenerating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-            Régénérer
-          </Button>
-        </div>
-      </header>
+    <div className="space-y-10">
+      <PageHeader
+        title="Nutrition"
+        description="Recommandations personnalisées basées sur ton dernier bilan, ton ADN et tes préférences."
+        icon={<Salad className="h-5 w-5 text-emerald" />}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => setPrefsOpen((o) => !o)}>
+              {prefsOpen ? <ChevronUp className="h-4 w-4 mr-1" /> : <ChevronDown className="h-4 w-4 mr-1" />}
+              Mes préférences
+            </Button>
+            <Button onClick={() => loadPlan(true)} disabled={regenerating}>
+              {regenerating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Régénérer
+            </Button>
+          </div>
+        }
+      />
 
       <PrefsPanel open={prefsOpen} prefs={prefs} setPrefs={setPrefs} onSave={savePrefs} saving={savingPrefs} />
 

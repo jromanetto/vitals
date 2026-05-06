@@ -2,11 +2,12 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle, Pill } from "lucide-react";
 import { InteractionsCard } from "@/components/interactions-card";
 import { SupplementCoverage } from "@/components/supplement-coverage";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Select } from "@/components/ui/input";
+import { PageHeader } from "@/components/page-header";
 
 type Supplement = {
   id: number; name: string; dose: string | null; unit: string | null;
@@ -121,16 +122,17 @@ export default function SupplementsPage() {
   const dnaCount = supplementSuggestions.filter((s) => s.source === "dna").length;
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Suppléments</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Suivi quotidien · adhérence · suggestions personnalisées (biomarkers + ADN) · interactions.</p>
-        </div>
-        <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditing(null); setShowForm(true); }}>
-          Ajouter
-        </Button>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Suppléments"
+        description="Suivi quotidien · adhérence · suggestions personnalisées (biomarkers + ADN) · interactions."
+        icon={<Pill className="h-5 w-5 text-emerald" />}
+        actions={
+          <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => { setEditing(null); setShowForm(true); }}>
+            Ajouter
+          </Button>
+        }
+      />
 
       <InteractionsCard />
 

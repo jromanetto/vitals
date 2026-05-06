@@ -149,7 +149,7 @@ export default function TimelinePage() {
   const isEmpty = !loading && events.length === 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
       <PageHeader
         title="Timeline"
         description="Toute ton histoire santé sur une frise"
