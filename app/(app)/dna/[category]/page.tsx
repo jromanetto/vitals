@@ -19,13 +19,14 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
   const { category } = await params;
   const rows = await load(category);
   return (
-    <div className="space-y-8">
-      <Link href="/dna" className="text-sm text-muted-foreground hover:text-foreground">← Toutes les catégories</Link>
+    <div className="space-y-10">
+      <Link href="/dna" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Toutes les catégories</Link>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight capitalize">{category}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{rows.length} traits analysés</p>
+        <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">Catégorie ADN</div>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight capitalize mt-2">{category}</h1>
+        <p className="text-muted-foreground mt-3 text-[15px]">{rows.length} traits analysés</p>
       </div>
-      <div className="grid gap-3">
+      <div className="grid gap-4">
         {rows.length === 0 && <div className="rounded-xl border border-border p-8 bg-card text-muted-foreground">Aucun insight encore généré pour cette catégorie.</div>}
         {rows.map((r) => (
           <article key={r.rsid + r.trait} className="rounded-xl border border-border bg-card p-5 space-y-3">

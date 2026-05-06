@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight } from "lucide-react";
+import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight, FolderUp } from "lucide-react";
 import Link from "next/link";
 import { WearableDashboardCard } from "@/components/wearable-dashboard-card";
 import { ImageExtractModal } from "@/components/image-extract-modal";
+import { PageHeader } from "@/components/page-header";
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|heic)$/i;
 function isImageFile(f: File): boolean {
@@ -141,13 +142,12 @@ export default function ImportPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Import unifié</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Glisse-dépose tout — exports Whoop/Oura, PDF d'analyses sanguines, consultations, imageries, photos d'ordonnances, ADN, notes markdown. On détecte automatiquement et on classe au bon endroit.
-        </p>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Import unifié"
+        description="Glisse-dépose tout — exports Whoop/Oura, PDF d'analyses sanguines, consultations, imageries, photos d'ordonnances, ADN, notes markdown. On détecte automatiquement et on classe au bon endroit."
+        icon={<FolderUp className="h-5 w-5 text-emerald" />}
+      />
 
       <section
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}

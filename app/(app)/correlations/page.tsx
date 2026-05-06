@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight, ArrowDownRight, Info, Activity, HeartPulse, Pill, ListChecks, Watch } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Info, Activity, HeartPulse, Pill, ListChecks, Watch, Network } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 type Hit = {
   symptomKey: string; vsKey: string;
@@ -60,22 +61,23 @@ export default function CorrelationsPage() {
   const counts = data.counts;
 
   return (
-    <div className="space-y-8 max-w-5xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Corrélations</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Spearman entre tes signaux quotidiens. Plus tu loggues, plus c'est fiable.</p>
-        {counts && (
-          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
-            <span>{counts.symptoms} entrées symptômes</span>
-            <span>·</span>
-            <span>{counts.habits} habitudes</span>
-            <span>·</span>
-            <span>{counts.supplements} prises de suppléments</span>
-            <span>·</span>
-            <span>{counts.wearables} mesures wearable</span>
-          </div>
-        )}
-      </div>
+    <div className="space-y-10">
+      <PageHeader
+        title="Corrélations"
+        description="Spearman entre tes signaux quotidiens. Plus tu loggues, plus c'est fiable."
+        icon={<Network className="h-5 w-5 text-emerald" />}
+      />
+      {counts && (
+        <div className="-mt-6 flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <span>{counts.symptoms} entrées symptômes</span>
+          <span>·</span>
+          <span>{counts.habits} habitudes</span>
+          <span>·</span>
+          <span>{counts.supplements} prises de suppléments</span>
+          <span>·</span>
+          <span>{counts.wearables} mesures wearable</span>
+        </div>
+      )}
 
       {data.note && (
         <div className="rounded-xl border border-border bg-card p-5 flex items-start gap-3">

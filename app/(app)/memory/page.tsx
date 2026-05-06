@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Brain, Plus, Trash2, Power } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 type Memory = {
   id: number;
@@ -80,18 +81,17 @@ export default function MemoryPage() {
   for (const m of memories) (grouped[m.kind] ??= []).push(m);
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-3">
-        <Brain className="h-6 w-6 text-emerald" />
-        <h1 className="text-2xl font-semibold tracking-tight">Mémoire long-terme</h1>
-        <span className="text-xs text-muted-foreground ml-auto">
-          {memories.filter((m) => m.active).length} actives / {memories.length} totales
-        </span>
-      </div>
-      <p className="text-sm text-muted-foreground max-w-2xl">
-        Les mémoires actives sont injectées dans CHAQUE conversation avec le panel médical. Elles sont
-        extraites automatiquement à la fin de chaque session, ou ajoutées manuellement ici.
-      </p>
+    <div className="space-y-10">
+      <PageHeader
+        title="Mémoire long-terme"
+        description="Les mémoires actives sont injectées dans CHAQUE conversation avec le panel médical. Elles sont extraites automatiquement à la fin de chaque session, ou ajoutées manuellement ici."
+        icon={<Brain className="h-5 w-5 text-emerald" />}
+        actions={
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {memories.filter((m) => m.active).length} actives / {memories.length} totales
+          </span>
+        }
+      />
 
       <div className="rounded-xl border border-border bg-card p-4 space-y-3">
         <h2 className="text-sm font-semibold">Ajouter une mémoire</h2>

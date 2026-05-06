@@ -25,12 +25,12 @@ export default async function SymptomDetail({ params }: { params: Promise<{ key:
   const label = LABELS[key] ?? key;
 
   return (
-    <div className="space-y-8 max-w-4xl">
-      <Link href="/symptoms" className="text-sm text-muted-foreground hover:text-foreground">← Tous les symptômes</Link>
+    <div className="space-y-10">
+      <Link href="/symptoms" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Tous les symptômes</Link>
       <div>
-        <div className="text-xs uppercase tracking-wider text-muted-foreground">Symptôme</div>
-        <h1 className="text-2xl font-semibold tracking-tight mt-1">{label}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{logs.length} entrées · superposable avec n'importe quel biomarqueur pour visualiser une corrélation.</p>
+        <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">Symptôme</div>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{label}</h1>
+        <p className="text-muted-foreground mt-3 text-[15px] max-w-2xl">{logs.length} entrées · superposable avec n'importe quel biomarqueur pour visualiser une corrélation.</p>
       </div>
       <SymptomDetailClient symptomKey={key} logs={logs} biomarkers={bms} />
     </div>

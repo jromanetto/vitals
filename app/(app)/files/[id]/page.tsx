@@ -22,17 +22,17 @@ export default async function FilePage({ params }: { params: Promise<{ id: strin
   const fileName = doc.path.split("/").slice(-1)[0];
 
   return (
-    <div className="space-y-5">
-      <Link href="/knowledge" className="text-sm text-muted-foreground hover:text-foreground">← Knowledge</Link>
+    <div className="space-y-8">
+      <Link href="/knowledge" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Knowledge</Link>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">{doc.category}</div>
-          <h1 className="text-xl font-semibold tracking-tight mt-1 break-all">{doc.title || fileName}</h1>
-          <div className="text-xs text-muted-foreground mt-1">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">{doc.category}</div>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight mt-2 break-all">{doc.title || fileName}</h1>
+          <div className="text-xs text-muted-foreground mt-2">
             {doc.date && new Date(doc.date).toLocaleDateString("fr-FR")} {doc.pages && `· ${doc.pages} pages`}
           </div>
         </div>
-        <a href={`/api/files/${doc.id}`} download className="text-xs px-3 py-1.5 rounded-md bg-secondary border border-border hover:bg-secondary/70">⬇ Télécharger</a>
+        <a href={`/api/files/${doc.id}`} download className="inline-flex items-center gap-1.5 text-sm px-3.5 py-2 rounded-md bg-secondary border border-border hover:bg-secondary/70 transition shrink-0">⬇ Télécharger</a>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
         <div className="rounded-xl border border-border bg-card overflow-hidden h-[78vh]">

@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 import { schema } from "@/lib/db";
 import { PedigreeEditor } from "@/components/pedigree-editor";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { PageHeader } from "@/components/page-header";
+import { Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +20,12 @@ export default async function FamilyPage() {
   const profile = await getProfile();
   const pedigree = (profile.pedigree as Record<string, unknown>) ?? {};
   return (
-    <div className="space-y-8 max-w-4xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pedigree familial</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Histoire de santé sur 3 générations. Plus c'est rempli, mieux les risques héréditaires sont détectés.
-        </p>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Pedigree familial"
+        description="Histoire de santé sur 3 générations. Plus c'est rempli, mieux les risques héréditaires sont détectés."
+        icon={<Users className="h-5 w-5 text-emerald" />}
+      />
       <PedigreeEditor initial={pedigree} />
     </div>
   );

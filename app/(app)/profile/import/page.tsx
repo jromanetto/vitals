@@ -3,6 +3,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { Sparkles, ArrowRight } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 export default function ProfileImportPage() {
   const router = useRouter();
@@ -33,11 +34,12 @@ export default function ProfileImportPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <div>
-        <div className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-emerald" /><h1 className="text-2xl font-semibold tracking-tight">Importer un texte</h1></div>
-        <p className="text-muted-foreground mt-1 text-sm">Colle une lettre de médecin, un résumé de bilan, ou n'importe quel texte santé. Claude extrait les infos pour remplir ton profil.</p>
-      </div>
+    <div className="space-y-10">
+      <PageHeader
+        title="Importer un texte"
+        description="Colle une lettre de médecin, un résumé de bilan, ou n'importe quel texte santé. Claude extrait les infos pour remplir ton profil."
+        icon={<Sparkles className="h-5 w-5 text-emerald" />}
+      />
       <div className="space-y-3">
         <textarea
           value={text} onChange={(e) => setText(e.target.value)} rows={14}

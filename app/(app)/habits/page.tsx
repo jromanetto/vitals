@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Moon, Droplet, Dumbbell, Clock, Sun, Brain, FlameKindling } from "lucide-react";
+import { Check, Moon, Droplet, Dumbbell, Clock, Sun, Brain, FlameKindling, Flame } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 const HABITS = [
   { key: "sleep_7h", label: "Sommeil ≥ 7h", icon: Moon, target: "≥7 h" },
@@ -66,13 +67,14 @@ export default function HabitsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Habitudes</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Coche ce que tu fais aujourd'hui. Streaks et heatmap 60 jours en dessous.</p>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Habitudes"
+        description="Coche ce que tu fais aujourd'hui. Streaks et heatmap 60 jours en dessous."
+        icon={<Flame className="h-5 w-5 text-emerald" />}
+      />
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm font-medium mb-4">Aujourd'hui — {today}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {HABITS.map((h, i) => {
@@ -103,7 +105,7 @@ export default function HabitsPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm font-medium mb-4">Heatmap 60 jours</h2>
         <div className="space-y-1">
           {HABITS.map((h, i) => (

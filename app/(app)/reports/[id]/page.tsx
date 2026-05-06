@@ -35,10 +35,10 @@ export default async function ReportPage({
           ← Tous les rapports
         </Link>
       )}
-      <header className={printMode ? "mb-8" : "mt-3 mb-6"}>
-        <div className="text-xs uppercase tracking-wider text-muted-foreground capitalize">{r.kind.replace(/-/g, " ")}</div>
-        <h1 className="text-2xl font-semibold tracking-tight mt-1">{r.title}</h1>
-        <div className="text-xs text-muted-foreground mt-1">{new Date(r.created_at).toLocaleString("fr-FR")}</div>
+      <header className={printMode ? "mb-8" : "mt-4 mb-8"}>
+        <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium capitalize">{r.kind.replace(/-/g, " ")}</div>
+        <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{r.title}</h1>
+        <div className="text-xs text-muted-foreground mt-2">{new Date(r.created_at).toLocaleString("fr-FR")}</div>
       </header>
       {generating ? (
         <ReportBodyPoller id={r.id} initialBody={r.body} />

@@ -48,19 +48,19 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
   const sb = statusBadge();
 
   return (
-    <div className="space-y-8">
-      <Link href="/biomarkers" className="text-sm text-muted-foreground hover:text-foreground">← Tous les biomarkers</Link>
+    <div className="space-y-10">
+      <Link href="/biomarkers" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Tous les biomarkers</Link>
       {!meta && (
         <div className="rounded-xl border border-border p-8 bg-card text-muted-foreground">Aucune donnée pour ce marqueur.</div>
       )}
       {meta && (
         <>
           <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">{meta.category ?? "Biomarqueur"}</div>
-            <h1 className="text-2xl font-semibold tracking-tight mt-1">{meta.name}</h1>
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">{meta.category ?? "Biomarqueur"}</div>
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{meta.name}</h1>
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
               <span>Dernière valeur : <span className="text-foreground font-mono">{latest.value} {latest.unit}</span></span>
-              {sb && <span className={`inline-flex px-2 py-0.5 rounded-full text-xs border ${sb.color}`}>{sb.label}</span>}
+              {sb && <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs border ${sb.color}`}>{sb.label}</span>}
               {rows.length > 1 && <span>Évolution: <span className={change > 0 ? "text-amber-400" : "text-emerald"}>{change > 0 ? "+" : ""}{change.toFixed(1)}%</span> sur {rows.length} mesures</span>}
             </div>
           </div>

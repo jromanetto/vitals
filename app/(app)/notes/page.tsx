@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Tag, Activity, Dna, FileText, Search } from "lucide-react";
+import { Tag, Activity, Dna, FileText, Search, NotebookPen } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 
 type Note = {
   id: number; targetType: string; targetId: string;
@@ -38,11 +39,12 @@ export default function NotesIndexPage() {
   const filtered = notes.filter((n) => !filter || n.body.toLowerCase().includes(filter.toLowerCase()) || (n.tags ?? "").toLowerCase().includes(filter.toLowerCase()));
 
   return (
-    <div className="space-y-8 max-w-3xl">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Notes</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Toutes tes annotations sur biomarkers, ADN, fichiers — taggées et cherchables.</p>
-      </div>
+    <div className="space-y-10">
+      <PageHeader
+        title="Notes"
+        description="Toutes tes annotations sur biomarkers, ADN, fichiers — taggées et cherchables."
+        icon={<NotebookPen className="h-5 w-5 text-emerald" />}
+      />
 
       <div className="flex items-center gap-2">
         <div className="flex-1 relative">

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/page-header";
+import { HeartPulse } from "lucide-react";
 
 const SYMPTOMS = [
   { key: "energy", label: "Énergie", scale: 10 },
@@ -70,13 +72,14 @@ export default function SymptomsPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Symptômes</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Auto-évaluation rapide quotidienne. Clique un nom pour voir le détail + overlay biomarker.</p>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Symptômes"
+        description="Auto-évaluation rapide quotidienne. Clique un nom pour voir le détail + overlay biomarker."
+        icon={<HeartPulse className="h-5 w-5 text-emerald" />}
+      />
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="rounded-xl border border-border bg-card p-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium">Aujourd'hui — {todayStr}</h2>
           <Input
@@ -116,7 +119,7 @@ export default function SymptomsPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-sm font-medium mb-3">Heatmap 60 jours</h2>
         <div className="space-y-1">
           {SYMPTOMS.map((sym) => (
