@@ -4,6 +4,7 @@ import { FileText } from "lucide-react";
 import { ReportKindPicker } from "@/components/report-kind-picker";
 import { ReportsGrid, type ReportRow } from "@/components/reports-grid";
 import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +40,12 @@ async function getAll(): Promise<ReportRow[]> {
 export default async function ReportsPage() {
   const rows = await getAll();
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Rapports</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile.
-        </p>
-      </div>
+    <div className="space-y-12">
+      <PageHeader
+        title="Rapports"
+        description="Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile."
+        icon={<FileText className="h-5 w-5 text-emerald" />}
+      />
 
       <ReportKindPicker kinds={KINDS} />
 

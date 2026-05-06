@@ -7,7 +7,8 @@ import { DnaTopFindings } from "@/components/dna-top-findings";
 import { DnaOverview } from "@/components/dna-overview";
 import { DnaStrengths } from "@/components/dna-strengths";
 import { PageHeader } from "@/components/page-header";
-import { Dna as DnaIcon } from "lucide-react";
+import { SectionHeader } from "@/components/section-header";
+import { Dna as DnaIcon, Layers } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -56,7 +57,7 @@ async function counts() {
 export default async function DnaPage() {
   const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts();
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       <PageHeader
         title="Analyse ADN"
         description={
@@ -80,14 +81,19 @@ export default async function DnaPage() {
 
       {top.length > 0 && <DnaTopFindings findings={top} />}
 
-      <div>
-        <h2 className="text-sm font-medium mb-3 text-muted-foreground uppercase tracking-wider">Par catégorie</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section>
+        <SectionHeader
+          eyebrow="Catégories"
+          title="Par système corporel"
+          description="10 systèmes analysés avec leur ratio favorable et points d'attention."
+          icon={<Layers className="h-4 w-4 text-emerald" />}
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {CATEGORIES.map((c, i) => (
             <DnaCategoryCard key={c.id} cat={c} stats={byCat[c.id]} idx={i} />
           ))}
         </div>
-      </div>
+      </section>
     </div>
   );
 }

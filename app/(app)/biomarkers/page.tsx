@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BiomarkersPage() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-12">
       <PageHeader
         title="Biomarqueurs"
         description="Tous tes bilans sanguins, regroupés par système corporel. Chaque biomarqueur affiche la référence labo et la cible longévité."
@@ -18,9 +18,9 @@ export default async function BiomarkersPage() {
         actions={
           <Link
             href="/biomarkers/compare"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 hover:bg-secondary/70 px-3 py-1.5 text-xs transition"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 hover:bg-secondary/70 px-3.5 py-2 text-sm transition"
           >
-            <GitCompare className="h-3.5 w-3.5" /> Comparer
+            <GitCompare className="h-4 w-4" /> Comparer
           </Link>
         }
       />

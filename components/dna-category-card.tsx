@@ -24,11 +24,12 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
   return (
     <Link href={`/dna/${cat.id}`} className="group">
       <motion.div
-        initial={{ opacity: 0, y: 6 }}
+        initial={{ opacity: 0, y: 8 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
-        transition={{ duration: 0.3, delay: Math.min(idx * 0.04, 0.4) }}
-        className={`rounded-xl border ${borderTone} bg-card p-5 transition relative overflow-hidden`}
+        transition={{ duration: 0.4, delay: Math.min(idx * 0.05, 0.5), ease: [0.22, 1, 0.36, 1] }}
+        whileHover={{ y: -2 }}
+        className={`rounded-xl border ${borderTone} bg-card p-6 transition-colors relative overflow-hidden shadow-sm hover:shadow-md`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="text-base font-medium tracking-tight group-hover:text-emerald transition">{cat.title}</div>
