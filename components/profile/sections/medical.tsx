@@ -1,7 +1,14 @@
 "use client";
 import { SectionRenderer } from "./section-renderer";
 
-export const MEDICAL_SECTION_IDS = ["medical", "mental", "reproductive"];
+export const MEDICAL_SECTION_IDS = [
+  "medical",
+  "mental",
+  "digestion",
+  "dentalVision",
+  "skin",
+  "pain",
+];
 
 export function MedicalSection(props: {
   data: Record<string, unknown>;

@@ -2,7 +2,9 @@
 import { SectionRenderer } from "./section-renderer";
 import { PedigreeEditor } from "@/components/pedigree-editor";
 
-export const FAMILLE_SECTION_IDS = ["family"];
+// Order matters: free-text family fields first, then pedigree (alive/age),
+// then the structured disease grid (heaviest, most useful for scoring).
+export const FAMILLE_SECTION_IDS = ["family", "familyHistory"];
 
 export function FamilleSection({
   data,
@@ -14,7 +16,7 @@ export function FamilleSection({
   const pedigree = (data.pedigree as Record<string, unknown>) ?? {};
   return (
     <div className="space-y-6">
-      <SectionRenderer ids={FAMILLE_SECTION_IDS} data={data} onChange={onChange} />
+      <SectionRenderer ids={["family"]} data={data} onChange={onChange} />
       <section className="rounded-xl border border-border bg-card p-6">
         <h2 className="text-lg font-medium tracking-tight">Pedigree familial</h2>
         <p className="text-sm text-muted-foreground mt-1">
@@ -24,6 +26,7 @@ export function FamilleSection({
           <PedigreeEditor initial={pedigree} />
         </div>
       </section>
+      <SectionRenderer ids={["familyHistory"]} data={data} onChange={onChange} />
     </div>
   );
 }

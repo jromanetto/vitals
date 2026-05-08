@@ -13,14 +13,22 @@ import { EnvironnementSection, ENVIRONNEMENT_SECTION_IDS } from "./sections/envi
 import { LifestyleSection, LIFESTYLE_SECTION_IDS } from "./sections/lifestyle";
 import { SupplementsSection, SUPPLEMENTS_SECTION_IDS } from "./sections/supplements";
 import { SecuriteSection } from "./sections/securite";
+import { SymptomesSection, SYMPTOMES_SECTION_IDS } from "./sections/symptomes";
+import { ScreeningSection, SCREENING_SECTION_IDS } from "./sections/screening";
+import { ReproductionSection, REPRODUCTION_SECTION_IDS } from "./sections/reproduction";
+import { ObjectifsSection, OBJECTIFS_SECTION_IDS } from "./sections/objectifs";
 import { AutoExtractButton } from "@/components/auto-extract-button";
 
 type TabId =
   | "identite"
   | "medical"
   | "famille"
-  | "environnement"
+  | "symptomes"
+  | "screening"
   | "lifestyle"
+  | "reproduction"
+  | "environnement"
+  | "objectifs"
   | "supplements"
   | "securite";
 
@@ -32,15 +40,23 @@ type TabDef = {
   sectionIds: string[];
 };
 
-const TABS: TabDef[] = [
+const ALL_TABS: TabDef[] = [
   { id: "identite", label: "Identité", emoji: "👤", toastLabel: "Identité", sectionIds: IDENTITE_SECTION_IDS },
-  { id: "medical", label: "Médical", emoji: "🏥", toastLabel: "Médical", sectionIds: MEDICAL_SECTION_IDS },
+  { id: "medical", label: "Santé", emoji: "🏥", toastLabel: "Santé", sectionIds: MEDICAL_SECTION_IDS },
   { id: "famille", label: "Famille", emoji: "🧬", toastLabel: "Famille", sectionIds: FAMILLE_SECTION_IDS },
-  { id: "environnement", label: "Environnement", emoji: "🌍", toastLabel: "Environnement", sectionIds: ENVIRONNEMENT_SECTION_IDS },
+  { id: "symptomes", label: "Symptômes", emoji: "🩺", toastLabel: "Symptômes", sectionIds: SYMPTOMES_SECTION_IDS },
+  { id: "screening", label: "Suivi médical", emoji: "📅", toastLabel: "Suivi médical", sectionIds: SCREENING_SECTION_IDS },
   { id: "lifestyle", label: "Lifestyle", emoji: "🏃", toastLabel: "Lifestyle", sectionIds: LIFESTYLE_SECTION_IDS },
-  { id: "supplements", label: "Suppléments référence", emoji: "💊", toastLabel: "Suppléments", sectionIds: SUPPLEMENTS_SECTION_IDS },
+  { id: "reproduction", label: "Reproduction", emoji: "🌱", toastLabel: "Reproduction", sectionIds: REPRODUCTION_SECTION_IDS },
+  { id: "environnement", label: "Environnement", emoji: "🌍", toastLabel: "Environnement", sectionIds: ENVIRONNEMENT_SECTION_IDS },
+  { id: "objectifs", label: "Objectifs", emoji: "🎯", toastLabel: "Objectifs", sectionIds: OBJECTIFS_SECTION_IDS },
+  { id: "supplements", label: "Suppléments", emoji: "💊", toastLabel: "Suppléments", sectionIds: SUPPLEMENTS_SECTION_IDS },
   { id: "securite", label: "Sécurité", emoji: "🛡️", toastLabel: "Sécurité", sectionIds: [] },
 ];
+
+// Reproduction tab is shown for everyone; the section itself filters womens/mens
+// sub-sections by data.sex (see ReproductionSection).
+const TABS = ALL_TABS;
 
 function tabCompletion(tab: TabDef, data: Record<string, unknown>): number {
   if (tab.id === "securite") return 100; // info-only tab
@@ -275,11 +291,23 @@ export function ProfileWizard({ initial }: { initial: Record<string, unknown> })
               {activeTab === "famille" && (
                 <FamilleSection data={data} onChange={onChange} />
               )}
-              {activeTab === "environnement" && (
-                <EnvironnementSection data={data} onPatch={onPatch} />
+              {activeTab === "symptomes" && (
+                <SymptomesSection data={data} onChange={onChange} />
+              )}
+              {activeTab === "screening" && (
+                <ScreeningSection data={data} onChange={onChange} />
               )}
               {activeTab === "lifestyle" && (
                 <LifestyleSection data={data} onChange={onChange} />
+              )}
+              {activeTab === "reproduction" && (
+                <ReproductionSection data={data} onChange={onChange} />
+              )}
+              {activeTab === "environnement" && (
+                <EnvironnementSection data={data} onChange={onChange} onPatch={onPatch} />
+              )}
+              {activeTab === "objectifs" && (
+                <ObjectifsSection data={data} onChange={onChange} />
               )}
               {activeTab === "supplements" && (
                 <SupplementsSection data={data} onChange={onChange} />

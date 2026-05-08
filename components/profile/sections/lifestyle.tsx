@@ -1,7 +1,14 @@
 "use client";
 import { SectionRenderer } from "./section-renderer";
 
-export const LIFESTYLE_SECTION_IDS = ["lifestyle", "diet"];
+export const LIFESTYLE_SECTION_IDS = [
+  "lifestyle",
+  "diet",
+  "sleep",
+  "energy",
+  "recovery",
+  "substances",
+];
 
 export function LifestyleSection(props: {
   data: Record<string, unknown>;
