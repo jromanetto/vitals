@@ -86,6 +86,50 @@ Next.js 15 App Router · React 19 · TypeScript strict · Tailwind v3 · Framer 
 | 25 | Supplement effects tracking + missing biomarker recommendations |
 | 26 | Mobile UI polish + responsive tables |
 | 27 | Final wrap-up |
+| 28 | **Design refresh** — light theme as default, airy shell, normalized PageHeader across 18+ pages, sidebar/topbar polish, framer-motion stagger fixes |
+
+## Sprint 28 — Design refresh (May 2026)
+
+Post-launch design pass. Triggered by user feedback "le design est pas mal mais c'est pas assez aéré et il faut un thème sur fond blanc". Five batches, seven commits, ~25 files.
+
+### Root cause discovered mid-session
+The `ThemeProvider` was hardcoded to `defaultTheme="dark"` with `enableSystem={false}`. Every new visitor saw dark mode regardless of OS preference. All previous UI work was rendered in dark while the user expected light. Fixed in commit `ae28c82` — now defaults to light, theme toggle still persists user choice via localStorage.
+
+### Shell & token bumps
+- `app/(app)/layout.tsx`: `py-8 max-w-7xl` → `py-10 md:py-14 lg:py-16 max-w-6xl`, gutters `px-6 md:px-12`
+- `<PageHeader>`: H1 `text-2xl md:text-3xl` → `text-3xl md:text-4xl`, icon 40 → 44px, eyebrow tracking widened
+- `<SectionHeader>`: H2 `text-base md:text-lg` → `text-lg md:text-xl`, eyebrow 11px tracking [0.18em]
+- `<Sidebar>`: `w-60` → `w-64`, items `space-y-0.5` → `space-y-1` rounded-lg, group label tracking [0.16em], logo dot gets emerald glow, active item icon turns emerald
+- `<TopBar>`: `h-14` → `h-16`, gutter md:px-12 cohérent avec shell, search rounded-lg + py-2 + backdrop-blur-md
+
+### Pages migrated to PageHeader (18)
+**Batch A** (`c5ad78b`) — biomarkers, dna, reports
+**Batch B** (`0b98503`) — nutrition (drop redundant max-w wrapper), supplements (Pill icon + Ajouter action), timeline, action-plan (Target icon + Régénérer action)
+**Batch C** (`4777eda`) — profile/family, profile/security, profile/import, habits (Flame), notes (NotebookPen), symptoms (HeartPulse), correlations (Network), import (FolderUp), memory (Brain) + 5 detail routes ([slug]/[category]/[id]/[key]) typography normalized to PageHeader scale
+
+### framer-motion fix
+`DnaTopFindings`, `DnaStrengths` and `DnaCategoryCard` used `whileInView` for inner card stagger. Cards rendered below the initial fold stayed at opacity 0 until scroll — entire "Points d'attention" and "Par système corporel" sections appeared empty in long viewports and headless screenshots. Switched to `animate` (commit `209760f`) so the stagger fires on mount.
+
+### Pages skipped (intentional)
+- `/profile` (root): delegates to `<ProfileWizard />` which already has its own PageHeader
+- `/knowledge`: just a `redirect("/chat?tab=docs")`
+- `/praticien`: print-friendly doc with `bg-white text-black` for doctor sharing
+- `/chat`: conversational UI, structure differs from data pages
+
+### Commits
+| SHA | Phase |
+|---|---|
+| `057b79a` | Phase 1 — shell + tokens + dashboard |
+| `c5ad78b` | Batch A — biomarkers · dna · reports |
+| `0b98503` | Batch B — nutrition · supplements · timeline · action-plan |
+| `4777eda` | Batch C — profile* + 9 pages + 5 detail routes |
+| `237c549` | Shell polish — sidebar w-64 + topbar h-16 |
+| `ae28c82` | **Theme default light** (was hardcoded dark) |
+| `209760f` | DNA cards animate on mount instead of whileInView |
+
+### Deferred (intentional, low impact)
+- 103 instances of `text-amber-400`/`text-red-400` calibrated for dark mode — slightly pale on white, not breaking. Future polish batch.
+- Public landing page (`/`) marketing patterns (3-column feature grid, numbered icons in colored circles) — out of scope for "admin pages" request.
 
 ## Architecture highlights
 - **Async report generation** via detached `child_process.spawn` — bypasses Cloudflare 60s timeout, polled by client

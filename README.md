@@ -43,8 +43,9 @@ A self-hosted, AI-powered platform that aggregates 15+ years of personal health 
 - **PDF inline viewer** with extracted biomarkers sidebar
 - **Family pedigree** edit + SVG visualization (3 generations color-coded by risk)
 - **Notes everywhere** with tags, /notes index, search
-- **Dark/light mode toggle**, mobile sidebar, accessibility (skip link, focus rings, aria-labels)
-- **Apple-meets-medical aesthetic** — Framer Motion animations, glass effects, Tailwind v3
+- **Light theme by default** (toggle to dark), mobile sidebar, accessibility (skip link, focus rings, aria-labels)
+- **Airy editorial layout** — `<PageHeader>` and `<SectionHeader>` primitives normalized across 18+ pages, max-w-6xl content shell with `py-10 md:py-14 lg:py-16` vertical rhythm
+- **Apple-meets-medical aesthetic** — Framer Motion entry/spring animations everywhere, glass effects, Tailwind v3, sidebar w-64 with emerald-glow brand mark
 
 ## Stack
 
