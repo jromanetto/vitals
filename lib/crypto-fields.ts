@@ -84,6 +84,16 @@ export const SENSITIVE_PROFILE_FIELDS: readonly string[] = [
   "birthPlace",
   "address",
   "city",
+  // Onboarding-exhaustif: free-text narratives only. Structured fields (familyHistory,
+  // activeSymptoms, screeningHistory) are kept plaintext — they contain no PII (just
+  // status enums / symptom IDs / dates), and encrypting hundreds of enum cells per
+  // grid would explode the JSON without adding meaningful confidentiality.
+  "psychedelicsHistory",
+  "painTreatments",
+  "geneticPanelOther",
+  "emergencyContactName",
+  "emergencyContactPhone",
+  "preferredPharmacy",
   "recreationalDrugs",
   "sexualActivity",
   "contraception",
