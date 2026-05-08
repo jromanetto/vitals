@@ -14,32 +14,47 @@ type Step = {
   ctaHref: string;
 };
 
-const STEPS: Step[] = [
-  {
-    emoji: "🩸",
-    title: "Importer ton premier bilan sanguin",
-    description:
-      "Glisse-dépose un PDF de bilan. On extrait automatiquement chaque biomarqueur et son évolution.",
-    ctaLabel: "Importer un bilan",
-    ctaHref: "/import",
-  },
-  {
-    emoji: "🧬",
-    title: "Importer ton ADN 23andMe",
-    description:
-      "Ton fichier brut 23andMe ou Ancestry débloque des insights génétiques personnalisés.",
-    ctaLabel: "Importer mon ADN",
-    ctaHref: "/import",
-  },
-  {
-    emoji: "👤",
-    title: "Compléter ton profil",
-    description:
-      "Âge, sexe, antécédents, sport et mode de vie — tout cela affine tes recommandations.",
-    ctaLabel: "Compléter mon profil",
-    ctaHref: "/profile",
-  },
-];
+function buildSteps(documents: number): Step[] {
+  // If the user already imported at least 1 doc but hasn't seen the onboarding modal,
+  // push them toward the profile wizard instead of yet another import.
+  const firstStep: Step =
+    documents >= 1
+      ? {
+          emoji: "👤",
+          title: "Compléter ton profil",
+          description:
+            "Tu as déjà importé un document. Quelques minutes de profil suffisent pour des analyses sur-mesure.",
+          ctaLabel: "Compléter mon profil",
+          ctaHref: "/profile?tab=identite",
+        }
+      : {
+          emoji: "🩸",
+          title: "Importer ton premier bilan sanguin",
+          description:
+            "Glisse-dépose un PDF de bilan. On extrait automatiquement chaque biomarqueur et son évolution.",
+          ctaLabel: "Importer un bilan",
+          ctaHref: "/import",
+        };
+  return [
+    firstStep,
+    {
+      emoji: "🧬",
+      title: "Importer ton ADN 23andMe",
+      description:
+        "Ton fichier brut 23andMe ou Ancestry débloque des insights génétiques personnalisés.",
+      ctaLabel: "Importer mon ADN",
+      ctaHref: "/import",
+    },
+    {
+      emoji: "👤",
+      title: "Compléter ton profil",
+      description:
+        "Âge, sexe, antécédents, sport et mode de vie — tout cela affine tes recommandations.",
+      ctaLabel: "Compléter mon profil",
+      ctaHref: "/profile",
+    },
+  ];
+}
 
 type Props = {
   documents?: number;
@@ -68,6 +83,7 @@ export function OnboardingModal({ documents = 0, force = false }: Props) {
     setOpen(false);
   }
 
+  const STEPS = buildSteps(documents);
   const current = STEPS[step];
   const isLast = step === STEPS.length - 1;
 

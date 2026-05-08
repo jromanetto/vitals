@@ -1,29 +1,204 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ArrowLeft, Loader2, Upload, Check, Sparkles } from "lucide-react";
 
-const GOALS = [
-  { id: "energy", label: "Énergie" }, { id: "sleep", label: "Sommeil" }, { id: "performance", label: "Performance sportive" },
-  { id: "exam", label: "Préparer un examen" }, { id: "condition", label: "Suivre une condition" }, { id: "longevity", label: "Optimiser longévité" },
-  { id: "weight", label: "Perte de poids" }, { id: "hormones", label: "Hormones" }, { id: "mental", label: "Mental" },
+// ---------- Option lists ----------
+const SEX_OPTIONS = [
+  { id: "male", label: "Homme" },
+  { id: "female", label: "Femme" },
+  { id: "intersex", label: "Intersexe" },
 ];
+
+const BLOOD_TYPES = ["O+", "O-", "A+", "A-", "B+", "B-", "AB+", "AB-", "Je ne sais pas"];
+
+// Labels match the canonical options in components/profile-form.tsx so that
+// values saved here round-trip cleanly into the wizard <select>.
+const ACTIVITY_LEVELS = [
+  { id: "Sédentaire", label: "Sédentaire" },
+  { id: "Léger (1-2x/sem)", label: "Léger" },
+  { id: "Modéré (3-4x/sem)", label: "Modéré" },
+  { id: "Intense (5-6x/sem)", label: "Intense" },
+  { id: "Athlète", label: "Athlète" },
+];
+
+const SLEEP_HOURS = [5, 6, 7, 8, 9];
+
+const SMOKER_OPTIONS = [
+  { id: "Non", label: "Non" },
+  { id: "Occasionnel", label: "Occasionnel" },
+  { id: "Régulier", label: "Régulier" },
+  { id: "Ex-fumeur", label: "Ex-fumeur" },
+];
+
+const GOALS = [
+  { id: "energy", label: "Énergie" },
+  { id: "sleep", label: "Sommeil" },
+  { id: "performance", label: "Performance sportive" },
+  { id: "longevity", label: "Longévité" },
+  { id: "weight", label: "Perte de poids" },
+  { id: "hormones", label: "Hormones" },
+  { id: "mental", label: "Mental" },
+  { id: "stress", label: "Réduction stress" },
+  { id: "cognitive", label: "Optimisation cognitive" },
+  { id: "cardio", label: "Cardio" },
+  { id: "immunity", label: "Immunité" },
+];
+
+const FAMILY_DISEASES = [
+  "Cancer",
+  "Diabète",
+  "Hypertension",
+  "Infarctus / AVC",
+  "Alzheimer / démence",
+  "Cholestérol familial",
+  "Maladie auto-immune",
+  "Dépression",
+  "Autre",
+];
+
+const SYMPTOMS = [
+  "Fatigue persistante",
+  "Sommeil difficile",
+  "Brouillard mental",
+  "Anxiété",
+  "Douleurs articulaires",
+  "Ballonnements",
+  "Maux de tête",
+  "Aucun",
+];
+
+const WEARABLES = [
+  "Whoop",
+  "Oura",
+  "Apple Watch",
+  "Garmin",
+  "Fitbit",
+  "CGM",
+  "Tensiomètre",
+  "Balance connectée",
+  "Aucun",
+];
+
+const CYCLE_OPTIONS = [
+  "Cycle régulier",
+  "Cycle irrégulier",
+  "Sous contraception",
+  "Ménopause",
+  "Préfère ne pas répondre",
+];
+
+const SCREENINGS = [
+  "Coloscopie",
+  "Mammo (femme)",
+  "PSA (homme)",
+  "Dexa",
+  "Bilan sanguin annuel",
+];
+
+// ---------- Step keys (logical, used to build dynamic step list) ----------
+type StepKey =
+  | "welcome"
+  | "identity"
+  | "anthro"
+  | "lifestyle"
+  | "cycle"
+  | "goals"
+  | "family"
+  | "screenings"
+  | "symptoms"
+  | "wearables"
+  | "upload";
+
+function computeAge(birthDate: string): number | null {
+  if (!birthDate) return null;
+  const d = new Date(birthDate);
+  if (isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age;
+}
+
+// Pill class helper (matches profile-form.tsx multi pattern)
+function pillClass(active: boolean): string {
+  return `px-3 py-1.5 rounded-full text-sm border transition ${
+    active
+      ? "bg-primary/15 border-primary/40 text-primary"
+      : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
+  }`;
+}
+
+function toggleArray<T>(arr: T[], v: T, max?: number): T[] {
+  if (arr.includes(v)) return arr.filter((x) => x !== v);
+  if (typeof max === "number" && arr.length >= max) return arr;
+  return [...arr, v];
+}
 
 export default function WelcomePage() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+
+  // ---------- State ----------
+  const [stepIdx, setStepIdx] = useState(0);
+
+  // identity
   const [firstName, setFirstName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [sex, setSex] = useState("");
+
+  // anthro
+  const [height, setHeight] = useState<string>("");
+  const [weight, setWeight] = useState<string>("");
+  const [bloodType, setBloodType] = useState<string>("");
+
+  // lifestyle
+  const [activityLevel, setActivityLevel] = useState<string>("");
+  const [sleepHours, setSleepHours] = useState<number | null>(null);
+  const [smoker, setSmoker] = useState<string>("");
+
+  // cycle (conditional)
+  const [womensCycleFlash, setWomensCycleFlash] = useState<string[]>([]);
+
+  // goals
   const [goals, setGoals] = useState<string[]>([]);
+
+  // family
+  const [familyDiseasesFlash, setFamilyDiseasesFlash] = useState<string[]>([]);
+
+  // screenings (conditional)
+  const [screeningsFlashDone, setScreeningsFlashDone] = useState<string[]>([]);
+
+  // symptoms
+  const [activeSymptomsFlash, setActiveSymptomsFlash] = useState<string[]>([]);
+
+  // wearables
+  const [wearablesOwned, setWearablesOwned] = useState<string[]>([]);
+
+  // upload
   const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done">("idle");
   const [uploadFilename, setUploadFilename] = useState("");
+
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const totalSteps = 5;
+  // ---------- Derived ----------
+  const age = useMemo(() => computeAge(birthDate), [birthDate]);
 
+  const steps: StepKey[] = useMemo(() => {
+    const base: StepKey[] = ["welcome", "identity", "anthro", "lifestyle"];
+    if (sex === "Femme") base.push("cycle");
+    base.push("goals", "family");
+    if (age !== null && age >= 45) base.push("screenings");
+    base.push("symptoms", "wearables", "upload");
+    return base;
+  }, [sex, age]);
+
+  const totalSteps = steps.length;
+  const currentKey: StepKey = steps[Math.min(stepIdx, totalSteps - 1)];
+
+  // ---------- Persistence ----------
   async function saveProfile(patch: Record<string, unknown>) {
     setSavingProfile(true);
     try {
@@ -35,7 +210,11 @@ export default function WelcomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data }),
       });
-    } catch {} finally { setSavingProfile(false); }
+    } catch {
+      /* swallow */
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
   async function handleUpload(file: File) {
@@ -47,20 +226,102 @@ export default function WelcomePage() {
       fd.append("files", file);
       await fetch("/api/upload/auto", { method: "POST", body: fd });
       setUploadStatus("done");
-    } catch { setUploadStatus("idle"); }
+    } catch {
+      setUploadStatus("idle");
+    }
+  }
+
+  // ---------- Validation per step ----------
+  function canProceed(key: StepKey): boolean {
+    switch (key) {
+      case "welcome":
+        return true;
+      case "identity":
+        return Boolean(firstName || birthDate || sex);
+      case "anthro":
+        return Boolean(height || weight || bloodType);
+      case "lifestyle":
+        return Boolean(activityLevel || sleepHours !== null || smoker);
+      case "cycle":
+        return true; // optional
+      case "goals":
+        return goals.length > 0;
+      case "family":
+        return true; // optional but skippable via "Aucun" pattern -> still allow next
+      case "screenings":
+        return true;
+      case "symptoms":
+        return true;
+      case "wearables":
+        return true;
+      case "upload":
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  // ---------- Navigation + persistence per step ----------
+  async function persistForStep(key: StepKey) {
+    switch (key) {
+      case "identity":
+        if (firstName || birthDate || sex) {
+          await saveProfile({ firstName, birthDate, sex });
+        }
+        break;
+      case "anthro":
+        if (height || weight || bloodType) {
+          await saveProfile({
+            height: height === "" ? undefined : Number(height),
+            weight: weight === "" ? undefined : Number(weight),
+            bloodType,
+          });
+        }
+        break;
+      case "lifestyle":
+        if (activityLevel || sleepHours !== null || smoker) {
+          await saveProfile({ activityLevel, sleepHours, smoker });
+        }
+        break;
+      case "cycle":
+        if (womensCycleFlash.length) await saveProfile({ womensCycleFlash });
+        break;
+      case "goals":
+        if (goals.length) await saveProfile({ goals });
+        break;
+      case "family":
+        if (familyDiseasesFlash.length) await saveProfile({ familyDiseasesFlash });
+        break;
+      case "screenings":
+        if (screeningsFlashDone.length) await saveProfile({ screeningsFlashDone });
+        break;
+      case "symptoms":
+        if (activeSymptomsFlash.length) await saveProfile({ activeSymptomsFlash });
+        break;
+      case "wearables":
+        if (wearablesOwned.length) await saveProfile({ wearablesOwned });
+        break;
+      default:
+        break;
+    }
   }
 
   async function next() {
-    if (step === 1 && (firstName || birthDate || sex)) {
-      await saveProfile({ firstName, birthDate, sex });
-    }
-    if (step === 3 && goals.length > 0) {
-      await saveProfile({ goals });
-    }
-    if (step < totalSteps - 1) setStep(step + 1);
+    await persistForStep(currentKey);
+    if (stepIdx < totalSteps - 1) setStepIdx(stepIdx + 1);
   }
-  function prev() { if (step > 0) setStep(step - 1); }
-  function skip() { router.push("/dashboard"); }
+  function prev() {
+    if (stepIdx > 0) setStepIdx(stepIdx - 1);
+  }
+  function skip() {
+    router.push("/dashboard");
+  }
+  function skipStep() {
+    if (stepIdx < totalSteps - 1) setStepIdx(stepIdx + 1);
+  }
+
+  const isLast = currentKey === "upload";
+  const proceedEnabled = canProceed(currentKey);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald/5 via-background to-background flex flex-col">
@@ -70,7 +331,9 @@ export default function WelcomePage() {
             <div className="h-2 w-2 rounded-full bg-emerald" />
             <span className="font-semibold tracking-tight">Vitals</span>
           </Link>
-          <button onClick={skip} className="text-xs text-muted-foreground hover:text-foreground transition">Passer pour le moment →</button>
+          <button onClick={skip} className="text-xs text-muted-foreground hover:text-foreground transition">
+            Passer pour le moment →
+          </button>
         </div>
       </header>
 
@@ -79,88 +342,249 @@ export default function WelcomePage() {
           {/* Progress dots */}
           <div className="flex items-center justify-center gap-2 mb-10">
             {Array.from({ length: totalSteps }).map((_, i) => (
-              <div key={i} className={`h-1.5 rounded-full transition-all ${i === step ? "w-8 bg-emerald" : i < step ? "w-1.5 bg-emerald/50" : "w-1.5 bg-border"}`} />
+              <div
+                key={i}
+                className={`h-1.5 rounded-full transition-all ${
+                  i === stepIdx ? "w-8 bg-emerald" : i < stepIdx ? "w-1.5 bg-emerald/50" : "w-1.5 bg-border"
+                }`}
+              />
             ))}
           </div>
 
           <AnimatePresence mode="wait">
             <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
+              key={currentKey}
+              initial={{ opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -16 }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="rounded-2xl border border-border bg-card p-8 md:p-10"
             >
-              {step === 0 && (
+              {currentKey === "welcome" && (
                 <>
                   <div className="text-6xl mb-4">👋</div>
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Bienvenue sur Vitals</h1>
-                  <p className="text-muted-foreground leading-relaxed">
-                    Une plateforme pour <span className="text-emerald">centraliser</span> ta santé, <span className="text-emerald">comprendre</span> ton corps et <span className="text-emerald">optimiser</span> ta longévité.
+                  <p className="text-muted-foreground leading-relaxed mb-6">
+                    10 minutes pour poser les bases de ton dossier santé. Toutes les questions sont facultatives.
                   </p>
-                  <ul className="mt-6 space-y-2.5 text-sm">
-                    <li className="flex items-start gap-2"><Check className="h-4 w-4 text-emerald shrink-0 mt-0.5" /> Tous tes bilans sanguins en un seul tableau de bord</li>
-                    <li className="flex items-start gap-2"><Check className="h-4 w-4 text-emerald shrink-0 mt-0.5" /> Ton ADN 23andMe interprété (160+ variants)</li>
-                    <li className="flex items-start gap-2"><Check className="h-4 w-4 text-emerald shrink-0 mt-0.5" /> Un panel médical IA qui connaît ton dossier complet</li>
-                    <li className="flex items-start gap-2"><Check className="h-4 w-4 text-emerald shrink-0 mt-0.5" /> Plan d'action quotidien : sommeil · sport · nutrition</li>
-                  </ul>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setStepIdx(1)}
+                      className="px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center gap-2"
+                    >
+                      Commencer <ArrowRight className="h-4 w-4" />
+                    </button>
+                    <button onClick={skip} className="text-xs text-muted-foreground hover:text-foreground transition">
+                      Passer →
+                    </button>
+                  </div>
                 </>
               )}
-              {step === 1 && (
+
+              {currentKey === "identity" && (
                 <>
                   <div className="text-6xl mb-4">👤</div>
-                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Quelques infos pour personnaliser</h1>
-                  <p className="text-muted-foreground mb-6">Tu pourras compléter le reste de ton profil plus tard.</p>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Identité essentielle</h1>
+                  <p className="text-muted-foreground mb-6">Prénom, date de naissance, sexe biologique.</p>
                   <div className="space-y-4">
                     <div>
-                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">Prénom</label>
-                      <input value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                             className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" placeholder="Julien" />
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">
+                        Prénom
+                      </label>
+                      <input
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                        placeholder="Julien"
+                      />
                     </div>
                     <div>
-                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">Date de naissance</label>
-                      <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)}
-                             className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary" />
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">
+                        Date de naissance
+                      </label>
+                      <input
+                        type="date"
+                        value={birthDate}
+                        onChange={(e) => setBirthDate(e.target.value)}
+                        className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                      />
+                      {age !== null && (
+                        <div className="text-xs text-muted-foreground mt-1.5">{age} ans</div>
+                      )}
                     </div>
                     <div>
-                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">Sexe biologique</label>
-                      <select value={sex} onChange={(e) => setSex(e.target.value)}
-                              className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary">
-                        <option value="">—</option>
-                        <option value="male">Homme</option>
-                        <option value="female">Femme</option>
-                        <option value="other">Autre / Préfère ne pas préciser</option>
-                      </select>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
+                        Sexe biologique
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {SEX_OPTIONS.map((o) => (
+                          <button
+                            key={o.id}
+                            type="button"
+                            onClick={() => setSex(o.label)}
+                            className={pillClass(sex === o.label)}
+                          >
+                            {o.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </>
               )}
-              {step === 2 && (
+
+              {currentKey === "anthro" && (
                 <>
-                  <div className="text-6xl mb-4">📄</div>
-                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Importe ton dernier bilan sanguin</h1>
-                  <p className="text-muted-foreground mb-6">PDF ou photo. L'IA extrait automatiquement tes biomarqueurs.</p>
-                  <label className={`flex flex-col items-center justify-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed transition cursor-pointer ${uploadStatus === "done" ? "border-emerald bg-emerald/5" : "border-border hover:border-emerald/50 bg-secondary/20"}`}>
-                    {uploadStatus === "uploading" && <><Loader2 className="h-8 w-8 text-emerald animate-spin" /><div className="text-sm">Upload de {uploadFilename}…</div></>}
-                    {uploadStatus === "done" && <><Check className="h-8 w-8 text-emerald" /><div className="text-sm font-medium text-emerald">{uploadFilename} importé !</div><div className="text-xs text-muted-foreground">Analyse en cours en arrière-plan</div></>}
-                    {uploadStatus === "idle" && <><Upload className="h-8 w-8 text-muted-foreground" /><div className="text-sm font-medium">Glisse ton fichier ici ou clique</div><div className="text-xs text-muted-foreground">PDF, JPG, PNG · 1 fichier</div></>}
-                    <input type="file" className="hidden" accept=".pdf,image/*" onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])} />
-                  </label>
-                  <button onClick={next} className="text-xs text-muted-foreground hover:text-foreground transition mt-3">Passer cette étape →</button>
+                  <div className="text-6xl mb-4">📏</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Anthropométrie minimale</h1>
+                  <p className="text-muted-foreground mb-6">Taille, poids, groupe sanguin.</p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">
+                          Taille (cm)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={height}
+                          onChange={(e) => setHeight(e.target.value)}
+                          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                          placeholder="178"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">
+                          Poids (kg)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          value={weight}
+                          onChange={(e) => setWeight(e.target.value)}
+                          className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
+                          placeholder="72"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
+                        Groupe sanguin
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {BLOOD_TYPES.map((b) => (
+                          <button
+                            key={b}
+                            type="button"
+                            onClick={() => setBloodType(bloodType === b ? "" : b)}
+                            className={pillClass(bloodType === b)}
+                          >
+                            {b}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </>
               )}
-              {step === 3 && (
+
+              {currentKey === "lifestyle" && (
+                <>
+                  <div className="text-6xl mb-4">🏃</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Mode de vie express</h1>
+                  <p className="text-muted-foreground mb-6">Activité, sommeil, tabac.</p>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
+                        Niveau d'activité
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {ACTIVITY_LEVELS.map((a) => (
+                          <button
+                            key={a.id}
+                            type="button"
+                            onClick={() => setActivityLevel(activityLevel === a.id ? "" : a.id)}
+                            className={pillClass(activityLevel === a.id)}
+                          >
+                            {a.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
+                        Sommeil moyen (h)
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {SLEEP_HOURS.map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setSleepHours(sleepHours === h ? null : h)}
+                            className={pillClass(sleepHours === h)}
+                          >
+                            {h === 9 ? "9+" : h}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
+                        Tabac
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {SMOKER_OPTIONS.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setSmoker(smoker === s.id ? "" : s.id)}
+                            className={pillClass(smoker === s.id)}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {currentKey === "cycle" && (
+                <>
+                  <div className="text-6xl mb-4">🌙</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Cycle express</h1>
+                  <p className="text-muted-foreground mb-6">Sélection multiple si pertinent.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {CYCLE_OPTIONS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setWomensCycleFlash(toggleArray(womensCycleFlash, c))}
+                        className={pillClass(womensCycleFlash.includes(c))}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {currentKey === "goals" && (
                 <>
                   <div className="text-6xl mb-4">🎯</div>
-                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Quels sont tes objectifs ?</h1>
-                  <p className="text-muted-foreground mb-6">Multi-sélection. Ça nous aide à prioriser tes recommandations.</p>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Objectifs santé</h1>
+                  <p className="text-muted-foreground mb-6">Choisis jusqu'à 3 priorités.</p>
                   <div className="flex flex-wrap gap-2">
                     {GOALS.map((g) => {
                       const selected = goals.includes(g.id);
+                      const disabled = !selected && goals.length >= 3;
                       return (
                         <button
                           key={g.id}
-                          onClick={() => setGoals(selected ? goals.filter((x) => x !== g.id) : [...goals, g.id])}
-                          className={`px-3 py-2 rounded-full text-sm border transition ${selected ? "bg-emerald/15 border-emerald/50 text-emerald" : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-border"}`}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setGoals(toggleArray(goals, g.id, 3))}
+                          className={`${pillClass(selected)} ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                           {selected && <Check className="inline h-3 w-3 mr-1" />}
                           {g.label}
@@ -168,27 +592,153 @@ export default function WelcomePage() {
                       );
                     })}
                   </div>
+                  <div className="text-xs text-muted-foreground mt-3">{goals.length}/3 sélectionnés</div>
                 </>
               )}
-              {step === 4 && (
+
+              {currentKey === "family" && (
                 <>
-                  <div className="text-6xl mb-4">🚀</div>
-                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Tout est prêt !</h1>
-                  <p className="text-muted-foreground mb-6">Ton dossier est en cours d'analyse. Le compte-rendu IA arrive d'ici 30 secondes sur le dashboard.</p>
-                  <div className="rounded-xl border border-emerald/30 bg-emerald/5 p-4 mb-6">
-                    <div className="text-xs uppercase tracking-wider text-emerald mb-2 font-medium">Prochaines étapes recommandées</div>
-                    <ul className="space-y-1.5 text-sm">
-                      <li className="flex items-start gap-2"><span className="text-emerald">→</span> Importe ton ADN 23andMe pour des recommandations personnalisées</li>
-                      <li className="flex items-start gap-2"><span className="text-emerald">→</span> Ajoute tes suppléments actuels pour le bilan nutritionnel</li>
-                      <li className="flex items-start gap-2"><span className="text-emerald">→</span> Configure des rappels santé pour ne rien oublier</li>
-                    </ul>
+                  <div className="text-6xl mb-4">🧬</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Antécédents familiaux flash</h1>
+                  <p className="text-muted-foreground mb-2">
+                    Une de ces maladies dans ta famille (parents/grands-parents) ?
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-6">
+                    Détail complet dans le profil ensuite.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {FAMILY_DISEASES.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setFamilyDiseasesFlash(toggleArray(familyDiseasesFlash, d))}
+                        className={pillClass(familyDiseasesFlash.includes(d))}
+                      >
+                        {d}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Link href="/dashboard" className="flex-1 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2">
-                      Aller au dashboard <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+
+              {currentKey === "screenings" && (
+                <>
+                  <div className="text-6xl mb-4">🩺</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Dépistage à jour ?</h1>
+                  <p className="text-muted-foreground mb-6">Examens réalisés dans les 2 dernières années.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SCREENINGS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setScreeningsFlashDone(toggleArray(screeningsFlashDone, s))}
+                        className={pillClass(screeningsFlashDone.includes(s))}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {currentKey === "symptoms" && (
+                <>
+                  <div className="text-6xl mb-4">🩹</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Symptômes actuels</h1>
+                  <p className="text-muted-foreground mb-6">Optionnel — sélection multiple.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {SYMPTOMS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setActiveSymptomsFlash(toggleArray(activeSymptomsFlash, s))}
+                        className={pillClass(activeSymptomsFlash.includes(s))}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {currentKey === "wearables" && (
+                <>
+                  <div className="text-6xl mb-4">⌚</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Wearables possédés</h1>
+                  <p className="text-muted-foreground mb-6">Optionnel — on les branchera plus tard.</p>
+                  <div className="flex flex-wrap gap-2">
+                    {WEARABLES.map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        onClick={() => setWearablesOwned(toggleArray(wearablesOwned, w))}
+                        className={pillClass(wearablesOwned.includes(w))}
+                      >
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {currentKey === "upload" && (
+                <>
+                  <div className="text-6xl mb-4">📄</div>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Importe ton dernier bilan sanguin</h1>
+                  <p className="text-muted-foreground mb-6">PDF ou photo. L'IA extrait automatiquement tes biomarqueurs.</p>
+                  <label
+                    className={`flex flex-col items-center justify-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed transition cursor-pointer ${
+                      uploadStatus === "done"
+                        ? "border-emerald bg-emerald/5"
+                        : "border-border hover:border-emerald/50 bg-secondary/20"
+                    }`}
+                  >
+                    {uploadStatus === "uploading" && (
+                      <>
+                        <Loader2 className="h-8 w-8 text-emerald animate-spin" />
+                        <div className="text-sm">Upload de {uploadFilename}…</div>
+                      </>
+                    )}
+                    {uploadStatus === "done" && (
+                      <>
+                        <Check className="h-8 w-8 text-emerald" />
+                        <div className="text-sm font-medium text-emerald">{uploadFilename} importé !</div>
+                        <div className="text-xs text-muted-foreground">Analyse en cours en arrière-plan</div>
+                      </>
+                    )}
+                    {uploadStatus === "idle" && (
+                      <>
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                        <div className="text-sm font-medium">Glisse ton fichier ici ou clique</div>
+                        <div className="text-xs text-muted-foreground">PDF, JPG, PNG · 1 fichier</div>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,image/*"
+                      onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                    />
+                  </label>
+
+                  <div className="mt-8 rounded-xl border border-emerald/30 bg-emerald/5 p-4">
+                    <div className="text-xs uppercase tracking-wider text-emerald mb-2 font-medium">Parfait</div>
+                    <p className="text-sm text-muted-foreground">
+                      Ton dossier est prêt. Tu peux compléter le détail maintenant ou aller au dashboard.
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <Link
+                      href="/profile"
+                      className="flex-1 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className="h-4 w-4" /> Compléter mon profil détaillé
                     </Link>
-                    <Link href="/chat" className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition flex items-center justify-center gap-2">
-                      <Sparkles className="h-4 w-4 text-emerald" /> Demander au panel
+                    <Link
+                      href="/dashboard"
+                      className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition flex items-center justify-center gap-2"
+                    >
+                      Aller au dashboard <ArrowRight className="h-4 w-4" />
                     </Link>
                   </div>
                 </>
@@ -196,16 +746,45 @@ export default function WelcomePage() {
             </motion.div>
           </AnimatePresence>
 
-          {step < totalSteps - 1 && (
+          {/* Bottom nav: hidden on welcome (its own CTAs) and on upload (final CTAs in card) */}
+          {currentKey !== "welcome" && !isLast && (
             <div className="flex items-center justify-between mt-6">
-              <button onClick={prev} disabled={step === 0} className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition disabled:opacity-30 flex items-center gap-1">
+              <button
+                onClick={prev}
+                disabled={stepIdx === 0}
+                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition disabled:opacity-30 flex items-center gap-1"
+              >
                 <ArrowLeft className="h-3.5 w-3.5" /> Précédent
               </button>
-              <button onClick={next} disabled={savingProfile}
-                      className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50">
-                {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                Suivant <ArrowRight className="h-3.5 w-3.5" />
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={skipStep}
+                  className="text-xs text-muted-foreground hover:text-foreground transition"
+                >
+                  Passer cette étape →
+                </button>
+                <button
+                  onClick={next}
+                  disabled={savingProfile || !proceedEnabled}
+                  className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50"
+                >
+                  {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Suivant <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Upload step gets a Précédent only (CTAs are in card) */}
+          {isLast && (
+            <div className="flex items-center justify-between mt-6">
+              <button
+                onClick={prev}
+                className="px-3 py-2 text-sm text-muted-foreground hover:text-foreground transition flex items-center gap-1"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Précédent
               </button>
+              {savingProfile && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </div>
           )}
         </div>
