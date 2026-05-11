@@ -24,7 +24,8 @@ const ACTIVITY_LEVELS = [
   { id: "Athlète", label: "Athlète" },
 ];
 
-const SLEEP_HOURS = [5, 6, 7, 8, 9];
+// Buckets must match the chipsSingle options for `sleepHours` in components/profile-form.tsx.
+const SLEEP_HOURS = ["<5", "5-6", "6-7", "7-8", "8-9", "9+"];
 
 const SMOKER_OPTIONS = [
   { id: "Non", label: "Non" },
@@ -156,7 +157,7 @@ export default function WelcomePage() {
 
   // lifestyle
   const [activityLevel, setActivityLevel] = useState<string>("");
-  const [sleepHours, setSleepHours] = useState<number | null>(null);
+  const [sleepHours, setSleepHours] = useState<string>("");
   const [smoker, setSmoker] = useState<string>("");
 
   // cycle (conditional)
@@ -241,7 +242,7 @@ export default function WelcomePage() {
       case "anthro":
         return Boolean(height || weight || bloodType);
       case "lifestyle":
-        return Boolean(activityLevel || sleepHours !== null || smoker);
+        return Boolean(activityLevel || sleepHours || smoker);
       case "cycle":
         return true; // optional
       case "goals":
@@ -279,7 +280,7 @@ export default function WelcomePage() {
         }
         break;
       case "lifestyle":
-        if (activityLevel || sleepHours !== null || smoker) {
+        if (activityLevel || sleepHours || smoker) {
           await saveProfile({ activityLevel, sleepHours, smoker });
         }
         break;
@@ -520,10 +521,10 @@ export default function WelcomePage() {
                           <button
                             key={h}
                             type="button"
-                            onClick={() => setSleepHours(sleepHours === h ? null : h)}
+                            onClick={() => setSleepHours(sleepHours === h ? "" : h)}
                             className={pillClass(sleepHours === h)}
                           >
-                            {h === 9 ? "9+" : h}
+                            {h}
                           </button>
                         ))}
                       </div>

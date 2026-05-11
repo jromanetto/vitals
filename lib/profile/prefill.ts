@@ -129,8 +129,16 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
       since,
     );
     if (sleepRow?.v && !current.sleepHours) {
-      patch.sleepHours = Math.round((sleepRow.v / 60) * 10) / 10;
-      reasons.sleepHours = "Sommeil moyen 60j depuis tes wearables (converti en h)";
+      const hours = sleepRow.v / 60;
+      // Bucket to match the chips offered in the wizard ["<5", "5-6", ..., "9+"].
+      let bucket = "9+";
+      if (hours < 5) bucket = "<5";
+      else if (hours < 6) bucket = "5-6";
+      else if (hours < 7) bucket = "6-7";
+      else if (hours < 8) bucket = "7-8";
+      else if (hours < 9) bucket = "8-9";
+      patch.sleepHours = bucket;
+      reasons.sleepHours = `Sommeil moyen 60j depuis tes wearables (~${hours.toFixed(1)}h)`;
     }
   } catch {}
 
