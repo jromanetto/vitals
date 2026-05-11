@@ -3,14 +3,15 @@
 // bcrypt-hashed temporary password and emails the credentials via Resend.
 // Bypasses the VITALS_BETA_OPEN gate that the public /api/auth/signup honours.
 //
-// Usage:  node scripts/invite_user.mjs noelly.michoux@gmail.com
+// Usage:  node scripts/invite_user.mjs noelly.michoux@gmail.com [optional-password]
 //
-// Optional 2nd arg overrides the auto-generated password.
-import Database from "better-sqlite3";
+// Uses the `sqlite3` CLI (no native bindings) so the script doesn't break
+// when Node is upgraded under PM2 and better-sqlite3 has stale bindings.
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const email = (process.argv[2] || "").trim().toLowerCase();
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -38,9 +39,22 @@ if (!fs.existsSync(dbPath)) {
   console.error(`vitals.db not found at ${dbPath}. Run from the app root.`);
   process.exit(1);
 }
-const db = new Database(dbPath);
 
-db.exec(`CREATE TABLE IF NOT EXISTS user (
+function sqlite(query) {
+  // Use -separator to keep field parsing simple; -bail aborts on the first error.
+  const r = spawnSync("sqlite3", ["-bail", dbPath, query], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`sqlite3 failed: ${r.stderr || r.stdout}`);
+  return r.stdout.trim();
+}
+
+// Escape a literal for SQL by doubling quotes — sufficient for the controlled
+// values we insert (bcrypt hash, base64url, email already validated above).
+function q(s) {
+  return `'${String(s).replace(/'/g, "''")}'`;
+}
+
+// Idempotent table creation matches what /api/auth/signup creates lazily.
+sqlite(`CREATE TABLE IF NOT EXISTS user (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT UNIQUE NOT NULL,
   hash TEXT NOT NULL,
@@ -49,27 +63,24 @@ db.exec(`CREATE TABLE IF NOT EXISTS user (
   created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 )`);
 
-const existing = db.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email);
+const existing = sqlite(`SELECT id FROM user WHERE LOWER(email) = ${q(email)}`);
 if (existing) {
-  console.error(`User ${email} already exists (id=${existing.id}). Aborting.`);
+  console.error(`User ${email} already exists (id=${existing}). Aborting.`);
   process.exit(2);
 }
 
 const hash = bcrypt.hashSync(password, 12);
 const secret = crypto.randomBytes(48).toString("base64url");
-const result = db
-  .prepare(`INSERT INTO user (email, hash, secret, role) VALUES (?, ?, ?, 'beta')`)
-  .run(email, hash, secret);
-const userId = Number(result.lastInsertRowid);
+sqlite(
+  `INSERT INTO user (email, hash, secret, role) VALUES (${q(email)}, ${q(hash)}, ${q(secret)}, 'beta')`,
+);
+const userId = sqlite(`SELECT id FROM user WHERE LOWER(email) = ${q(email)}`);
 console.log(`✓ Created user id=${userId} email=${email}`);
 
 // Audit log (best-effort).
 try {
-  db.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, detail TEXT, ip TEXT, ua TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`);
-  db.prepare(`INSERT INTO audit_log (action, detail) VALUES (?, ?)`).run(
-    "user_invited",
-    `userId=${userId} email=${email}`,
-  );
+  sqlite(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, detail TEXT, ip TEXT, ua TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`);
+  sqlite(`INSERT INTO audit_log (action, detail) VALUES ('user_invited', ${q(`userId=${userId} email=${email}`)})`);
 } catch (e) {
   console.warn("audit log failed:", e.message);
 }
