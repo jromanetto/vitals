@@ -18,6 +18,7 @@ import { ScreeningSection, SCREENING_SECTION_IDS } from "./sections/screening";
 import { ReproductionSection, REPRODUCTION_SECTION_IDS } from "./sections/reproduction";
 import { ObjectifsSection, OBJECTIFS_SECTION_IDS } from "./sections/objectifs";
 import { AutoExtractButton } from "@/components/auto-extract-button";
+import { PrefillButton } from "./prefill-button";
 
 type TabId =
   | "identite"
@@ -206,7 +207,12 @@ export function ProfileWizard({ initial }: { initial: Record<string, unknown> })
         title="Profil"
         description="Plus tu remplis, plus les analyses et corrélations seront pertinentes. Toutes les infos restent privées et locales."
         icon={<User className="h-5 w-5 text-emerald" />}
-        actions={<AutoExtractButton />}
+        actions={
+          <div className="flex items-center gap-2">
+            <PrefillButton />
+            <AutoExtractButton />
+          </div>
+        }
       />
 
       {/* Progress bar */}
