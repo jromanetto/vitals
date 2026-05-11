@@ -34,7 +34,8 @@ if (password.length < 10 || !/[A-Z]/.test(password) || !/\d/.test(password)) {
   process.exit(1);
 }
 
-const dbPath = path.join(process.cwd(), "vitals.db");
+// Match lib/db/index.ts default: data/vitals.db (overridable via VITALS_DB_PATH).
+const dbPath = process.env.VITALS_DB_PATH || path.join(process.cwd(), "data", "vitals.db");
 if (!fs.existsSync(dbPath)) {
   console.error(`vitals.db not found at ${dbPath}. Run from the app root.`);
   process.exit(1);
