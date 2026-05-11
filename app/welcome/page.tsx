@@ -31,6 +31,7 @@ const SMOKER_OPTIONS = [
   { id: "Non", label: "Non" },
   { id: "Occasionnel", label: "Occasionnel" },
   { id: "Régulier", label: "Régulier" },
+  { id: "Vapoteur", label: "Vapoteur" },
   { id: "Ex-fumeur", label: "Ex-fumeur" },
 ];
 
