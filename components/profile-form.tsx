@@ -105,13 +105,11 @@ export const SECTIONS: Section[] = [
     { id: "lastDental", label: "Dernier dentiste", type: "date", col: 1 },
     { id: "lastEye", label: "Dernier ophtalmo", type: "date", col: 1 },
   ]},
-  { id: "family", title: "Antécédents familiaux", description: "Histoire de santé de la famille.", fields: [
-    { id: "fatherHealth", label: "Père — santé / pathologies", type: "textarea", rows: 2 },
-    { id: "motherHealth", label: "Mère — santé / pathologies", type: "textarea", rows: 2 },
-    { id: "grandparentsHealth", label: "Grands-parents — pathologies notables", type: "textarea", rows: 3 },
-    { id: "siblingsHealth", label: "Frères et sœurs", type: "textarea", rows: 2 },
-    { id: "familyDiseases", label: "Maladies familiales", type: "multi", options: ["Cancer", "Diabète T1", "Diabète T2", "Hypertension", "AVC", "Infarctus", "Alzheimer", "Parkinson", "Cholestérol familial", "Thrombose", "Maladie auto-immune", "Dépression", "Schizophrénie"] },
-  ]},
+  // Legacy "family" section (textareas + chips) consolidated into the unified
+  // FamilyDiseaseGrid below (per-relative card + structured disease grid).
+  // Existing data on these keys (fatherHealth, motherHealth, …) stays in
+  // profile.data — surfaced by the auto-extract memory feed but no longer
+  // editable in the wizard to avoid redundancy.
   { id: "mental", title: "Santé mentale & cognition", fields: [
     { id: "moodAvg", label: "Humeur moyenne (0-10)", type: "number", col: 1 },
     { id: "anxietyLevel", label: "Anxiété (0-10)", type: "number", col: 1 },
@@ -445,7 +443,7 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
                 <h2 className="text-lg font-medium tracking-tight">{section.title}</h2>
                 {section.description && <p className="text-sm text-muted-foreground mt-1">{section.description}</p>}
                 <div className="mt-5">
-                  <FamilyDiseaseGrid value={data.familyHistory as Record<string, { status: "yes" | "no" | "unknown"; ageOfDiagnosis?: number; causeOfDeath?: boolean; ageAtDeath?: number; notes?: string }> | undefined} onChange={(v) => set("familyHistory", v)} />
+                  <FamilyDiseaseGrid data={data} onChange={(id, v) => set(id, v)} />
                 </div>
               </motion.section>
             );

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Heart } from "lucide-react";
 import {
   DISEASE_CATALOG,
   CATEGORY_LABELS_FR,
@@ -17,9 +17,25 @@ import type {
   YesNoUnknown,
 } from "@/lib/medical/types";
 
+type PersonInfo = {
+  name?: string;
+  alive?: "alive" | "deceased" | "unknown";
+  ageOrDeath?: string;
+  causeOfDeath?: string;
+  notes?: string;
+};
+
+// `pedigree` keeps the legacy shape from pedigree-editor.tsx: an object keyed by
+// RelativeKey, plus siblings/children arrays. We only touch the singular keys
+// here — siblings/children stay alongside if they existed before.
+type Pedigree = Partial<Record<RelativeKey, PersonInfo>> & {
+  siblings?: PersonInfo[];
+  children?: PersonInfo[];
+};
+
 type Props = {
-  value: FamilyHistory | undefined;
-  onChange: (v: FamilyHistory) => void;
+  data: Record<string, unknown>;
+  onChange: (id: string, value: unknown) => void;
 };
 
 const STATUS_OPTIONS: { v: YesNoUnknown; label: string; tone: string }[] = [
@@ -28,35 +44,51 @@ const STATUS_OPTIONS: { v: YesNoUnknown; label: string; tone: string }[] = [
   { v: "unknown", label: "?", tone: "bg-amber-500/10 text-amber-500 border-amber-500/40" },
 ];
 
+const ALIVE_OPTIONS: { v: "alive" | "deceased" | "unknown"; label: string }[] = [
+  { v: "alive", label: "En vie" },
+  { v: "deceased", label: "Décédé·e" },
+  { v: "unknown", label: "Inconnu" },
+];
+
 function key(rel: RelativeKey, dis: string): string {
   return `${rel}.${dis}`;
 }
 
-export function FamilyDiseaseGrid({ value, onChange }: Props) {
-  const fh: FamilyHistory = value ?? {};
+export function FamilyDiseaseGrid({ data, onChange }: Props) {
+  const fh: FamilyHistory = (data.familyHistory as FamilyHistory) ?? {};
+  const pedigree: Pedigree = (data.pedigree as Pedigree) ?? {};
+
   const grouped = diseasesByCategory();
   const [openCats, setOpenCats] = useState<Record<string, boolean>>({ cardio: true, metabolic: true });
   const [activeRel, setActiveRel] = useState<RelativeKey>("father");
 
+  // === FamilyHistory mutations ===
   function setEntry(rel: RelativeKey, disease: DiseaseEntry, patch: Partial<FamilyDiseaseEntry>) {
     const k = key(rel, disease.id);
     const cur = fh[k] ?? { status: "unknown" as YesNoUnknown };
-    const next: FamilyHistory = { ...fh, [k]: { ...cur, ...patch } };
-    onChange(next);
+    onChange("familyHistory", { ...fh, [k]: { ...cur, ...patch } });
   }
-
   function setStatus(rel: RelativeKey, disease: DiseaseEntry, status: YesNoUnknown) {
     setEntry(rel, disease, { status });
   }
 
-  function totalsForRelative(rel: RelativeKey): { yes: number; total: number } {
+  // === Pedigree person-info mutations ===
+  function setPerson(rel: RelativeKey, patch: Partial<PersonInfo>) {
+    const cur = pedigree[rel] ?? {};
+    onChange("pedigree", { ...pedigree, [rel]: { ...cur, ...patch } });
+  }
+
+  function totalsForRelative(rel: RelativeKey): { yes: number } {
     let yes = 0;
     for (const d of DISEASE_CATALOG) {
       const e = fh[key(rel, d.id)];
       if (e?.status === "yes") yes++;
     }
-    return { yes, total: DISEASE_CATALOG.length };
+    return { yes };
   }
+
+  const person = pedigree[activeRel] ?? {};
+  const isDeceased = person.alive === "deceased";
 
   return (
     <div className="space-y-4">
@@ -85,9 +117,81 @@ export function FamilyDiseaseGrid({ value, onChange }: Props) {
         })}
       </div>
 
+      {/* Person info card for the active relative */}
+      <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-3">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground font-medium">
+          <Heart className="h-3.5 w-3.5 text-emerald" />
+          {RELATIVES.find((r) => r.key === activeRel)?.label}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+              Prénom (optionnel)
+            </label>
+            <input
+              type="text"
+              value={person.name ?? ""}
+              onChange={(e) => setPerson(activeRel, { name: e.target.value })}
+              placeholder="—"
+              className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+              Statut
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {ALIVE_OPTIONS.map((o) => {
+                const active = person.alive === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => setPerson(activeRel, { alive: o.v })}
+                    className={`px-2.5 py-1 rounded-full text-xs border transition ${
+                      active
+                        ? "bg-primary/15 border-primary/40 text-primary"
+                        : "bg-card border-border text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+              {isDeceased ? "Âge au décès" : "Âge actuel"}
+            </label>
+            <input
+              type="number"
+              value={person.ageOrDeath ?? ""}
+              onChange={(e) => setPerson(activeRel, { ageOrDeath: e.target.value })}
+              placeholder="—"
+              className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          {isDeceased && (
+            <div>
+              <label className="text-[10px] uppercase tracking-wider text-muted-foreground block mb-1">
+                Cause du décès
+              </label>
+              <input
+                type="text"
+                value={person.causeOfDeath ?? ""}
+                onChange={(e) => setPerson(activeRel, { causeOfDeath: e.target.value })}
+                placeholder="—"
+                className="w-full bg-card border border-border rounded-md px-2.5 py-1.5 text-sm outline-none focus:border-primary"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
       <p className="text-xs text-muted-foreground">
-        Pour chaque maladie : Non / Oui / ? (tu ne sais pas). Clique sur une catégorie pour la
-        déplier. Plus c&apos;est rempli, mieux les risques héréditaires sont pondérés.
+        Pour chaque maladie : <strong>Non</strong> / <strong>Oui</strong> / <strong>?</strong> (inconnu). Clique sur
+        une catégorie pour la déplier. Plus c&apos;est rempli, mieux les risques héréditaires sont pondérés.
       </p>
 
       {/* Categories */}

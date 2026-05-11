@@ -3,7 +3,7 @@ import { SECTIONS, FieldRow, type Section } from "@/components/profile-form";
 import { FamilyDiseaseGrid } from "@/components/profile/family-disease-grid";
 import { SymptomChecklist } from "@/components/profile/symptom-checklist";
 import { ScreeningSchedule } from "@/components/profile/screening-schedule";
-import type { FamilyHistory, ScreeningHistory } from "@/lib/medical/types";
+import type { ScreeningHistory } from "@/lib/medical/types";
 
 export function SectionRenderer({
   ids,
@@ -31,10 +31,7 @@ export function SectionRenderer({
                 <p className="text-sm text-muted-foreground mt-1">{section.description}</p>
               )}
               <div className="mt-5">
-                <FamilyDiseaseGrid
-                  value={data.familyHistory as FamilyHistory | undefined}
-                  onChange={(v) => onChange("familyHistory", v)}
-                />
+                <FamilyDiseaseGrid data={data} onChange={onChange} />
               </div>
             </section>
           );
