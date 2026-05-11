@@ -48,11 +48,9 @@ export type Field =
   | { id: string; label: string; type: "specialistsStructured" };
 
 export const SECTIONS: Section[] = [
-  { id: "identity", title: "Identité", description: "Identification de base.", fields: [
+  { id: "identity", title: "Identité", description: "Identification de base. Email et téléphone sont dans Compte (utilisés pour la connexion / les rappels).", fields: [
     { id: "firstName", label: "Prénom", type: "text", col: 1 },
     { id: "lastName", label: "Nom", type: "text", col: 1 },
-    { id: "email", label: "Email", type: "email", col: 1 },
-    { id: "phone", label: "Téléphone", type: "tel", col: 1 },
     { id: "birthDate", label: "Date de naissance", type: "date", col: 1 },
     { id: "birthPlace", label: "Lieu de naissance", type: "text", col: 1 },
     { id: "sex", label: "Sexe biologique", type: "chipsSingle", options: ["Homme", "Femme", "Intersexe"] },

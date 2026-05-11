@@ -3,8 +3,28 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { UserCog, Lock, HeartPulse, Bell, FileText, ArrowRight } from "lucide-react";
 import { getSession, currentUserId, isDemoUser, hasTotpEnabled } from "@/lib/auth";
+import { AccountContact } from "@/components/profile/account-contact";
+import { db } from "@/lib/db";
+import { ensureSchema } from "@/lib/db/migrate";
+import { decryptProfile } from "@/lib/crypto-fields";
 
 export const dynamic = "force-dynamic";
+
+async function loadPhone(userId: number): Promise<string> {
+  try {
+    ensureSchema();
+    const sqlite = db().$client;
+    const row = sqlite
+      .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(userId) as { data: string } | undefined;
+    if (!row) return "";
+    const raw = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
+    const data = decryptProfile(raw);
+    return typeof data.phone === "string" ? data.phone : "";
+  } catch {
+    return "";
+  }
+}
 
 export default async function AccountPage({
   searchParams,
@@ -25,6 +45,7 @@ export default async function AccountPage({
   const demo = userId !== null && userId !== undefined && isDemoUser(userId);
   const totp = hasTotpEnabled();
   const email = (session as { email?: string } | null)?.email ?? "—";
+  const phone = userId ? await loadPhone(userId) : "";
 
   return (
     <div className="space-y-8 max-w-3xl">
@@ -34,37 +55,43 @@ export default async function AccountPage({
         icon={<UserCog className="h-5 w-5 text-emerald" />}
       />
 
-      {/* Identifiants */}
-      <section className="rounded-xl border border-border bg-card p-6">
-        <h2 className="text-base font-medium tracking-tight mb-4 flex items-center gap-2">
-          <UserCog className="h-4 w-4 text-emerald" /> Identifiants
-        </h2>
-        <dl className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <dt className="text-muted-foreground">Email</dt>
-            <dd className="font-medium font-mono">{email}</dd>
-          </div>
-          <div className="flex items-center justify-between">
-            <dt className="text-muted-foreground">Statut</dt>
-            <dd className="flex items-center gap-2">
-              {demo ? (
-                <span className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/40">Démo (lecture seule)</span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-emerald/15 text-emerald border border-emerald/40">Bêta</span>
-              )}
-            </dd>
-          </div>
-          <div className="flex items-center justify-between">
-            <dt className="text-muted-foreground">2FA</dt>
-            <dd className="text-xs">
-              {totp ? (
-                <span className="text-emerald">Activée</span>
-              ) : (
-                <span className="text-amber-400">Désactivée — recommandé d&apos;activer</span>
-              )}
-            </dd>
-          </div>
-        </dl>
+      {/* Identifiants & contact */}
+      <section className="rounded-xl border border-border bg-card p-6 space-y-5">
+        <div>
+          <h2 className="text-base font-medium tracking-tight mb-4 flex items-center gap-2">
+            <UserCog className="h-4 w-4 text-emerald" /> Identifiants
+          </h2>
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Email de connexion</dt>
+              <dd className="font-medium font-mono">{email}</dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">Statut</dt>
+              <dd className="flex items-center gap-2">
+                {demo ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/40">Démo (lecture seule)</span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wider bg-emerald/15 text-emerald border border-emerald/40">Bêta</span>
+                )}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between">
+              <dt className="text-muted-foreground">2FA</dt>
+              <dd className="text-xs">
+                {totp ? (
+                  <span className="text-emerald">Activée</span>
+                ) : (
+                  <span className="text-amber-400">Désactivée — recommandé d&apos;activer</span>
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div className="border-t border-border pt-5">
+          <h3 className="text-sm font-medium tracking-tight mb-3">Contact</h3>
+          <AccountContact initialPhone={phone} />
+        </div>
       </section>
 
       {/* Profil santé — la grosse CTA */}
