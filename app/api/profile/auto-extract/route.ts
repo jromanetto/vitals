@@ -14,16 +14,61 @@ const MAX_CTX = 50000;
 const MODEL = "claude-sonnet-4-5-20250929";
 
 const SCHEMA_DESC = `{
+  // === Identité ===
   firstName, lastName, email, phone, birthDate (YYYY-MM-DD), birthPlace, sex (Homme|Femme|Intersexe), ethnicity,
+
+  // === Anthropométrie ===
   height (cm), weight (kg), bodyFat (%), bloodType (O+/A-/...),
+
+  // === Médical libre ===
   chronicConditions, surgeries, hospitalizations, allergies, medications, supplements, vaccinations,
   fatherHealth, motherHealth, grandparentsHealth, siblingsHealth,
-  familyDiseases (string[]),
+  familyDiseases (string[] court),
+
+  // === ★ Famille structurée ★ — utilise CECI plutôt que les textareas si tu peux identifier des relatives précis ===
+  // familyHistory: clé "{relativeKey}.{diseaseId}" → { status: "yes"|"no"|"unknown", ageOfDiagnosis?: number }
+  // relativeKey ∈ father, mother, paternalGrandfather, paternalGrandmother, maternalGrandfather, maternalGrandmother, siblings, children, paternalUncleAunt, maternalUncleAunt
+  // diseaseId ∈ mi, stroke, htn, afib, aneurysm, sudden_death, hf, t1d, t2d, obesity, fh_chol, metsyn, thyroid_hypo, hashimoto,
+  //              cancer_breast, cancer_prostate, cancer_colon, cancer_lung, cancer_pancreas, cancer_ovary, cancer_uterus, melanoma, leukemia, cancer_other,
+  //              alzheimer, parkinson, ms, als, dementia_other, huntington, epilepsy,
+  //              crohn, uc, lupus, ra, psoriasis, celiac,
+  //              depression, bipolar, schizo, suicide, addiction,
+  //              thrombosis, hemophilia, sickle, ckd, pkd, cirrhosis, hemochromatosis,
+  //              amd, glaucoma, deafness, osteoporosis, hip_fracture
+  // Exemple: { "father.t2d": { "status": "yes", "ageOfDiagnosis": 58 }, "mother.cancer_breast": { "status": "yes" } }
+  familyHistory: {},
+
+  // === Symptômes actifs (array d'IDs) ===
+  // IDs valides: fatigue, weight_change, night_sweats, fever_recurrent, palpitations, chest_pain, shortness_breath, edema,
+  // headaches, dizziness, tingling, memory_loss, brain_fog, tremor, bloating, reflux, constipation, diarrhea, blood_stool, nausea,
+  // joint_pain, back_pain, muscle_weakness, morning_stiffness, rash, hair_loss, new_mole, cough, snoring, urination_freq,
+  // low_libido, erectile, anxiety, low_mood, insomnia, irritability, thirst, cold_sensitivity, heat_sensitivity
+  activeSymptoms: ["..."],
+
+  // === Suivi médical (dates des derniers examens) ===
+  // screeningHistory: clé = id de l'examen, valeur = { lastDate: "YYYY-MM-DD" }
+  // ids: checkup, blood_panel, dental, vision, hearing, skin_check, ecg, echo_heart, stress_test, colonoscopy, fobt, dexa,
+  //      abdo_us, pap_smear, mammography, gyneco, hpv_test, psa, testicular, tetanus, flu, covid, shingles, pneumo
+  screeningHistory: {},
+
+  // === Femme (si applicable) ===
+  cycleStatus, menarcheAge (number), cycleLength (number), pregnanciesG, pregnanciesP, miscarriages, menopauseStatus, menopauseAge,
+  contraceptionType, hrtFemale (yes|no|unknown), lastPap, lastMammo,
+
+  // === Homme (si applicable) ===
+  trtMale (yes|no|unknown), vasectomy (yes|no|unknown), lastPsa, lastProstateExam,
+
+  // === Lifestyle / sommeil / digestion ===
+  dietType, smoker, alcoholDrinksWeek, tobaccoPackYears (number),
+  lastColonoscopy, ibsSuspected (yes|no|unknown), lactoseSensitivity (yes|no|unknown), glutenSensitivity (yes|no|unknown),
+
+  // === Praticiens & lieu ===
   primaryDoctor, specialists, preferredLab,
   currentLocation: { countryCode, city, region }, residenceHistory: [...],
   occupation, workEnvironment,
-  dietType, smoker, alcoholDrinksWeek,
-  notes (free notes utiles au médecin)
+
+  // === Notes libres ===
+  notes (faits utiles au médecin, non-redondants avec _memories)
 }`;
 
 const SYSTEM = `Tu es un médecin lecteur de dossier médical. Tu extrais d'un dossier patient brut (PDFs, notes, biomarkers, ADN, rapports antérieurs) UN UNIQUE objet JSON correspondant au schema de profile fourni. Tu ne fabriques JAMAIS d'info — si pas dans les docs, omets le champ. Aucune supposition ; uniquement des faits explicites dans le dossier.
