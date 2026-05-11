@@ -46,7 +46,9 @@ export function SectionRenderer({
               <div className="mt-5">
                 <SymptomChecklist
                   value={data.activeSymptoms as string[] | undefined}
+                  none={data.noActiveSymptoms as boolean | undefined}
                   onChange={(v) => onChange("activeSymptoms", v)}
+                  onNoneChange={(v) => onChange("noActiveSymptoms", v)}
                 />
               </div>
             </section>

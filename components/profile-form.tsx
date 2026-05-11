@@ -342,9 +342,12 @@ export function completion(section: Section, data: Record<string, unknown>): num
   }
   if (section.customRenderer === "symptoms") {
     const arr = data.activeSymptoms as string[] | undefined;
-    // Symptoms is opt-in: filled-or-empty both count as 100% (the user has actively engaged
-    // by reaching the section and has either declared symptoms or none).
-    return Array.isArray(arr) ? 100 : 0;
+    const none = data.noActiveSymptoms === true;
+    // 100% only after the user has explicitly engaged: either flagged "Aucun"
+    // or checked at least one symptom. Empty + untouched = 0% (nudges them in).
+    if (none) return 100;
+    if (Array.isArray(arr) && arr.length > 0) return 100;
+    return 0;
   }
   if (section.customRenderer === "screening") {
     const sh = data.screeningHistory as Record<string, { lastDate?: string }> | undefined;
@@ -457,7 +460,12 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
                 <h2 className="text-lg font-medium tracking-tight">{section.title}</h2>
                 {section.description && <p className="text-sm text-muted-foreground mt-1">{section.description}</p>}
                 <div className="mt-5">
-                  <SymptomChecklist value={data.activeSymptoms as string[] | undefined} onChange={(v) => set("activeSymptoms", v)} />
+                  <SymptomChecklist
+                    value={data.activeSymptoms as string[] | undefined}
+                    none={data.noActiveSymptoms as boolean | undefined}
+                    onChange={(v) => set("activeSymptoms", v)}
+                    onNoneChange={(v) => set("noActiveSymptoms", v)}
+                  />
                 </div>
               </motion.section>
             );

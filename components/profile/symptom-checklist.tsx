@@ -1,5 +1,5 @@
 "use client";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Check } from "lucide-react";
 import {
   SYMPTOM_CATEGORY_LABELS_FR,
   SYMPTOM_CATEGORY_ORDER,
@@ -8,10 +8,14 @@ import {
 
 export function SymptomChecklist({
   value,
+  none,
   onChange,
+  onNoneChange,
 }: {
   value: string[] | undefined;
+  none: boolean | undefined;
   onChange: (v: string[]) => void;
+  onNoneChange: (v: boolean) => void;
 }) {
   const selected = new Set(value ?? []);
   const grouped = symptomsByCategory();
@@ -20,7 +24,20 @@ export function SymptomChecklist({
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
     else next.add(id);
+    // Clicking a real symptom invalidates the "Aucun" master flag.
+    if (none) onNoneChange(false);
     onChange(Array.from(next));
+  }
+
+  function toggleNone() {
+    if (none) {
+      onNoneChange(false);
+    } else {
+      // Setting "Aucun" clears any previously-checked symptoms so the user can't
+      // be both "I have no symptoms" and "I have these symptoms" at the same time.
+      onNoneChange(true);
+      onChange([]);
+    }
   }
 
   const redFlagsActive = (value ?? []).some((id) => {
@@ -33,8 +50,20 @@ export function SymptomChecklist({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Coche les symptômes que tu ressens en ce moment ou de manière récurrente.
+        Coche les symptômes que tu ressens en ce moment ou de manière récurrente. Si tu n&apos;as rien à signaler, clique sur <strong>Aucun symptôme actuellement</strong> pour valider la section.
       </p>
+      <button
+        type="button"
+        onClick={toggleNone}
+        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border transition ${
+          none
+            ? "bg-emerald/15 border-emerald/40 text-emerald font-medium"
+            : "bg-secondary/40 border-border text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        {none && <Check className="h-3 w-3" />}
+        Aucun symptôme actuellement
+      </button>
       {redFlagsActive && (
         <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
           <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />

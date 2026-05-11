@@ -5,6 +5,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
+import { formatProfileForLLM } from "@/lib/profile/format";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -149,7 +150,7 @@ Règles:
 - topRisks et topStrengths transversaux, agrégés depuis biomarqueurs+ADN+wearables.`;
 
   const userMsg = `Données patient:
-Profil: ${ctx.age ? `${ctx.age} ans` : "âge non renseigné"}, ${JSON.stringify(ctx.profile).slice(0, 1500)}
+${formatProfileForLLM(ctx.profile)}
 
 Biomarqueurs hors range (${ctx.outOfRange.length}/${ctx.bms.length}):
 ${ctx.outOfRange.map((b) => `- ${b.name} = ${b.value} ${b.unit ?? ""} (réf ${b.refLow}-${b.refHigh})`).join("\n") || "aucun"}

@@ -5,6 +5,7 @@ import { searchRag } from "@/lib/rag/search";
 import { db } from "@/lib/db";
 import { anthropicApiKey } from "@/lib/secrets";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
+import { formatProfileForLLM } from "@/lib/profile/format";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -331,7 +332,8 @@ async function buildContext(userQuery: string, activeSession: number): Promise<{
 
   const context = [
     memorySection,
-    `## Profile patient\n\`\`\`json\n${JSON.stringify(profileData, null, 2)}\n\`\`\``,
+    formatProfileForLLM(profileData),
+    `## Profile patient (données brutes complètes)\n\`\`\`json\n${JSON.stringify(profileData, null, 2)}\n\`\`\``,
     `## Biomarkers — 90 derniers (un par slug, plus récent)\n${bmRows
       .map((r) => {
         const range = r.ref_low != null && r.ref_high != null ? ` [ref ${r.ref_low}-${r.ref_high}]` : "";
