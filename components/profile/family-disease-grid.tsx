@@ -190,8 +190,9 @@ export function FamilyDiseaseGrid({ data, onChange }: Props) {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Pour chaque maladie : <strong>Non</strong> / <strong>Oui</strong> / <strong>?</strong> (inconnu). Clique sur
-        une catégorie pour la déplier. Plus c&apos;est rempli, mieux les risques héréditaires sont pondérés.
+        Par défaut tout est à <strong>Non</strong>. Clique sur <strong>Oui</strong> uniquement pour
+        ce que tu sais avoir dans la famille, <strong>?</strong> si tu n&apos;es pas sûr·e. Plus c&apos;est rempli,
+        mieux les risques héréditaires sont pondérés.
       </p>
 
       {/* Categories */}
@@ -232,7 +233,11 @@ export function FamilyDiseaseGrid({ data, onChange }: Props) {
                       {diseases.map((d) => {
                         const k = key(activeRel, d.id);
                         const entry = fh[k];
+                        // Undefined entries display as "Non" so the user only has to mark
+                        // what they actually know (Oui or ?). Clicking "Non" on an undefined
+                        // row is treated as a no-op to keep the JSON sparse.
                         const status = entry?.status;
+                        const displayed: YesNoUnknown = status ?? "no";
                         return (
                           <div
                             key={d.id}
@@ -243,12 +248,17 @@ export function FamilyDiseaseGrid({ data, onChange }: Props) {
                             </span>
                             <div className="flex gap-1">
                               {STATUS_OPTIONS.map((o) => {
-                                const active = status === o.v;
+                                const active = displayed === o.v;
                                 return (
                                   <button
                                     key={o.v}
                                     type="button"
-                                    onClick={() => setStatus(activeRel, d, o.v)}
+                                    onClick={() => {
+                                      // No-op if clicking the already-displayed "Non" default
+                                      // and nothing was explicitly stored. Otherwise persist.
+                                      if (o.v === "no" && status === undefined) return;
+                                      setStatus(activeRel, d, o.v);
+                                    }}
                                     className={`min-w-[2.5rem] h-7 px-2 rounded-md text-xs border transition ${
                                       active ? o.tone : "bg-transparent text-muted-foreground border-border hover:text-foreground"
                                     }`}
