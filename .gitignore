@@ -2,7 +2,8 @@
 .env.local
 .next/
 node_modules/
-data/
+# Local DB + PDFs + extras — only the top-level data/ folder, not app/(app)/data/*.
+/data/
 logs/
 *.log
 .DS_Store

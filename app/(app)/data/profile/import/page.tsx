@@ -30,7 +30,7 @@ export default function ProfileImportPage() {
     const cur = await (await fetch("/api/profile")).json();
     const merged = { ...(cur.data ?? {}), ...extracted };
     await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(merged) });
-    router.push("/profile");
+    router.push("/data/profile");
   }
 
   return (

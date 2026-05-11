@@ -402,7 +402,7 @@ export function ProfileForm({ initial }: { initial: Record<string, unknown> }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6">
       <nav className="md:sticky md:top-20 md:self-start md:max-h-[calc(100vh-6rem)] md:overflow-auto scrollbar-thin">
-        <Link href="/profile/import" className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald/10 border border-emerald/30 text-sm text-emerald hover:bg-emerald/20 mb-3 transition">
+        <Link href="/data/profile/import" className="flex items-center gap-2 px-3 py-2 rounded-md bg-emerald/10 border border-emerald/30 text-sm text-emerald hover:bg-emerald/20 mb-3 transition">
           <Sparkles className="h-3.5 w-3.5" /> Import IA (texte → form)
         </Link>
         <ul className="space-y-0.5 text-sm">

@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare,
-  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target, Printer, Bell, Salad,
+  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target, Printer, Bell, Salad, IdCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +40,7 @@ const groups: Group[] = [
   {
     label: "Données",
     items: [
+      { href: "/data/profile", label: "Profil santé", icon: IdCard },
       { href: "/notes", label: "Notes", icon: StickyNote },
       { href: "/memory", label: "Memory", icon: Brain },
       { href: "/import", label: "Import", icon: Upload },
@@ -48,7 +49,7 @@ const groups: Group[] = [
   {
     label: "Compte",
     items: [
-      { href: "/profile", label: "Profil", icon: User },
+      { href: "/profile", label: "Compte", icon: User },
       { href: "/reminders", label: "Rappels", icon: Bell },
       { href: "/profile/security", label: "Sécurité", icon: Shield },
     ],

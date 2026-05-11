@@ -27,8 +27,10 @@ const PAGES: Hit[] = [
   { kind: "page", title: "Rappels", subtitle: "échéances santé", href: "/reminders" },
   { kind: "page", title: "Import", subtitle: "drag-drop tout fichier", href: "/import" },
   { kind: "page", title: "Memory", href: "/memory" },
-  { kind: "page", title: "Profil", href: "/profile" },
-  { kind: "page", title: "Pedigree familial", href: "/profile/family" },
+  { kind: "page", title: "Compte", subtitle: "identifiants, légal", href: "/profile" },
+  { kind: "page", title: "Profil santé", subtitle: "questions & antécédents", href: "/data/profile" },
+  { kind: "page", title: "Pedigree familial", href: "/data/profile/family" },
+  { kind: "page", title: "Import IA (profil)", subtitle: "texte → form", href: "/data/profile/import" },
   { kind: "page", title: "Sécurité", subtitle: "2FA · clé de chiffrement", href: "/profile/security" },
 ];
 

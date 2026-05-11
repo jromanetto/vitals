@@ -25,7 +25,7 @@ function buildSteps(documents: number): Step[] {
           description:
             "Tu as déjà importé un document. Quelques minutes de profil suffisent pour des analyses sur-mesure.",
           ctaLabel: "Compléter mon profil",
-          ctaHref: "/profile?tab=identite",
+          ctaHref: "/data/profile?tab=identite&prefill=1",
         }
       : {
           emoji: "🩸",
@@ -51,7 +51,7 @@ function buildSteps(documents: number): Step[] {
       description:
         "Âge, sexe, antécédents, sport et mode de vie — tout cela affine tes recommandations.",
       ctaLabel: "Compléter mon profil",
-      ctaHref: "/profile",
+      ctaHref: "/data/profile",
     },
   ];
 }
