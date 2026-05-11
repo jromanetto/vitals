@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ArrowLeft, Loader2, Upload, Check, Sparkles } from "lucide-react";
@@ -179,9 +179,20 @@ export default function WelcomePage() {
   // wearables
   const [wearablesOwned, setWearablesOwned] = useState<string[]>([]);
 
-  // upload
-  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "done">("idle");
-  const [uploadFilename, setUploadFilename] = useState("");
+  // upload (multi-file)
+  type UploadItem = {
+    id: string;
+    file: File;
+    status: "queued" | "uploading" | "done" | "error";
+    detected?: string;
+    detectedLabel?: string;
+    message?: string;
+    error?: string;
+  };
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [extractStatus, setExtractStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [extractCount, setExtractCount] = useState(0);
 
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -219,19 +230,84 @@ export default function WelcomePage() {
     }
   }
 
-  async function handleUpload(file: File) {
-    if (!file) return;
-    setUploadStatus("uploading");
-    setUploadFilename(file.name);
+  // Friendly label for the `detected` enum the /api/upload/auto route returns.
+  function labelForDetected(kind: string | undefined): string {
+    if (!kind) return "Document";
+    if (kind === "pdf-document") return "PDF santé";
+    if (kind === "dna-23andme") return "ADN 23andMe";
+    if (kind.startsWith("whoop-")) return "Whoop";
+    if (kind === "oura-trends") return "Oura";
+    if (kind === "markdown-note") return "Note markdown";
+    if (kind === "image") return "Image";
+    if (kind === "spreadsheet" || kind === "generic-csv") return "Tableur / CSV";
+    return "Document";
+  }
+
+  async function uploadOne(item: UploadItem) {
+    setUploadItems((items) => items.map((x) => (x.id === item.id ? { ...x, status: "uploading" } : x)));
     try {
       const fd = new FormData();
-      fd.append("files", file);
-      await fetch("/api/upload/auto", { method: "POST", body: fd });
-      setUploadStatus("done");
-    } catch {
-      setUploadStatus("idle");
+      fd.append("files", item.file);
+      const r = await fetch("/api/upload/auto", { method: "POST", body: fd });
+      const d = await r.json();
+      const result = (d.results || [])[0] ?? {};
+      const ok = result.status === "ok";
+      setUploadItems((items) =>
+        items.map((x) =>
+          x.id === item.id
+            ? {
+                ...x,
+                status: ok ? "done" : "error",
+                detected: result.detected,
+                detectedLabel: labelForDetected(result.detected),
+                message: result.message,
+                error: ok ? undefined : result.message || "Échec de l'import",
+              }
+            : x,
+        ),
+      );
+    } catch (e) {
+      setUploadItems((items) =>
+        items.map((x) => (x.id === item.id ? { ...x, status: "error", error: (e as Error).message } : x)),
+      );
     }
   }
+
+  function enqueueFiles(files: FileList | File[]) {
+    const newItems: UploadItem[] = Array.from(files).map((file, i) => ({
+      id: `${Date.now()}-${i}-${file.name}`,
+      file,
+      status: "queued",
+    }));
+    setUploadItems((prev) => [...prev, ...newItems]);
+    // Start uploads in parallel (no batching — the route accepts each request
+    // independently and lets pdf-parse + ingest run server-side).
+    for (const it of newItems) uploadOne(it);
+  }
+
+  // Once all uploads are done with at least one OK, kick off auto-extract in
+  // the background so the wizard has fresh data ready when the user lands.
+  useEffect(() => {
+    if (uploadItems.length === 0) return;
+    if (extractStatus !== "idle") return;
+    const stillRunning = uploadItems.some((x) => x.status === "queued" || x.status === "uploading");
+    if (stillRunning) return;
+    const anyOk = uploadItems.some((x) => x.status === "done");
+    if (!anyOk) return;
+    // Fire and forget — server takes 30+ seconds; we don't block the UI.
+    setExtractStatus("running");
+    fetch("/api/profile/auto-extract", { method: "POST" })
+      .then(async (r) => {
+        if (!r.ok) { setExtractStatus("error"); return; }
+        const d = await r.json();
+        const extracted = d?.extracted as Record<string, unknown> | undefined;
+        const memories = (d?.memories as string[] | undefined) ?? [];
+        const n = (extracted ? Object.keys(extracted).filter((k) => k !== "_memories").length : 0) + memories.length;
+        setExtractCount(n);
+        setExtractStatus("done");
+      })
+      .catch(() => setExtractStatus("error"));
+  }, [uploadItems, extractStatus]);
 
   // ---------- Validation per step ----------
   function canProceed(key: StepKey): boolean {
@@ -686,52 +762,106 @@ export default function WelcomePage() {
               {currentKey === "upload" && (
                 <>
                   <div className="text-6xl mb-4">📄</div>
-                  <h1 className="text-3xl font-semibold tracking-tight mb-3">Importe ton dernier bilan sanguin</h1>
-                  <p className="text-muted-foreground mb-6">PDF ou photo. L'IA extrait automatiquement tes biomarqueurs.</p>
+                  <h1 className="text-3xl font-semibold tracking-tight mb-2">Importe tous tes documents santé</h1>
+                  <p className="text-muted-foreground mb-1">
+                    Plus tu uploades, plus l&apos;IA pourra pré-remplir ton dossier automatiquement.
+                  </p>
+                  <p className="text-xs text-muted-foreground mb-6">
+                    Glisse-dépose en lot — analyses sanguines, ADN 23andMe, exports Whoop / Oura, comptes-rendus médicaux, ordonnances, notes.
+                  </p>
+
                   <label
-                    className={`flex flex-col items-center justify-center gap-3 px-6 py-12 rounded-xl border-2 border-dashed transition cursor-pointer ${
-                      uploadStatus === "done"
-                        ? "border-emerald bg-emerald/5"
+                    onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                    onDragLeave={() => setIsDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(false);
+                      if (e.dataTransfer.files?.length) enqueueFiles(e.dataTransfer.files);
+                    }}
+                    className={`flex flex-col items-center justify-center gap-2 px-6 py-10 rounded-xl border-2 border-dashed transition cursor-pointer ${
+                      isDragOver
+                        ? "border-emerald bg-emerald/10"
                         : "border-border hover:border-emerald/50 bg-secondary/20"
                     }`}
                   >
-                    {uploadStatus === "uploading" && (
-                      <>
-                        <Loader2 className="h-8 w-8 text-emerald animate-spin" />
-                        <div className="text-sm">Upload de {uploadFilename}…</div>
-                      </>
-                    )}
-                    {uploadStatus === "done" && (
-                      <>
-                        <Check className="h-8 w-8 text-emerald" />
-                        <div className="text-sm font-medium text-emerald">{uploadFilename} importé !</div>
-                        <div className="text-xs text-muted-foreground">Analyse en cours en arrière-plan</div>
-                      </>
-                    )}
-                    {uploadStatus === "idle" && (
-                      <>
-                        <Upload className="h-8 w-8 text-muted-foreground" />
-                        <div className="text-sm font-medium">Glisse ton fichier ici ou clique</div>
-                        <div className="text-xs text-muted-foreground">PDF, JPG, PNG · 1 fichier</div>
-                      </>
-                    )}
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <div className="text-sm font-medium">Glisse tes fichiers ici ou clique pour choisir</div>
+                    <div className="text-xs text-muted-foreground">PDF, JPG, PNG, CSV, TXT — plusieurs à la fois</div>
                     <input
                       type="file"
                       className="hidden"
-                      accept=".pdf,image/*"
-                      onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0])}
+                      multiple
+                      accept=".pdf,.csv,.txt,.md,.json,image/*"
+                      onChange={(e) => { if (e.target.files?.length) enqueueFiles(e.target.files); e.target.value = ""; }}
                     />
                   </label>
 
-                  <div className="mt-8 rounded-xl border border-emerald/30 bg-emerald/5 p-4">
-                    <div className="text-xs uppercase tracking-wider text-emerald mb-2 font-medium">Parfait</div>
-                    <p className="text-sm text-muted-foreground">
-                      Ton dossier est prêt. Tu peux compléter le détail maintenant ou aller au dashboard.
-                    </p>
-                  </div>
+                  {uploadItems.length > 0 && (
+                    <div className="mt-4 space-y-1.5">
+                      {uploadItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-card text-sm"
+                        >
+                          <div className="flex-shrink-0">
+                            {item.status === "uploading" && <Loader2 className="h-4 w-4 text-emerald animate-spin" />}
+                            {item.status === "queued" && <Loader2 className="h-4 w-4 text-muted-foreground" />}
+                            {item.status === "done" && <Check className="h-4 w-4 text-emerald" />}
+                            {item.status === "error" && <span className="text-red-500 text-xs">!</span>}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="truncate font-medium">{item.file.name}</div>
+                            {item.status === "done" && item.detectedLabel && (
+                              <div className="text-[10px] uppercase tracking-wider text-emerald">{item.detectedLabel}</div>
+                            )}
+                            {item.status === "error" && (
+                              <div className="text-[10px] text-red-500 truncate">{item.error}</div>
+                            )}
+                            {item.status === "uploading" && (
+                              <div className="text-[10px] text-muted-foreground">Upload en cours…</div>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground flex-shrink-0">
+                            {(item.file.size / 1024).toFixed(0)} KB
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(() => {
+                    const total = uploadItems.length;
+                    const done = uploadItems.filter((x) => x.status === "done").length;
+                    const inflight = uploadItems.filter((x) => x.status === "queued" || x.status === "uploading").length;
+                    const allFinished = total > 0 && inflight === 0;
+                    if (total === 0) {
+                      return (
+                        <p className="text-xs text-muted-foreground mt-4 text-center">
+                          Tu peux aussi passer cette étape — l&apos;import sera toujours possible depuis le dashboard.
+                        </p>
+                      );
+                    }
+                    return (
+                      <div className="mt-5 rounded-xl border border-emerald/30 bg-emerald/5 p-4">
+                        <div className="text-xs uppercase tracking-wider text-emerald mb-2 font-medium">
+                          {inflight > 0 ? `Upload ${done}/${total}` : `${done}/${total} importé(s)`}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {inflight > 0
+                            ? "Continue à ajouter des fichiers pendant que l'upload tourne…"
+                            : allFinished && extractStatus === "running"
+                            ? "L'IA analyse tes documents pour pré-remplir ton profil…"
+                            : allFinished && extractStatus === "done"
+                            ? `L'IA a extrait ${extractCount} information(s) — elles t'attendent dans le profil.`
+                            : "Tout est importé. Tu peux continuer."}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <Link
-                      href="/profile"
+                      href="/profile?tab=identite&prefill=1"
                       className="flex-1 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
                     >
                       <Sparkles className="h-4 w-4" /> Compléter mon profil détaillé

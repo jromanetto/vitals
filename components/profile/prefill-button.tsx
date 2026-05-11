@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wand2, Loader2, Check, X } from "lucide-react";
 
@@ -111,6 +111,20 @@ export function PrefillButton() {
 
   const proposedKeys = data ? Object.keys(data.patch) : [];
   const acceptedCount = Object.values(selected).filter(Boolean).length;
+
+  // Auto-open after the welcome flow lands at /profile?prefill=1.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("prefill") === "1") {
+      // Strip the param so a refresh doesn't re-open the modal.
+      url.searchParams.delete("prefill");
+      window.history.replaceState({}, "", url.toString());
+      // Defer one tick so the wizard is mounted before fetching.
+      setTimeout(() => { fetchPrefill(); }, 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
