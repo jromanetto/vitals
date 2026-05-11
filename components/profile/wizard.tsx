@@ -12,7 +12,6 @@ import { FamilleSection, FAMILLE_SECTION_IDS } from "./sections/famille";
 import { EnvironnementSection, ENVIRONNEMENT_SECTION_IDS } from "./sections/environnement";
 import { LifestyleSection, LIFESTYLE_SECTION_IDS } from "./sections/lifestyle";
 import { SupplementsSection, SUPPLEMENTS_SECTION_IDS } from "./sections/supplements";
-import { SecuriteSection } from "./sections/securite";
 import { SymptomesSection, SYMPTOMES_SECTION_IDS } from "./sections/symptomes";
 import { ScreeningSection, SCREENING_SECTION_IDS } from "./sections/screening";
 import { ReproductionSection, REPRODUCTION_SECTION_IDS } from "./sections/reproduction";
@@ -30,8 +29,7 @@ type TabId =
   | "reproduction"
   | "environnement"
   | "objectifs"
-  | "supplements"
-  | "securite";
+  | "supplements";
 
 type TabDef = {
   id: TabId;
@@ -52,7 +50,8 @@ const ALL_TABS: TabDef[] = [
   { id: "environnement", label: "Environnement", emoji: "🌍", toastLabel: "Environnement", sectionIds: ENVIRONNEMENT_SECTION_IDS },
   { id: "objectifs", label: "Objectifs", emoji: "🎯", toastLabel: "Objectifs", sectionIds: OBJECTIFS_SECTION_IDS },
   { id: "supplements", label: "Suppléments", emoji: "💊", toastLabel: "Suppléments", sectionIds: SUPPLEMENTS_SECTION_IDS },
-  { id: "securite", label: "Sécurité", emoji: "🛡️", toastLabel: "Sécurité", sectionIds: [] },
+  // Sécurité is account-scope (2FA, password, audit log) — lives at /profile/security,
+  // not in the health profile wizard.
 ];
 
 // Reproduction tab is shown for everyone; the section itself filters womens/mens
@@ -60,7 +59,6 @@ const ALL_TABS: TabDef[] = [
 const TABS = ALL_TABS;
 
 function tabCompletion(tab: TabDef, data: Record<string, unknown>): number {
-  if (tab.id === "securite") return 100; // info-only tab
   if (tab.id === "environnement") {
     // Use the standard environment heuristic from completion()
     const envSection = SECTIONS.find((s) => s.id === "environment");
@@ -318,7 +316,6 @@ export function ProfileWizard({ initial }: { initial: Record<string, unknown> })
               {activeTab === "supplements" && (
                 <SupplementsSection data={data} onChange={onChange} />
               )}
-              {activeTab === "securite" && <SecuriteSection />}
             </motion.div>
           </AnimatePresence>
 
