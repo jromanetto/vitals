@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { db, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { anonymizeProfile } from "@/lib/anonymize";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 import { desc } from "drizzle-orm";
@@ -92,7 +93,9 @@ export async function POST(req: Request) {
 
   // 1. existing profile
   const profileRows = await d.select().from(schema.profile).orderBy(desc(schema.profile.updatedAt)).limit(1);
-  const existing = decryptProfile((profileRows[0]?.data as Record<string, unknown>) ?? {});
+  // Anonymized for LLM context — the actual values from profile are not what we
+  // need here (we're extracting NEW facts from documents into profile).
+  const existing = anonymizeProfile(decryptProfile((profileRows[0]?.data as Record<string, unknown>) ?? {}));
 
   // 2. documents (PDFs)
   const docs = await d.select({

@@ -141,3 +141,81 @@
   .praticien-doc section { page-break-inside: avoid; }
   .praticien-doc h1, .praticien-doc h2 { color: #000 !important; }
 }
+
+/* Premium Doctor Pack — print-perfect A4 */
+.doctor-pack {
+  background: #ffffff;
+  color: #111111;
+  font-family: ui-serif, Georgia, "Times New Roman", Times, serif;
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 16mm 18mm;
+  font-size: 11pt;
+  line-height: 1.55;
+}
+.doctor-pack h1, .doctor-pack h2, .doctor-pack h3 {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #0b1320;
+}
+.doctor-pack .dp-rule { background: #0b1320; height: 2px; width: 56px; }
+.doctor-pack .dp-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 14px 16px;
+  background: #fafafa;
+  page-break-inside: avoid;
+}
+.doctor-pack .dp-section-break { page-break-before: always; break-before: page; }
+.doctor-pack .dp-avoid-break { page-break-inside: avoid; break-inside: avoid; }
+.doctor-pack .dp-md h1 { font-size: 18pt; margin: 18px 0 8px; }
+.doctor-pack .dp-md h2 { font-size: 14pt; margin: 22px 0 8px; color: #047857; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+.doctor-pack .dp-md h3 { font-size: 12pt; margin: 14px 0 6px; }
+.doctor-pack .dp-md table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 10.5pt; }
+.doctor-pack .dp-md th, .doctor-pack .dp-md td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }
+.doctor-pack .dp-md th { background: #f3f4f6; font-weight: 600; }
+.doctor-pack .dp-md ul, .doctor-pack .dp-md ol { padding-left: 22px; margin: 8px 0; }
+.doctor-pack .dp-md li { margin: 3px 0; }
+.doctor-pack .dp-md p { margin: 8px 0; }
+.doctor-pack .dp-md strong { color: #0b1320; }
+.doctor-pack .dp-md code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+
+@page doctor-pack-page {
+  size: A4;
+  margin: 20mm;
+}
+
+@media print {
+  @page { size: A4; margin: 20mm; }
+  body { background: #ffffff !important; }
+  .doctor-pack {
+    padding: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    font-size: 10.5pt;
+  }
+  .doctor-pack .dp-section-break { page-break-before: always; break-before: page; }
+  .doctor-pack .dp-avoid-break,
+  .doctor-pack .dp-card,
+  .doctor-pack table,
+  .doctor-pack section { page-break-inside: avoid; break-inside: avoid; }
+  .doctor-pack .dp-cover { page-break-after: always; break-after: page; }
+  .doctor-pack .dp-toc { page-break-after: always; break-after: page; }
+  .doctor-pack .dp-footer {
+    position: fixed;
+    bottom: 8mm;
+    left: 20mm;
+    right: 20mm;
+    text-align: center;
+    font-size: 8.5pt;
+    color: #6b7280;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 4px;
+  }
+  .doctor-pack a { color: inherit; text-decoration: none; }
+  .doctor-pack a[href]::after { content: ""; }
+  /* Hide app chrome */
+  aside, header[class*="border-b"], #sidebar,
+  .floating-chat, [data-bottom-nav], .no-print,
+  nav, [data-top-bar] { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+}

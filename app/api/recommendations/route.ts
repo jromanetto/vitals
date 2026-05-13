@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { anonymizeProfile } from "@/lib/anonymize";
 
 export const runtime = "nodejs";
 
@@ -70,7 +71,7 @@ export async function GET() {
   const measured = new Set((sqlite.prepare(`SELECT DISTINCT slug FROM biomarker`).all() as Array<{ slug: string }>).map((r) => r.slug));
   const dnaRisks = sqlite.prepare(`SELECT rsid, trait, has_risk FROM dna_insight WHERE has_risk = 1`).all() as Array<{ rsid: string; trait: string; has_risk: number }>;
   const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
+  const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate as string).getTime()) / (365.25 * 86400000)) : null;
 
   // Build map: slug → triggers + priority

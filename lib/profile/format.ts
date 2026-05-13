@@ -13,6 +13,7 @@ import { DISEASE_CATALOG } from "@/lib/medical/disease-catalog";
 import { SYMPTOM_CATALOG } from "@/lib/medical/symptom-catalog";
 import { SCREENING_CATALOG } from "@/lib/medical/screening-catalog";
 import { RELATIVES } from "@/lib/medical/relatives";
+import { anonymizeProfile } from "@/lib/anonymize";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -203,12 +204,19 @@ function formatBMI(p: AnyRecord): string {
  * Produces a Markdown summary safe to inject in an LLM system or user prompt
  * (no triple-backticks inside, no risky injections).
  */
-export function formatProfileForLLM(profile: Record<string, unknown>): string {
-  if (!profile || Object.keys(profile).length === 0) {
+export function formatProfileForLLM(profileInput: Record<string, unknown>): string {
+  if (!profileInput || Object.keys(profileInput).length === 0) {
     return "_Profil non renseigné._";
   }
+  // Strip PII before formatting — this is the single chokepoint for chat +
+  // action-plan + any other consumer of the Markdown summary. When the
+  // anonymize toggle is OFF (data/auth.json.anonymizeLLM=false) the function
+  // returns the profile as-is.
+  const profile = anonymizeProfile(profileInput);
   const lines: string[] = [];
-  const a = age(asString(profile.birthDate));
+  // anonymizeProfile sets `age` numeric directly when birthDate is present; fall
+  // back to the raw birthDate parser if the toggle is off.
+  const a = typeof profile.age === "number" ? profile.age : age(asString(profile.birthDate));
 
   lines.push("## Profil patient (résumé lisible)");
   lines.push("");

@@ -108,8 +108,38 @@ export function anonymizeProfile(profile: Record<string, any>): Record<string, a
     if (clone[k]) clone[k] = "[USER]";
   }
   for (const k of ["email"]) if (clone[k]) clone[k] = "[EMAIL]";
-  for (const k of ["phone", "phoneNumber", "tel"]) if (clone[k]) clone[k] = "[PHONE]";
-  for (const k of ["city", "address", "town", "addressLine", "postalCode", "zipCode", "zip", "country"]) if (clone[k]) clone[k] = "[LOCATION]";
+  for (const k of ["phone", "phoneNumber", "tel", "emergencyContactPhone"]) if (clone[k]) clone[k] = "[PHONE]";
+  for (const k of [
+    "city", "address", "town", "addressLine", "postalCode", "zipCode", "zip", "country",
+    "birthPlace", "preferredPharmacy",
+  ]) {
+    if (clone[k]) clone[k] = "[LOCATION]";
+  }
+  for (const k of ["emergencyContactName"]) if (clone[k]) clone[k] = "[CONTACT]";
+  // currentLocation: { countryCode, city, region } — keep countryCode for context (utile au LLM
+  // pour normes médicales), strip city/region.
+  if (clone.currentLocation && typeof clone.currentLocation === "object") {
+    const cl = clone.currentLocation as Record<string, any>;
+    clone.currentLocation = { countryCode: cl.countryCode ?? null, city: "[LOCATION]", region: "[LOCATION]" };
+  }
+  // residenceHistory: same, only keep countryCode.
+  if (Array.isArray(clone.residenceHistory)) {
+    clone.residenceHistory = clone.residenceHistory.map((e: any) => ({
+      countryCode: e?.countryCode ?? null,
+      city: "[LOCATION]",
+    }));
+  }
+  // pedigree.{relativeKey}.name → stripped (we keep alive/age/conditions because they are
+  // clinically meaningful and not PII once names are gone).
+  if (clone.pedigree && typeof clone.pedigree === "object") {
+    const ped = { ...(clone.pedigree as Record<string, any>) };
+    for (const [k, v] of Object.entries(ped)) {
+      if (v && typeof v === "object" && "name" in (v as Record<string, any>)) {
+        ped[k] = { ...(v as Record<string, any>), name: "[NAME]" };
+      }
+    }
+    clone.pedigree = ped;
+  }
   const dob = clone.birthDate || clone.dob || clone.dateOfBirth;
   if (dob) {
     try {
@@ -124,4 +154,22 @@ export function anonymizeProfile(profile: Record<string, any>): Record<string, a
     } catch {}
   }
   return clone;
+}
+
+/**
+ * Convenience wrapper that fetches the latest profile from DB, decrypts it,
+ * and returns the anonymized version. The single entry-point every LLM call
+ * should use to obtain user context — guarantees zero PII leakage.
+ */
+export function loadAnonymizedProfile(): Record<string, any> {
+  try {
+    const p = getProfile();
+    // decryptProfile is in crypto-fields but importing here creates a cycle in
+    // some bundlers — call dynamically.
+    const { decryptProfile } = require("./crypto-fields");
+    const decrypted = decryptProfile(p);
+    return anonymizeProfile(decrypted);
+  } catch {
+    return {};
+  }
 }

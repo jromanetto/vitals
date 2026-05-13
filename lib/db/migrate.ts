@@ -102,6 +102,20 @@ export function ensureSchema() {
       cuisines TEXT NOT NULL DEFAULT '[]',
       updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     )`,
+    // Welcome Report feedback (thumbs up/down + optional comment per card)
+    `CREATE TABLE IF NOT EXISTS card_feedback (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      report_id INTEGER NOT NULL,
+      card_index INTEGER NOT NULL,
+      card_title TEXT NOT NULL,
+      rating TEXT NOT NULL CHECK (rating IN ('up','down')),
+      comment TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`,
+    `CREATE INDEX IF NOT EXISTS card_feedback_user_idx ON card_feedback(user_id)`,
+    `CREATE INDEX IF NOT EXISTS card_feedback_report_idx ON card_feedback(report_id)`,
+    `CREATE INDEX IF NOT EXISTS card_feedback_created_idx ON card_feedback(created_at)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {

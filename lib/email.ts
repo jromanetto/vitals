@@ -5,6 +5,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// Re-exported so callers can import everything from "@/lib/email".
+export { weeklyDigestTemplate } from "@/lib/email-digest";
+export type { WeeklyDeltas } from "@/lib/email-digest";
+
 type EmailPayload = {
   to: string | string[];
   subject: string;

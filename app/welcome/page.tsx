@@ -861,10 +861,10 @@ export default function WelcomePage() {
 
                   <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <Link
-                      href="/data/profile?tab=identite&prefill=1"
+                      href="/welcome/report"
                       className="flex-1 px-4 py-2.5 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
                     >
-                      <Sparkles className="h-4 w-4" /> Compléter mon profil détaillé
+                      <Sparkles className="h-4 w-4" /> Voir mon analyse personnalisée
                     </Link>
                     <Link
                       href="/dashboard"

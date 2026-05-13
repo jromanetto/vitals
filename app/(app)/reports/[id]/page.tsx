@@ -26,14 +26,25 @@ export default async function ReportPage({
 
   const generating = !r.body || r.body.length < 30;
   const printMode = print === "1";
+  const isDoctorPack = r.kind === "doctor-pack";
 
   return (
     <article className={printMode ? "praticien-doc max-w-3xl mx-auto" : "max-w-3xl"}>
       {printMode && !generating && <PrintTrigger />}
       {!printMode && (
-        <Link href="/reports" className="no-print text-sm text-muted-foreground hover:text-foreground">
-          ← Tous les rapports
-        </Link>
+        <div className="no-print flex items-center justify-between gap-3">
+          <Link href="/reports" className="text-sm text-muted-foreground hover:text-foreground">
+            ← Tous les rapports
+          </Link>
+          {isDoctorPack && !generating && (
+            <Link
+              href={`/praticien/${r.id}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium border border-border bg-card hover:bg-secondary/40 transition-colors"
+            >
+              Vue praticien (A4)
+            </Link>
+          )}
+        </div>
       )}
       <header className={printMode ? "mb-8" : "mt-4 mb-8"}>
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium capitalize">{r.kind.replace(/-/g, " ")}</div>
