@@ -20,8 +20,9 @@ const PUBLIC_PATHS = new Set<string>([
   "/legal/terms",
 ]);
 
-// Path prefixes that are always public (api auth + health-check)
-const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/"];
+// Path prefixes that are always public (api auth + health-check + cron).
+// /api/cron/* endpoints are self-secured via CRON_SECRET header inside the route.
+const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
