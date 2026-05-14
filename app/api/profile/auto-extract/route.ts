@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { db, schema } from "@/lib/db";
+import { currentUserId } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { anonymizeProfile } from "@/lib/anonymize";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
-import { desc } from "drizzle-orm";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -82,58 +81,54 @@ Retourne ALSO une clé spéciale "_memories" : un tableau de strings courtes (1 
 Format réponse : UNIQUEMENT du JSON valide, pas de markdown, pas de prose, pas de fence \`\`\`. Si rien à extraire pour un champ, omets-le.`;
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
 
   const apiKey = anthropicApiKey();
   if (!apiKey) return NextResponse.json({ error: "Clé Anthropic manquante" }, { status: 500 });
 
-  const d = db();
+  const sqlite = db().$client;
 
-  // 1. existing profile
-  const profileRows = await d.select().from(schema.profile).orderBy(desc(schema.profile.updatedAt)).limit(1);
+  // 1. existing profile (this user only)
+  const profileRow = sqlite
+    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
+    .get(userId) as { data: string | Record<string, unknown> } | undefined;
+  const profileData = profileRow
+    ? (typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data)
+    : {};
   // Anonymized for LLM context — the actual values from profile are not what we
   // need here (we're extracting NEW facts from documents into profile).
-  const existing = anonymizeProfile(decryptProfile((profileRows[0]?.data as Record<string, unknown>) ?? {}));
+  const existing = anonymizeProfile(decryptProfile(profileData as Record<string, unknown>));
 
   // 2. documents (PDFs)
-  const docs = await d.select({
-    id: schema.document.id,
-    title: schema.document.title,
-    category: schema.document.category,
-    date: schema.document.date,
-    textContent: schema.document.textContent,
-  }).from(schema.document).orderBy(desc(schema.document.date)).limit(60);
+  const docs = sqlite
+    .prepare(`SELECT id, title, category, date, text_content as textContent FROM document WHERE user_id = ? ORDER BY date DESC LIMIT 60`)
+    .all(userId) as Array<{ id: number; title: string | null; category: string; date: number | null; textContent: string | null }>;
 
-  // 3. recent rag chunks not directly tied to docs already covered (extra safety)
-  const chunks = await d.select({ text: schema.ragChunk.text })
-    .from(schema.ragChunk).limit(80);
+  // 3. rag chunks scoped via the parent document → user_id (rag_chunk has no direct user_id).
+  const chunks = sqlite
+    .prepare(`SELECT rc.text FROM rag_chunk rc JOIN document d ON d.id = rc.doc_id WHERE d.user_id = ? LIMIT 80`)
+    .all(userId) as Array<{ text: string }>;
 
-  // 4. dna insights with risk
-  const dnaIns = await d.select({
-    category: schema.dnaInsight.category,
-    trait: schema.dnaInsight.trait,
-    summary: schema.dnaInsight.summary,
-    hasRisk: schema.dnaInsight.hasRisk,
-    userGenotype: schema.dnaInsight.userGenotype,
-  }).from(schema.dnaInsight).limit(150);
+  // 4. dna insights (this user)
+  const dnaIns = sqlite
+    .prepare(`SELECT category, trait, summary, has_risk as hasRisk, user_genotype as userGenotype FROM dna_insight WHERE user_id = ? LIMIT 150`)
+    .all(userId) as Array<{ category: string; trait: string; summary: string | null; hasRisk: number | null; userGenotype: string | null }>;
 
   // 5. biomarker history (unique slugs with most recent value)
-  const biomarkers = d.$client.prepare(`
+  const biomarkers = sqlite.prepare(`
     SELECT name, slug, value, unit, ref_low as refLow, ref_high as refHigh, date
     FROM biomarker
+    WHERE user_id = ?
     ORDER BY date DESC
     LIMIT 200
-  `).all() as Array<Record<string, unknown>>;
+  `).all(userId) as Array<Record<string, unknown>>;
 
   // 6. recent reports
-  const reports = await d.select({
-    kind: schema.report.kind,
-    title: schema.report.title,
-    body: schema.report.body,
-    createdAt: schema.report.createdAt,
-  }).from(schema.report).orderBy(desc(schema.report.createdAt)).limit(8);
+  const reports = sqlite
+    .prepare(`SELECT kind, title, body, created_at as createdAt FROM report WHERE user_id = ? ORDER BY created_at DESC LIMIT 8`)
+    .all(userId) as Array<{ kind: string; title: string; body: string; createdAt: number }>;
 
   // Build mega-context with budget
   const parts: string[] = [];
@@ -157,7 +152,7 @@ export async function POST(req: Request) {
   // Documents
   if (docs.length) {
     const txt = docs.map((doc) => {
-      const dt = doc.date ? new Date(doc.date as Date).toISOString().slice(0, 10) : "?";
+      const dt = doc.date ? new Date(doc.date as number).toISOString().slice(0, 10) : "?";
       const body = (doc.textContent || "").slice(0, 3500);
       return `# [${dt}] ${doc.title || "Sans titre"} (${doc.category})\n${body}`;
     }).join("\n\n---\n\n");

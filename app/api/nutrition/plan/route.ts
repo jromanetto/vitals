@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { anthropicApiKey } from "@/lib/secrets";
@@ -16,8 +16,8 @@ export const maxDuration = 60;
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 const REPORT_KIND = "nutrition-plan";
 
-function loadPrefs(sqlite: ReturnType<typeof db>["$client"]): NutritionPref {
-  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref ORDER BY updated_at DESC LIMIT 1`).get() as
+function loadPrefs(sqlite: ReturnType<typeof db>["$client"], userId: number): NutritionPref {
+  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as
     | { diet_type: string; allergies: string; aversions: string; budget: string; cuisines: string }
     | undefined;
   if (!row) {
@@ -51,8 +51,8 @@ function summarizeProfile(p: Record<string, unknown>): string {
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
 
   const url = new URL(req.url);
@@ -61,13 +61,12 @@ export async function GET(req: Request) {
 
   const sqlite = db().$client;
 
-  // Fast path: serve any recent cached plan immediately, without recomputing the
-  // rules engine or hashing inputs. This makes Nutrition render instantly when a
-  // fresh plan exists in the report table.
+  // Fast path: serve any recent cached plan immediately, scoped to this user
+  // so demo accounts never see Julien's plan and vice-versa.
   if (!force) {
     const cached = sqlite.prepare(
-      `SELECT body, meta, created_at FROM report WHERE kind = ? ORDER BY created_at DESC LIMIT 1`
-    ).get(REPORT_KIND) as { body: string; meta: string; created_at: number } | undefined;
+      `SELECT body, meta, created_at FROM report WHERE kind = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`
+    ).get(REPORT_KIND, userId) as { body: string; meta: string; created_at: number } | undefined;
     if (cached && Date.now() - cached.created_at < CACHE_TTL_MS) {
       try {
         const plan = JSON.parse(cached.body) as NutritionPlan;
@@ -76,26 +75,27 @@ export async function GET(req: Request) {
     }
   }
 
-  const prefs = loadPrefs(sqlite);
+  const prefs = loadPrefs(sqlite, userId);
 
   const latestBms = sqlite.prepare(`
     SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
     FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
-  `).all() as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+    WHERE b.user_id = ?
+  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
   const biomarkers = latestBms.map((b) => ({
     ...b,
     optimalLow: META_BY_SLUG[b.slug]?.optimalLow ?? null,
     optimalHigh: META_BY_SLUG[b.slug]?.optimalHigh ?? null,
   }));
 
-  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype as userGenotype, category FROM dna_insight WHERE user_genotype IS NOT NULL`).all() as Array<{ rsid: string; trait: string; userGenotype: string; category: string }>;
+  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype as userGenotype, category FROM dna_insight WHERE user_genotype IS NOT NULL AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; userGenotype: string; category: string }>;
 
   const engine = runEngine({ biomarkers, dna: dnaRows, prefs });
   const fingerprint = inputFingerprint({ biomarkers, dna: dnaRows, prefs });
   const dataHash = crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 16);
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
   const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
   const profileSummary = summarizeProfile(profile);
 
@@ -112,16 +112,16 @@ export async function GET(req: Request) {
     }
   }
 
-  // Persist as a cacheable report row. Stored body already contains the
-  // generatedAt timestamp; meta keeps a snapshot of the inputs used.
+  // Persist as a cacheable report row scoped to this user.
   const generatedAt = Date.now();
   const persistedPlan: NutritionPlan = { ...plan, cached: false, generatedAt };
-  sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at) VALUES (?, ?, ?, ?, ?)`).run(
+  sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run(
     REPORT_KIND,
     `Plan nutrition — ${plan.dietPattern.label}`,
     JSON.stringify(persistedPlan),
     JSON.stringify({ generatedAt, dataHash, profileSnapshot: profileSummary }),
-    generatedAt
+    generatedAt,
+    userId
   );
 
   return NextResponse.json(persistedPlan);
