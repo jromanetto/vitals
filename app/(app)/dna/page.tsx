@@ -1,7 +1,7 @@
+import { redirect } from "next/navigation";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { sql } from "drizzle-orm";
-import { dnaVariant } from "@/lib/db/schema";
 import { DnaCategoryCard } from "@/components/dna-category-card";
 import { DnaTopFindings } from "@/components/dna-top-findings";
 import { DnaOverview } from "@/components/dna-overview";
@@ -25,23 +25,31 @@ const CATEGORIES = [
   { id: "carriers", title: "Porteur", desc: "Mutations récessives transmissibles." },
 ];
 
-async function counts() {
+async function counts(userId: number) {
   ensureSchema();
   const d = db();
-  const [variants] = await d.select({ c: sql<number>`count(*)` }).from(dnaVariant);
+  const variants = d.$client.prepare(`SELECT COUNT(*) as c FROM dna_variant WHERE user_id = ?`).get(userId) as { c: number } | undefined;
   const rows = d.$client.prepare(`
     SELECT category,
            COUNT(*) as c,
            SUM(CASE WHEN has_risk = 1 THEN 1 ELSE 0 END) as risk,
            SUM(CASE WHEN is_protective = 1 THEN 1 ELSE 0 END) as protective
     FROM dna_insight
+    WHERE user_id = ?
     GROUP BY category
-  `).all() as Array<{ category: string; c: number; risk: number; protective: number }>;
+  `).all(userId) as Array<{ category: string; c: number; risk: number; protective: number }>;
   const byCat = Object.fromEntries(rows.map((r) => [r.category, { c: r.c, risk: r.risk, protective: r.protective }]));
-  const totals = rows.reduce((acc, r) => ({ c: acc.c + r.c, risk: acc.risk + r.risk, protective: acc.protective + r.protective }), { c: 0, risk: 0, protective: 0 });
+  // Carrier traits aren't a personal risk — they're hetero recessive mutations
+  // relevant only for reproduction. Excluding them from the global "% favorable"
+  // avoids dragging the score down for variants the user can't act on.
+  const isCarrier = (cat: string) => cat.toLowerCase() === "carrier" || cat.toLowerCase() === "carriers" || cat.toLowerCase() === "porteur";
+  const totals = rows
+    .filter((r) => !isCarrier(r.category))
+    .reduce((acc, r) => ({ c: acc.c + r.c, risk: acc.risk + r.risk, protective: acc.protective + r.protective }), { c: 0, risk: 0, protective: 0 });
+  const carrierCount = rows.filter((r) => isCarrier(r.category)).reduce((a, r) => a + r.c, 0);
 
-  const top = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, magnitude, summary FROM dna_insight WHERE has_risk = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all() as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string }>;
-  const strengths = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, COALESCE(magnitude,0) as magnitude, summary, is_protective as isProtective FROM dna_insight WHERE is_protective = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all() as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string; isProtective: number }>;
+  const top = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, magnitude, summary FROM dna_insight WHERE has_risk = 1 AND user_id = ? AND LOWER(category) NOT IN ('carrier','carriers','porteur') ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all(userId) as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string }>;
+  const strengths = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, COALESCE(magnitude,0) as magnitude, summary, is_protective as isProtective FROM dna_insight WHERE is_protective = 1 AND user_id = ? ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all(userId) as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string; isProtective: number }>;
 
   return {
     totalVariants: variants?.c ?? 0,
@@ -55,7 +63,9 @@ async function counts() {
 }
 
 export default async function DnaPage() {
-  const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts();
+  const userId = await currentUserId();
+  if (!userId) redirect("/login");
+  const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts(userId);
   return (
     <div className="space-y-12">
       <PageHeader

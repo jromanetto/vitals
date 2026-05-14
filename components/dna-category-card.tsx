@@ -1,10 +1,16 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Shield, AlertCircle } from "lucide-react";
+import { Shield, AlertCircle, Users } from "lucide-react";
 
 export type Cat = { id: string; title: string; desc: string };
 export type Stat = { c: number; risk: number; protective: number };
+
+// "Porteur" / "carrier" categories list autosomal recessive mutations the user
+// has one copy of. They aren't a personal health risk — they only matter for
+// reproductive planning. Render them with a transmissible-mutation count and
+// neutral coloring instead of a "% favorable" gauge that always reads 0%.
+const CARRIER_CATEGORIES = new Set(["carrier", "porteur", "carriers"]);
 
 export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; idx: number }) {
   const c = stats?.c ?? 0;
@@ -13,10 +19,12 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
   const standard = Math.max(0, c - risk - prot);
   const favorable = standard + prot;
   const favorablePct = c > 0 ? Math.round((favorable / c) * 100) : 100;
+  const isCarrier = CARRIER_CATEGORIES.has(cat.id.toLowerCase());
 
-  // Border tone reflects ratio
+  // Border tone reflects ratio (or neutral for carrier)
   const borderTone =
     c === 0 ? "border-border"
+    : isCarrier ? "border-sky-500/30 hover:border-sky-500/50"
     : risk === 0 ? "border-emerald/30 hover:border-emerald/50"
     : risk / c < 0.25 ? "border-border hover:border-emerald/40"
     : "border-amber-500/20 hover:border-amber-500/40";
@@ -32,11 +40,25 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
       >
         <div className="flex items-start justify-between gap-2">
           <div className="text-base font-medium tracking-tight group-hover:text-emerald transition">{cat.title}</div>
-          {prot > 0 && <Shield className="h-3.5 w-3.5 text-emerald shrink-0 mt-0.5" />}
+          {isCarrier ? (
+            <Users className="h-3.5 w-3.5 text-sky-500 shrink-0 mt-0.5" />
+          ) : prot > 0 ? (
+            <Shield className="h-3.5 w-3.5 text-emerald shrink-0 mt-0.5" />
+          ) : null}
         </div>
         <div className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{cat.desc}</div>
 
-        {c > 0 ? (
+        {c > 0 && isCarrier ? (
+          <>
+            <div className="mt-4 mb-2 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums text-sky-500">{c}</span>
+              <span className="text-[11px] text-muted-foreground">{c > 1 ? "mutations" : "mutation"} porteur{c > 1 ? "·s" : ""}</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Pas un risque pour toi — tu es hétérozygote. Pertinent pour la planification familiale uniquement.
+            </p>
+          </>
+        ) : c > 0 ? (
           <>
             <div className="mt-4 mb-2 flex items-baseline gap-2">
               <span className="text-2xl font-semibold tabular-nums text-emerald">{favorablePct}%</span>
