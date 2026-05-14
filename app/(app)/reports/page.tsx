@@ -26,8 +26,11 @@ const KINDS = [
 async function getAll(): Promise<ReportRow[]> {
   ensureSchema();
   const d = db();
+  // nutrition-plan reports store a JSON blob (consumed by /stack?tab=nutrition)
+  // and would render as raw JSON in this grid — exclude them here, they have
+  // their dedicated home in the Stack page.
   const rows = d.$client
-    .prepare(`SELECT id, kind, title, body, created_at, meta FROM report ORDER BY created_at DESC`)
+    .prepare(`SELECT id, kind, title, body, created_at, meta FROM report WHERE kind != 'nutrition-plan' ORDER BY created_at DESC`)
     .all() as Array<{ id: number; kind: string; title: string; body: string; created_at: number; meta: string | null }>;
   return rows.map((r) => {
     let parsed: ReportRow["meta"] = null;

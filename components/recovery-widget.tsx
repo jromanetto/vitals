@@ -26,7 +26,7 @@ export function RecoveryWidget() {
         <h2 className="text-sm font-medium">Récupération — 30 jours</h2>
         <span className="text-xs text-muted-foreground">moyenne {avg.toFixed(0)} · dernier {last.toFixed(0)}</span>
       </div>
-      <Sparkline values={values} width={500} height={64} trend="flat" />
+      <Sparkline values={values} width={500} height={64} trend="flat" responsive />
       <div className="grid grid-cols-3 gap-2 mt-4 text-xs">
         <div className="rounded-md bg-emerald/10 border border-emerald/30 p-2.5 text-center">
           <div className="text-lg font-mono">{values.filter((v) => v >= 67).length}</div>
