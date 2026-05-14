@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { FileText, Printer } from "lucide-react";
@@ -23,15 +25,20 @@ const KINDS = [
   { id: "next-bloodwork-prep", label: "Prochaine prise de sang", desc: "Marqueurs à demander" },
 ];
 
-async function getAll(): Promise<ReportRow[]> {
+async function getAll(userId: number): Promise<ReportRow[]> {
   ensureSchema();
   const d = db();
-  // nutrition-plan reports store a JSON blob (consumed by /stack?tab=nutrition)
-  // and would render as raw JSON in this grid — exclude them here, they have
-  // their dedicated home in the Stack page.
+  // Nutrition reports (both legacy `nutrition` and the new `nutrition-plan`
+  // cache key) store a structured JSON blob consumed by /stack?tab=nutrition —
+  // they would render as raw JSON here. Exclude both, they have their
+  // dedicated home in Stack.
   const rows = d.$client
-    .prepare(`SELECT id, kind, title, body, created_at, meta FROM report WHERE kind != 'nutrition-plan' ORDER BY created_at DESC`)
-    .all() as Array<{ id: number; kind: string; title: string; body: string; created_at: number; meta: string | null }>;
+    .prepare(
+      `SELECT id, kind, title, body, created_at, meta FROM report
+       WHERE user_id = ? AND kind NOT IN ('nutrition-plan', 'nutrition')
+       ORDER BY created_at DESC`,
+    )
+    .all(userId) as Array<{ id: number; kind: string; title: string; body: string; created_at: number; meta: string | null }>;
   return rows.map((r) => {
     let parsed: ReportRow["meta"] = null;
     if (r.meta) {
@@ -42,7 +49,9 @@ async function getAll(): Promise<ReportRow[]> {
 }
 
 export default async function ReportsPage() {
-  const rows = await getAll();
+  const userId = await currentUserId();
+  if (!userId) redirect("/login");
+  const rows = await getAll(userId);
   return (
     <div className="space-y-10">
       <PageHeader
