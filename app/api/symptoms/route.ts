@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const d = body.date ?? new Date().toISOString().slice(0, 10);
   if (!body.key || typeof body.value !== "number") return NextResponse.json({ error: "key+value required" }, { status: 400 });
   const sqlite = db().$client;
-  sqlite.prepare(`INSERT OR REPLACE INTO symptom_log (date, key, value, notes) VALUES (?, ?, ?, ?)`).run(d, body.key, body.value, body.notes ?? null);
+  sqlite.prepare(`INSERT OR REPLACE INTO symptom_log (date, key, value, notes, user_id) VALUES (?, ?, ?, ?, ?)`).run(d, body.key, body.value, body.notes ?? null, userId);
   return NextResponse.json({ ok: true });
 }
 
@@ -38,6 +38,6 @@ export async function DELETE(req: Request) {
   const url = new URL(req.url);
   const id = Number(url.searchParams.get("id"));
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  db().$client.prepare(`DELETE FROM symptom_log WHERE id = ?`).run(id);
+  db().$client.prepare(`DELETE FROM symptom_log WHERE id = ? AND user_id = ?`).run(id, userId);
   return NextResponse.json({ ok: true });
 }

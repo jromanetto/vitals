@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
@@ -32,33 +32,34 @@ const WEARABLE_LABELS: Record<string, string> = {
 };
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
   // Ensure wearable_metric exists for old DBs
   sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
 
-  const symptomLogs = sqlite.prepare(`SELECT date, key, value FROM symptom_log`).all() as Array<{ date: string; key: string; value: number }>;
+  const symptomLogs = sqlite.prepare(`SELECT date, key, value FROM symptom_log WHERE user_id = ?`).all(userId) as Array<{ date: string; key: string; value: number }>;
   const symptomsByKey: Record<string, DatedValue[]> = {};
   for (const l of symptomLogs) (symptomsByKey[l.key] ??= []).push({ date: l.date, value: l.value });
 
-  const habitLogs = sqlite.prepare(`SELECT date, key FROM habit_log`).all() as Array<{ date: string; key: string }>;
+  const habitLogs = sqlite.prepare(`SELECT date, key FROM habit_log WHERE user_id = ?`).all(userId) as Array<{ date: string; key: string }>;
   const habitsByKey: Record<string, DatedValue[]> = {};
   for (const l of habitLogs) (habitsByKey[l.key] ??= []).push({ date: l.date, value: 1 });
 
-  const supLogs = sqlite.prepare(`SELECT s.name, sl.date FROM supplement_log sl JOIN supplement s ON s.id = sl.supplement_id WHERE sl.taken = 1`).all() as Array<{ name: string; date: string }>;
+  // supplement_log has no direct user_id; scope via the parent supplement table.
+  const supLogs = sqlite.prepare(`SELECT s.name, sl.date FROM supplement_log sl JOIN supplement s ON s.id = sl.supplement_id WHERE sl.taken = 1 AND s.user_id = ?`).all(userId) as Array<{ name: string; date: string }>;
   const supplementsByName: Record<string, DatedValue[]> = {};
   for (const l of supLogs) (supplementsByName[l.name] ??= []).push({ date: l.date, value: 1 });
 
-  const bmRows = sqlite.prepare(`SELECT slug, name, date, value FROM biomarker ORDER BY date`).all() as Array<{ slug: string; name: string; date: number; value: number }>;
+  const bmRows = sqlite.prepare(`SELECT slug, name, date, value FROM biomarker WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ slug: string; name: string; date: number; value: number }>;
   const bmsBySlug: Record<string, { name: string; values: DatedValue[] }> = {};
   for (const r of bmRows) {
     if (!bmsBySlug[r.slug]) bmsBySlug[r.slug] = { name: r.name, values: [] };
     bmsBySlug[r.slug].values.push({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value });
   }
 
-  const wearableRows = sqlite.prepare(`SELECT date, kind, value FROM wearable_metric ORDER BY date`).all() as Array<{ date: string; kind: string; value: number }>;
+  const wearableRows = sqlite.prepare(`SELECT date, kind, value FROM wearable_metric WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ date: string; kind: string; value: number }>;
   const wearablesByKind: Record<string, DatedValue[]> = {};
   for (const r of wearableRows) (wearablesByKind[r.kind] ??= []).push({ date: r.date, value: r.value });
 

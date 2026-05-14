@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
@@ -26,27 +26,27 @@ type Row = {
 };
 
 /** Snap to the nearest measurement on/around the target date (within ±60 days), per slug. */
-function valueNearDate(sqlite: any, slug: string, target: number): { date: number; value: number } | null {
+function valueNearDate(sqlite: any, userId: number, slug: string, target: number): { date: number; value: number } | null {
   const WINDOW_MS = 60 * 86400000;
   const row = sqlite.prepare(
     `SELECT date, value FROM biomarker
-     WHERE slug = ? AND date BETWEEN ? AND ?
+     WHERE slug = ? AND user_id = ? AND date BETWEEN ? AND ?
      ORDER BY ABS(date - ?) ASC LIMIT 1`
-  ).get(slug, target - WINDOW_MS, target + WINDOW_MS, target) as { date: number; value: number } | undefined;
+  ).get(slug, userId, target - WINDOW_MS, target + WINDOW_MS, target) as { date: number; value: number } | undefined;
   return row ?? null;
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
   const url = new URL(req.url);
 
   // Discover the dates that have biomarker measurements (descending), so the UI can offer pickers.
   const dates = sqlite.prepare(
-    `SELECT date, COUNT(*) AS count FROM biomarker GROUP BY date ORDER BY date DESC`
-  ).all() as DateRow[];
+    `SELECT date, COUNT(*) AS count FROM biomarker WHERE user_id = ? GROUP BY date ORDER BY date DESC`
+  ).all(userId) as DateRow[];
 
   if (dates.length === 0) return NextResponse.json({ rows: [], dates: [], dateA: null, dateB: null });
 
@@ -63,13 +63,13 @@ export async function GET(req: Request) {
   const allSlugs = sqlite.prepare(
     `SELECT slug, MAX(name) AS name, MAX(category) AS category, MAX(unit) AS unit,
             MAX(ref_low) AS refLow, MAX(ref_high) AS refHigh
-     FROM biomarker GROUP BY slug ORDER BY MAX(name)`
-  ).all() as Array<{ slug: string; name: string; category: string | null; unit: string | null; refLow: number | null; refHigh: number | null }>;
+     FROM biomarker WHERE user_id = ? GROUP BY slug ORDER BY MAX(name)`
+  ).all(userId) as Array<{ slug: string; name: string; category: string | null; unit: string | null; refLow: number | null; refHigh: number | null }>;
 
   const rows: Row[] = [];
   for (const m of allSlugs) {
-    const a = dateA != null ? valueNearDate(sqlite, m.slug, dateA) : null;
-    const b = dateB != null ? valueNearDate(sqlite, m.slug, dateB) : null;
+    const a = dateA != null ? valueNearDate(sqlite, userId, m.slug, dateA) : null;
+    const b = dateB != null ? valueNearDate(sqlite, userId, m.slug, dateB) : null;
     if (!a && !b) continue; // not measured anywhere near either target
     const meta = META_BY_SLUG[m.slug];
     rows.push({

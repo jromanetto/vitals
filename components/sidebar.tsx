@@ -3,8 +3,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  LayoutDashboard, Activity, Dna, FileText, Clock, BookOpen, MessageSquare,
-  User, Pill, HeartPulse, ListChecks, GitMerge, Upload, StickyNote, Brain, Shield, Target, Printer, Bell, Salad, IdCard,
+  LayoutDashboard, Activity, Dna, FileText, Clock, MessageSquare,
+  User, Pill, HeartPulse, GitMerge, Upload, StickyNote, Brain, Shield, Bell, IdCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -21,18 +21,15 @@ const groups: Group[] = [
     items: [
       { href: "/biomarkers", label: "Biomarqueurs", icon: Activity },
       { href: "/dna", label: "DNA", icon: Dna },
-      { href: "/symptoms", label: "Symptômes", icon: HeartPulse },
-      { href: "/supplements", label: "Suppléments", icon: Pill },
-      { href: "/nutrition", label: "Nutrition", icon: Salad },
-      { href: "/habits", label: "Habitudes", icon: ListChecks },
+      { href: "/daily", label: "Quotidien", icon: HeartPulse },
+      { href: "/stack", label: "Stack", icon: Pill },
     ],
   },
   {
     label: "Insights",
     items: [
       { href: "/chat", label: "Panel médical", icon: MessageSquare },
-      { href: "/reports", label: "Rapports", icon: FileText },
-      { href: "/praticien", label: "Vue praticien", icon: Printer },
+      { href: "/reports", label: "Rapports & vue praticien", icon: FileText },
       { href: "/correlations", label: "Corrélations", icon: GitMerge },
       { href: "/timeline", label: "Timeline", icon: Clock },
     ],

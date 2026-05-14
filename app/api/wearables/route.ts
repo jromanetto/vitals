@@ -177,7 +177,7 @@ export async function GET(req: Request) {
   const series: Record<string, Array<{ date: string; value: number }>> = {};
   for (const src of sources) {
     for (const k of headlineKinds) {
-      const pts = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE source = ? AND kind = ? AND date >= ? ORDER BY date ASC`).all(src.source, k, since) as Array<{ date: string; value: number }>;
+      const pts = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE source = ? AND kind = ? AND date >= ? AND user_id = ? ORDER BY date ASC`).all(src.source, k, since, userId) as Array<{ date: string; value: number }>;
       if (pts.length > 0) series[`${src.source}:${k}`] = pts;
     }
   }

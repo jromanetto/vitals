@@ -40,15 +40,15 @@ export async function GET(req: Request) {
   const sqlite = db().$client;
   let rows: NoteRow[];
   if (targetType && targetId) {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? AND target_type = ? AND target_id = ? ORDER BY created_at DESC`).all(targetType, targetId) as NoteRow[];
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? AND target_type = ? AND target_id = ? ORDER BY created_at DESC`).all(userId, targetType, targetId) as NoteRow[];
   } else if (tag) {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? AND tags LIKE ? ORDER BY created_at DESC`).all(`%${tag}%`) as NoteRow[];
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? AND tags LIKE ? ORDER BY created_at DESC`).all(userId, `%${tag}%`) as NoteRow[];
   } else {
-    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? ORDER BY created_at DESC LIMIT 200`).all() as NoteRow[];
+    rows = sqlite.prepare(`SELECT id, target_type as targetType, target_id as targetId, body, tags, created_at as createdAt, updated_at as updatedAt FROM note WHERE user_id = ? ORDER BY created_at DESC LIMIT 200`).all(userId) as NoteRow[];
   }
   const masked = rows.map((r) => maskNote(r, unlock));
   // Aggregate distinct tags
-  const tagsRaw = sqlite.prepare(`SELECT tags FROM note WHERE user_id = ? AND tags IS NOT NULL AND tags != ''`).all() as Array<{ tags: string }>;
+  const tagsRaw = sqlite.prepare(`SELECT tags FROM note WHERE user_id = ? AND tags IS NOT NULL AND tags != ''`).all(userId) as Array<{ tags: string }>;
   const tagSet = new Set<string>();
   for (const r of tagsRaw) for (const t of (r.tags ?? "").split(",")) {
     const tt = t.trim();
@@ -73,11 +73,11 @@ export async function POST(req: Request) {
     storedBody = encryptField(storedBody);
   }
   if (body.id) {
-    sqlite.prepare(`UPDATE note SET body = ?, tags = ?, updated_at = ? WHERE id = ?`).run(storedBody, tags, now, body.id);
+    sqlite.prepare(`UPDATE note SET body = ?, tags = ?, updated_at = ? WHERE id = ? AND user_id = ?`).run(storedBody, tags, now, body.id, userId);
     return NextResponse.json({ ok: true, id: body.id });
   }
-  const r = sqlite.prepare(`INSERT INTO note (target_type, target_id, body, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(body.targetType, body.targetId, storedBody, tags, now, now);
+  const r = sqlite.prepare(`INSERT INTO note (target_type, target_id, body, tags, created_at, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(body.targetType, body.targetId, storedBody, tags, now, now, userId);
   return NextResponse.json({ ok: true, id: Number(r.lastInsertRowid) });
 }
 
@@ -89,7 +89,7 @@ export async function DELETE(req: Request) {
   const url = new URL(req.url);
   const id = Number(url.searchParams.get("id"));
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  db().$client.prepare(`DELETE FROM note WHERE user_id = ? AND id = ?`).run(id);
+  db().$client.prepare(`DELETE FROM note WHERE user_id = ? AND id = ?`).run(userId, id);
   return NextResponse.json({ ok: true });
 }
 

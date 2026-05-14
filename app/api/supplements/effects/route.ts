@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -22,20 +22,20 @@ type Effect = {
 const LOWER_BETTER = new Set(["ldl", "non-hdl", "triglycerides", "cholesterol-total", "hba1c", "glycemie", "homa-ir", "insuline", "homocysteine", "crp", "crp-ultrasensible-hscrp", "fibrinogene", "ggt", "alat-gpt", "asat-got", "ferritine"]);
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
 
   // Each supplement with a targetBiomarker
-  const sups = sqlite.prepare(`SELECT id, name, started_at as startedAt, target_biomarker as targetBiomarker FROM supplement WHERE target_biomarker IS NOT NULL AND target_biomarker != ''`).all() as Array<{ id: number; name: string; startedAt: number | null; targetBiomarker: string }>;
+  const sups = sqlite.prepare(`SELECT id, name, started_at as startedAt, target_biomarker as targetBiomarker FROM supplement WHERE target_biomarker IS NOT NULL AND target_biomarker != '' AND user_id = ?`).all(userId) as Array<{ id: number; name: string; startedAt: number | null; targetBiomarker: string }>;
 
   const out: Effect[] = [];
   for (const sup of sups) {
     if (!sup.startedAt) continue;
     const startedAt = sup.startedAt;
-    const before = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND date < ? ORDER BY date DESC LIMIT 1`).get(sup.targetBiomarker, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
-    const after = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND date >= ? ORDER BY date ASC LIMIT 1`).get(sup.targetBiomarker, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
+    const before = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND user_id = ? AND date < ? ORDER BY date DESC LIMIT 1`).get(sup.targetBiomarker, userId, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
+    const after = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND user_id = ? AND date >= ? ORDER BY date ASC LIMIT 1`).get(sup.targetBiomarker, userId, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
 
     let changeAbs: number | null = null, changePct: number | null = null;
     let direction: Effect["direction"] = "unknown";

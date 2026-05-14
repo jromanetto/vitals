@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
@@ -9,12 +9,12 @@ import path from "node:path";
 export const runtime = "nodejs";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const { id } = await params;
   const sqlite = (db() as { $client: { prepare: (q: string) => { get: (...a: unknown[]) => unknown } } }).$client;
-  const row = sqlite.prepare(`SELECT id, path, title, category FROM document WHERE id = ?`).get(Number(id)) as { id: number; path: string; title: string | null; category: string } | undefined;
+  const row = sqlite.prepare(`SELECT id, path, title, category FROM document WHERE id = ? AND user_id = ?`).get(Number(id), userId) as { id: number; path: string; title: string | null; category: string } | undefined;
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   const dataDir = path.resolve(process.cwd(), "data");

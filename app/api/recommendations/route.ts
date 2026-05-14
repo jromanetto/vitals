@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -63,14 +63,14 @@ const AGE_GATED_BIOMARKERS: Array<{ slug: string; name: string; minAge: number; 
 ];
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
 
-  const measured = new Set((sqlite.prepare(`SELECT DISTINCT slug FROM biomarker`).all() as Array<{ slug: string }>).map((r) => r.slug));
-  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, has_risk FROM dna_insight WHERE has_risk = 1`).all() as Array<{ rsid: string; trait: string; has_risk: number }>;
-  const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
+  const measured = new Set((sqlite.prepare(`SELECT DISTINCT slug FROM biomarker WHERE user_id = ?`).all(userId) as Array<{ slug: string }>).map((r) => r.slug));
+  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, has_risk FROM dna_insight WHERE has_risk = 1 AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; has_risk: number }>;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
   const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate as string).getTime()) / (365.25 * 86400000)) : null;
 

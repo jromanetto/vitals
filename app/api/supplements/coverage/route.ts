@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { NUTRIENT_TARGETS, TARGETS_BY_KEY, convertTo, statusOf, type CoverageStatus, type NutrientTarget } from "@/lib/nutrient-targets";
@@ -45,12 +45,12 @@ type Coverage = {
 };
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
 
-  const rows = sqlite.prepare(`SELECT id, name, brand, dose, unit, frequency, ingredients, ended_at FROM supplement WHERE ended_at IS NULL`).all() as SupRow[];
+  const rows = sqlite.prepare(`SELECT id, name, brand, dose, unit, frequency, ingredients, ended_at FROM supplement WHERE ended_at IS NULL AND user_id = ?`).all(userId) as SupRow[];
 
   const accum: Record<string, Coverage> = {};
   function add(key: string, supId: number, supName: string, value: number, unit: string, freq: number) {

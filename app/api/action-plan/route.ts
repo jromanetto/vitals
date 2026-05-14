@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { readFileSync } from "node:fs";
@@ -36,11 +36,11 @@ function readApiKey(): string | null {
   } catch { return null; }
 }
 
-function gatherContext() {
+function gatherContext(userId: number) {
   const sqlite = db().$client;
 
   // Profile
-  const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
   const profile = profileRow ? JSON.parse(profileRow.data) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate).getTime()) / (365.25 * 86400000)) : null;
 
@@ -48,54 +48,59 @@ function gatherContext() {
   const bms = sqlite.prepare(`
     SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
     FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+    WHERE b.user_id = ?
     ORDER BY b.name
-  `).all() as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
 
   // Out-of-range biomarkers (status low/high)
   const outOfRange = bms.filter((b) => (b.refLow != null && b.value < b.refLow) || (b.refHigh != null && b.value > b.refHigh));
 
   // DNA risks + protectives
-  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE has_risk = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 15`).all() as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
-  const dnaProtective = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE is_protective = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 10`).all() as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
+  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_id = ? AND has_risk = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 15`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
+  const dnaProtective = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_id = ? AND is_protective = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 10`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
 
   // Active supplements
-  const supplements = sqlite.prepare(`SELECT name, dose, unit, timing, frequency, brand FROM supplement WHERE ended_at IS NULL ORDER BY name`).all() as Array<{ name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; brand: string | null }>;
+  const supplements = sqlite.prepare(`SELECT name, dose, unit, timing, frequency, brand FROM supplement WHERE user_id = ? AND ended_at IS NULL ORDER BY name`).all(userId) as Array<{ name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; brand: string | null }>;
 
   // Recent wearable averages (last 14 days)
   const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-  const wearableAvg = sqlite.prepare(`SELECT kind, ROUND(AVG(value), 1) as avg, COUNT(*) as n FROM wearable_metric WHERE date >= ? GROUP BY kind`).all(since) as Array<{ kind: string; avg: number; n: number }>;
+  const wearableAvg = sqlite.prepare(`SELECT kind, ROUND(AVG(value), 1) as avg, COUNT(*) as n FROM wearable_metric WHERE user_id = ? AND date >= ? GROUP BY kind`).all(userId, since) as Array<{ kind: string; avg: number; n: number }>;
 
-  // Recent symptoms
-  const recentSymptoms = sqlite.prepare(`SELECT key, intensity, date FROM symptom WHERE date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all() as Array<{ key: string; intensity: number; date: string }>;
+  // Recent symptoms (table is symptom_log; legacy column "intensity" doesn't exist — use value).
+  let recentSymptoms: Array<{ key: string; intensity: number; date: string }> = [];
+  try {
+    recentSymptoms = sqlite.prepare(`SELECT key, value as intensity, date FROM symptom_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all(userId) as Array<{ key: string; intensity: number; date: string }>;
+  } catch {}
 
   return { profile, age, bms, outOfRange, dnaRisks, dnaProtective, supplements, wearableAvg, recentSymptoms };
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
 
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
 
-  // Cache plan for 24h in DB
+  // Cache plan for 24h in DB. Each user gets their own cached plan row.
   const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS action_plan (id INTEGER PRIMARY KEY, plan TEXT NOT NULL, created_at INTEGER NOT NULL)`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS action_plan (id INTEGER PRIMARY KEY, plan TEXT NOT NULL, created_at INTEGER NOT NULL, user_id INTEGER)`);
+  try { sqlite.exec(`ALTER TABLE action_plan ADD COLUMN user_id INTEGER`); } catch {}
   if (!force) {
-    const cached = sqlite.prepare(`SELECT plan, created_at FROM action_plan ORDER BY id DESC LIMIT 1`).get() as { plan: string; created_at: number } | undefined;
+    const cached = sqlite.prepare(`SELECT plan, created_at FROM action_plan WHERE user_id = ? ORDER BY id DESC LIMIT 1`).get(userId) as { plan: string; created_at: number } | undefined;
     if (cached && Date.now() - cached.created_at < 24 * 3600 * 1000) {
       return NextResponse.json({ ...JSON.parse(cached.plan), cached: true, generatedAt: cached.created_at });
     }
   }
 
-  const ctx = gatherContext();
+  const ctx = gatherContext(userId);
   const apiKey = readApiKey();
   if (!apiKey) {
     // Fallback: heuristic plan (no Claude)
     const fallback = buildHeuristicPlan(ctx);
-    sqlite.prepare(`INSERT INTO action_plan (plan, created_at) VALUES (?, ?)`).run(JSON.stringify(fallback), Date.now());
+    sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(fallback), Date.now(), userId);
     return NextResponse.json({ ...fallback, cached: false });
   }
 
@@ -187,7 +192,7 @@ Génère le plan JSON.`;
     if (!m) throw new Error("no JSON in response");
     const plan: Plan = JSON.parse(m[0]);
     plan.generatedAt = Date.now();
-    sqlite.prepare(`INSERT INTO action_plan (plan, created_at) VALUES (?, ?)`).run(JSON.stringify(plan), Date.now());
+    sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(plan), Date.now(), userId);
     return NextResponse.json({ ...plan, cached: false });
   } catch (e) {
     const fallback = buildHeuristicPlan(ctx);

@@ -26,7 +26,7 @@ export default async function SymptomDetail({ params }: { params: Promise<{ key:
 
   return (
     <div className="space-y-10">
-      <Link href="/symptoms" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Tous les symptômes</Link>
+      <Link href="/daily" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Retour au quotidien</Link>
       <div>
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">Symptôme</div>
         <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{label}</h1>

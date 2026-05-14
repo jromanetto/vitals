@@ -13,7 +13,8 @@ import type { NutritionPlan, NutritionPref } from "@/lib/nutrition/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const CACHE_TTL_MS = 30 * 24 * 3600 * 1000;
+const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
+const REPORT_KIND = "nutrition-plan";
 
 function loadPrefs(sqlite: ReturnType<typeof db>["$client"]): NutritionPref {
   const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref ORDER BY updated_at DESC LIMIT 1`).get() as
@@ -55,9 +56,25 @@ export async function GET(req: Request) {
   ensureSchema();
 
   const url = new URL(req.url);
-  const force = url.searchParams.get("force") === "1";
+  // ?refresh=1 (preferred) or legacy ?force=1 forces regeneration
+  const force = url.searchParams.get("refresh") === "1" || url.searchParams.get("force") === "1";
 
   const sqlite = db().$client;
+
+  // Fast path: serve any recent cached plan immediately, without recomputing the
+  // rules engine or hashing inputs. This makes Nutrition render instantly when a
+  // fresh plan exists in the report table.
+  if (!force) {
+    const cached = sqlite.prepare(
+      `SELECT body, meta, created_at FROM report WHERE kind = ? ORDER BY created_at DESC LIMIT 1`
+    ).get(REPORT_KIND) as { body: string; meta: string; created_at: number } | undefined;
+    if (cached && Date.now() - cached.created_at < CACHE_TTL_MS) {
+      try {
+        const plan = JSON.parse(cached.body) as NutritionPlan;
+        return NextResponse.json({ ...plan, cached: true, generatedAt: cached.created_at });
+      } catch {}
+    }
+  }
 
   const prefs = loadPrefs(sqlite);
 
@@ -78,20 +95,6 @@ export async function GET(req: Request) {
   const fingerprint = inputFingerprint({ biomarkers, dna: dnaRows, prefs });
   const dataHash = crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 16);
 
-  // Cache lookup
-  if (!force) {
-    const cached = sqlite.prepare(`SELECT body, meta, created_at FROM report WHERE kind = 'nutrition' ORDER BY created_at DESC LIMIT 1`).get() as { body: string; meta: string; created_at: number } | undefined;
-    if (cached) {
-      try {
-        const meta = JSON.parse(cached.meta) as { dataHash?: string };
-        if (meta.dataHash === dataHash && Date.now() - cached.created_at < CACHE_TTL_MS) {
-          const plan = JSON.parse(cached.body) as NutritionPlan;
-          return NextResponse.json({ ...plan, cached: true, generatedAt: cached.created_at });
-        }
-      } catch {}
-    }
-  }
-
   const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
   const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
   const profileSummary = summarizeProfile(profile);
@@ -109,14 +112,17 @@ export async function GET(req: Request) {
     }
   }
 
-  // Persist
+  // Persist as a cacheable report row. Stored body already contains the
+  // generatedAt timestamp; meta keeps a snapshot of the inputs used.
+  const generatedAt = Date.now();
+  const persistedPlan: NutritionPlan = { ...plan, cached: false, generatedAt };
   sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at) VALUES (?, ?, ?, ?, ?)`).run(
-    "nutrition",
+    REPORT_KIND,
     `Plan nutrition — ${plan.dietPattern.label}`,
-    JSON.stringify(plan),
-    JSON.stringify({ dataHash }),
-    Date.now()
+    JSON.stringify(persistedPlan),
+    JSON.stringify({ generatedAt, dataHash, profileSnapshot: profileSummary }),
+    generatedAt
   );
 
-  return NextResponse.json(plan);
+  return NextResponse.json(persistedPlan);
 }

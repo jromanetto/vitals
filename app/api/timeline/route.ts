@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -36,11 +36,6 @@ const COLORS = {
   document: "hsl(220 14% 55%)",   // slate
 };
 
-function dayKey(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function parseDateStr(s: string): number {
   // expected YYYY-MM-DD or with time
   const t = Date.parse(s);
@@ -48,8 +43,8 @@ function parseDateStr(s: string): number {
 }
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   ensureSchema();
   const d = db();
@@ -58,8 +53,8 @@ export async function GET() {
   // 1. Biomarkers — group by date as a single "bilan sanguin" event
   try {
     const rows = d.$client.prepare(
-      `SELECT date, COUNT(*) as n FROM biomarker WHERE date IS NOT NULL GROUP BY date ORDER BY date DESC`
-    ).all() as Array<{ date: number; n: number }>;
+      `SELECT date, COUNT(*) as n FROM biomarker WHERE user_id = ? AND date IS NOT NULL GROUP BY date ORDER BY date DESC`
+    ).all(userId) as Array<{ date: number; n: number }>;
     for (const r of rows) {
       events.push({
         id: `bilan-${r.date}`,
@@ -74,22 +69,23 @@ export async function GET() {
     }
   } catch {}
 
-  // 2. DNA import — single event from the first dna_variant row's existence
-  // (no date column on dna_variant; use any insight row as proxy or skip)
+  // 2. DNA import — single event derived from dna_insight rows for this user
+  // (dna_variant has no user_id column on legacy schemas — use dna_insight as proxy
+  // since enrich/seed scripts always insert dna_insight scoped to a user_id).
   try {
-    const cnt = d.$client.prepare(`SELECT COUNT(*) as n FROM dna_variant`).get() as { n: number };
+    const cnt = d.$client.prepare(`SELECT COUNT(*) as n FROM dna_insight WHERE user_id = ?`).get(userId) as { n: number };
     if (cnt && cnt.n > 0) {
-      // Use document table for the DNA file date if present
+      // Use document table (scoped to this user) for the DNA file date if present
       const dnaDoc = d.$client.prepare(
-        `SELECT date FROM document WHERE category = 'adn' AND date IS NOT NULL ORDER BY date ASC LIMIT 1`
-      ).get() as { date: number } | undefined;
+        `SELECT date FROM document WHERE user_id = ? AND category = 'adn' AND date IS NOT NULL ORDER BY date ASC LIMIT 1`
+      ).get(userId) as { date: number } | undefined;
       const date = dnaDoc?.date ?? Date.now();
       events.push({
         id: `dna-import`,
         kind: "dna-import",
         date,
         title: "Import ADN",
-        subtitle: `${cnt.n.toLocaleString("fr-FR")} variants`,
+        subtitle: `${cnt.n.toLocaleString("fr-FR")} insights`,
         color: COLORS.dna,
         href: "/dna",
         category: "ADN",
@@ -100,8 +96,8 @@ export async function GET() {
   // 3. Supplements — start + end
   try {
     const rows = d.$client.prepare(
-      `SELECT id, name, dose, started_at, ended_at FROM supplement`
-    ).all() as Array<{
+      `SELECT id, name, dose, started_at, ended_at FROM supplement WHERE user_id = ?`
+    ).all(userId) as Array<{
       id: number;
       name: string;
       dose: string | null;
@@ -139,8 +135,8 @@ export async function GET() {
   // 4. Symptoms — group by date
   try {
     const rows = d.$client.prepare(
-      `SELECT date, COUNT(*) as n, GROUP_CONCAT(key, ', ') as keys FROM symptom_log GROUP BY date ORDER BY date DESC`
-    ).all() as Array<{ date: string; n: number; keys: string }>;
+      `SELECT date, COUNT(*) as n, GROUP_CONCAT(key, ', ') as keys FROM symptom_log WHERE user_id = ? GROUP BY date ORDER BY date DESC`
+    ).all(userId) as Array<{ date: string; n: number; keys: string }>;
     for (const r of rows) {
       const ts = parseDateStr(r.date);
       if (!ts) continue;
@@ -160,8 +156,8 @@ export async function GET() {
   // 5. Reminders
   try {
     const rows = d.$client.prepare(
-      `SELECT id, title, description, due_at, category, done FROM reminder ORDER BY due_at DESC`
-    ).all() as Array<{
+      `SELECT id, title, description, due_at, category, done FROM reminder WHERE user_id = ? ORDER BY due_at DESC`
+    ).all(userId) as Array<{
       id: number;
       title: string;
       description: string | null;
@@ -188,10 +184,11 @@ export async function GET() {
   try {
     const rows = d.$client.prepare(
       `SELECT id, category, title, date FROM document
-       WHERE date IS NOT NULL
+       WHERE user_id = ?
+         AND date IS NOT NULL
          AND category IN ('analyses-sang', 'consultations', 'imagerie')
        ORDER BY date DESC`
-    ).all() as Array<{
+    ).all(userId) as Array<{
       id: number;
       category: string;
       title: string | null;

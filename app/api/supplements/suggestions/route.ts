@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
@@ -241,22 +241,23 @@ function isAvoidSuggestion(supplementText: string, dose: string, timing: string)
 }
 
 export async function GET() {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
   const out: Suggestion[] = [];
 
   // Active supplements index for coverage detection
-  const activeRows = sqlite.prepare(`SELECT id, name, brand, ingredients, ended_at FROM supplement WHERE ended_at IS NULL`).all() as Array<{ id: number; name: string; brand: string | null; ingredients: string | null; ended_at: number | null }>;
+  const activeRows = sqlite.prepare(`SELECT id, name, brand, ingredients, ended_at FROM supplement WHERE ended_at IS NULL AND user_id = ?`).all(userId) as Array<{ id: number; name: string; brand: string | null; ingredients: string | null; ended_at: number | null }>;
   const activeIndex = buildActiveIndex(activeRows);
 
   // Biomarker-based
   const latestBms = sqlite.prepare(`
     SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
     FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
-  `).all() as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+    WHERE b.user_id = ?
+  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
 
   for (const r of latestBms) {
     const rec = BIOMARKER_RULES[r.slug];
@@ -274,7 +275,7 @@ export async function GET() {
   }
 
   // DNA-based
-  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_genotype IS NOT NULL`).all() as Array<{ rsid: string; trait: string; user_genotype: string }>;
+  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_genotype IS NOT NULL AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string }>;
   const byRsid = Object.fromEntries(dnaRows.map((r) => [r.rsid, r]));
 
   for (const rule of DNA_RULES) {

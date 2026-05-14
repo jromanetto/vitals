@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { FileText } from "lucide-react";
+import { FileText, Printer } from "lucide-react";
 import { ReportKindPicker } from "@/components/report-kind-picker";
 import { ReportsGrid, type ReportRow } from "@/components/reports-grid";
 import { EmptyState } from "@/components/empty-state";
@@ -40,20 +41,38 @@ async function getAll(): Promise<ReportRow[]> {
 export default async function ReportsPage() {
   const rows = await getAll();
   return (
-    <div className="space-y-12">
+    <div className="space-y-10">
       <PageHeader
-        title="Rapports"
-        description="Synthèses générées par Claude à partir de tes biomarqueurs, ADN et profile."
+        title="Rapports & vue praticien"
+        description="Tes documents médicaux générés + une vue praticien live mise à jour automatiquement."
         icon={<FileText className="h-5 w-5 text-emerald" />}
       />
+
+      {/* Live praticien view — always available, no generation needed */}
+      <Link
+        href="/praticien"
+        className="block rounded-xl border border-emerald/40 bg-emerald/5 hover:bg-emerald/10 p-5 transition group"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-xs uppercase tracking-wider text-emerald font-medium mb-1">Vue praticien · Live</div>
+            <h2 className="text-base font-medium tracking-tight">Synthèse à jour à partir de tes données actuelles</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Mise à jour automatiquement à chaque nouveau biomarqueur ou modification du profil. Format A4 imprimable
+              pour la consultation médicale.
+            </p>
+          </div>
+          <Printer className="h-5 w-5 text-emerald flex-shrink-0 group-hover:translate-x-0.5 transition" />
+        </div>
+      </Link>
 
       <ReportKindPicker kinds={KINDS} />
 
       {rows.length === 0 ? (
         <EmptyState
           icon={<FileText />}
-          title="Aucun rapport"
-          description="Génère ton premier rapport longévité depuis le panel médical."
+          title="Aucun rapport généré"
+          description="Génère ton premier rapport depuis le panel médical."
           actionLabel="Demander au panel"
           actionHref="/chat"
         />

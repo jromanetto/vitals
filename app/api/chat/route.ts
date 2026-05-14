@@ -89,14 +89,14 @@ const tools: Anthropic.Tool[] = [
 // ──────────────────────────────────────────────────────────────────
 type ToolInput = Record<string, unknown>;
 
-function execTool(name: string, input: ToolInput): unknown {
+function execTool(name: string, input: ToolInput, userId: number): unknown {
   const sqlite = db().$client;
   if (name === "get_biomarker_history") {
     const slug = String(input.slug ?? "");
     const limit = Math.min(Number(input.limit ?? 100), 500);
     const rows = sqlite
-      .prepare(`SELECT name, slug, value, unit, ref_low, ref_high, date FROM biomarker WHERE slug = ? ORDER BY date DESC LIMIT ?`)
-      .all(slug, limit) as Array<{ name: string; slug: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
+      .prepare(`SELECT name, slug, value, unit, ref_low, ref_high, date FROM biomarker WHERE user_id = ? AND slug = ? ORDER BY date DESC LIMIT ?`)
+      .all(userId, slug, limit) as Array<{ name: string; slug: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
     return {
       slug,
       count: rows.length,
@@ -115,9 +115,9 @@ function execTool(name: string, input: ToolInput): unknown {
     if (!q) return { matches: [] };
     const rows = sqlite
       .prepare(
-        `SELECT slug, name, MAX(date) as last_date, COUNT(*) as n FROM biomarker WHERE LOWER(slug) LIKE ? OR LOWER(name) LIKE ? GROUP BY slug ORDER BY n DESC LIMIT 20`
+        `SELECT slug, name, MAX(date) as last_date, COUNT(*) as n FROM biomarker WHERE user_id = ? AND (LOWER(slug) LIKE ? OR LOWER(name) LIKE ?) GROUP BY slug ORDER BY n DESC LIMIT 20`
       )
-      .all(`%${q}%`, `%${q}%`);
+      .all(userId, `%${q}%`, `%${q}%`);
     return { matches: rows };
   }
   if (name === "get_correlation") {
@@ -126,8 +126,8 @@ function execTool(name: string, input: ToolInput): unknown {
     const bKind = String(input.b_kind);
     const bKey = String(input.b_key);
     const lag = Math.min(Number(input.lag_days ?? (aKind === "biomarker" || bKind === "biomarker" ? 14 : 1)), 30);
-    const a = loadSeries(aKind, aKey);
-    const b = loadSeries(bKind, bKey);
+    const a = loadSeries(aKind, aKey, userId);
+    const b = loadSeries(bKind, bKey, userId);
     if (a.length < 5 || b.length < 5) return { error: "not enough data", n_a: a.length, n_b: b.length };
     const { x, y } = pairDated(a, b, lag);
     if (x.length < 5) return { error: "not enough overlapping dates", n: x.length };
@@ -166,36 +166,38 @@ function execTool(name: string, input: ToolInput): unknown {
       params.push(`%${kw}%`, `%${kw}%`);
     }
     if (riskOnly) where.push("has_risk = 1");
-    const sql = `SELECT rsid, category, trait, user_genotype, has_risk, magnitude, summary FROM dna_insight ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY (has_risk * COALESCE(magnitude,1)) DESC LIMIT ?`;
+    where.unshift("user_id = ?");
+    params.unshift(userId);
+    const sql = `SELECT rsid, category, trait, user_genotype, has_risk, magnitude, summary FROM dna_insight WHERE ${where.join(" AND ")} ORDER BY (has_risk * COALESCE(magnitude,1)) DESC LIMIT ?`;
     return { matches: sqlite.prepare(sql).all(...params, limit) };
   }
   return { error: `unknown tool ${name}` };
 }
 
-function loadSeries(kind: string, key: string): DatedValue[] {
+function loadSeries(kind: string, key: string, userId: number): DatedValue[] {
   const sqlite = db().$client;
   if (kind === "biomarker") {
     const rows = sqlite
-      .prepare(`SELECT date, value FROM biomarker WHERE slug = ? OR LOWER(name) = LOWER(?) ORDER BY date`)
-      .all(key, key) as Array<{ date: number; value: number }>;
+      .prepare(`SELECT date, value FROM biomarker WHERE user_id = ? AND (slug = ? OR LOWER(name) = LOWER(?)) ORDER BY date`)
+      .all(userId, key, key) as Array<{ date: number; value: number }>;
     return rows.map((r) => ({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value }));
   }
   if (kind === "symptom") {
-    const rows = sqlite.prepare(`SELECT date, value FROM symptom_log WHERE key = ? ORDER BY date`).all(key) as Array<{ date: string; value: number }>;
+    const rows = sqlite.prepare(`SELECT date, value FROM symptom_log WHERE user_id = ? AND key = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
     return rows;
   }
   if (kind === "habit") {
-    const rows = sqlite.prepare(`SELECT date, value FROM habit_log WHERE key = ? ORDER BY date`).all(key) as Array<{ date: string; value: number }>;
+    const rows = sqlite.prepare(`SELECT date, value FROM habit_log WHERE user_id = ? AND key = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
     return rows;
   }
   if (kind === "supplement") {
     const rows = sqlite
-      .prepare(`SELECT sl.date as date, sl.taken as value FROM supplement_log sl JOIN supplement s ON s.id = sl.supplement_id WHERE LOWER(s.name) LIKE LOWER(?) ORDER BY sl.date`)
-      .all(`%${key}%`) as Array<{ date: string; value: number }>;
+      .prepare(`SELECT sl.date as date, sl.taken as value FROM supplement_log sl JOIN supplement s ON s.id = sl.supplement_id WHERE s.user_id = ? AND LOWER(s.name) LIKE LOWER(?) ORDER BY sl.date`)
+      .all(userId, `%${key}%`) as Array<{ date: string; value: number }>;
     return rows;
   }
   if (kind === "wearable") {
-    const rows = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE kind = ? ORDER BY date`).all(key) as Array<{ date: string; value: number }>;
+    const rows = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE user_id = ? AND kind = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
     return rows;
   }
   return [];
@@ -204,19 +206,19 @@ function loadSeries(kind: string, key: string): DatedValue[] {
 // ──────────────────────────────────────────────────────────────────
 // Top correlations (precomputed, top 10)
 // ──────────────────────────────────────────────────────────────────
-function computeTopCorrelations(): Array<{ a: string; b: string; rho: number; p: number; n: number }> {
+function computeTopCorrelations(userId: number): Array<{ a: string; b: string; rho: number; p: number; n: number }> {
   const sqlite = db().$client;
   const out: Array<{ a: string; b: string; rho: number; p: number; n: number }> = [];
 
-  const symptomLogs = sqlite.prepare(`SELECT date, key, value FROM symptom_log`).all() as Array<{ date: string; key: string; value: number }>;
+  const symptomLogs = sqlite.prepare(`SELECT date, key, value FROM symptom_log WHERE user_id = ?`).all(userId) as Array<{ date: string; key: string; value: number }>;
   const symptomsByKey: Record<string, DatedValue[]> = {};
   for (const l of symptomLogs) (symptomsByKey[l.key] ??= []).push({ date: l.date, value: l.value });
 
-  const bmRows = sqlite.prepare(`SELECT slug, name, date, value FROM biomarker ORDER BY date`).all() as Array<{ slug: string; name: string; date: number; value: number }>;
+  const bmRows = sqlite.prepare(`SELECT slug, name, date, value FROM biomarker WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ slug: string; name: string; date: number; value: number }>;
   const bmsBySlug: Record<string, DatedValue[]> = {};
   for (const r of bmRows) (bmsBySlug[r.slug] ??= []).push({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value });
 
-  const wearableRows = sqlite.prepare(`SELECT date, kind, value FROM wearable_metric ORDER BY date`).all() as Array<{ date: string; kind: string; value: number }>;
+  const wearableRows = sqlite.prepare(`SELECT date, kind, value FROM wearable_metric WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ date: string; kind: string; value: number }>;
   const wearablesByKind: Record<string, DatedValue[]> = {};
   for (const r of wearableRows) (wearablesByKind[r.kind] ??= []).push({ date: r.date, value: r.value });
 
@@ -252,70 +254,73 @@ function computeTopCorrelations(): Array<{ a: string; b: string; rho: number; p:
 // ──────────────────────────────────────────────────────────────────
 type Hit = Awaited<ReturnType<typeof searchRag>>[number];
 
-async function buildContext(userQuery: string, activeSession: number): Promise<{ context: string; sources: Hit[] }> {
+async function buildContext(userQuery: string, activeSession: number, userId: number): Promise<{ context: string; sources: Hit[] }> {
   const sqlite = db().$client;
 
   // 1. Profile
-  const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
   const profileData = profileRow ? JSON.parse(profileRow.data) : {};
 
   // 2. Latest 90 biomarkers (one per slug, latest)
   const bmRows = sqlite
     .prepare(
-      `SELECT b.slug, b.name, b.value, b.unit, b.ref_low, b.ref_high, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date ORDER BY b.date DESC LIMIT 90`
+      `SELECT b.slug, b.name, b.value, b.unit, b.ref_low, b.ref_high, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date WHERE b.user_id = ? ORDER BY b.date DESC LIMIT 90`
     )
-    .all() as Array<{ slug: string; name: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
+    .all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
 
   // 3. Full 138 DNA insights (no LIMIT)
   const dnaRows = sqlite
     .prepare(
-      `SELECT rsid, category, trait, user_genotype as ug, has_risk as hasRisk, magnitude, summary FROM dna_insight ORDER BY (has_risk * COALESCE(magnitude,1)) DESC, category, trait`
+      `SELECT rsid, category, trait, user_genotype as ug, has_risk as hasRisk, magnitude, summary FROM dna_insight WHERE user_id = ? ORDER BY (has_risk * COALESCE(magnitude,1)) DESC, category, trait`
     )
-    .all() as Array<{ rsid: string; category: string; trait: string; ug: string; hasRisk: number | null; magnitude: number | null; summary: string }>;
+    .all(userId) as Array<{ rsid: string; category: string; trait: string; ug: string; hasRisk: number | null; magnitude: number | null; summary: string }>;
 
   // 4. Active supplements + 7d adherence
   const supRows = sqlite
-    .prepare(`SELECT id, name, dose, unit, timing, frequency, target_biomarker, target_snp FROM supplement WHERE ended_at IS NULL OR ended_at > ?`)
-    .all(Date.now()) as Array<{ id: number; name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; target_biomarker: string | null; target_snp: string | null }>;
+    .prepare(`SELECT id, name, dose, unit, timing, frequency, target_biomarker, target_snp FROM supplement WHERE user_id = ? AND (ended_at IS NULL OR ended_at > ?)`)
+    .all(userId, Date.now()) as Array<{ id: number; name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; target_biomarker: string | null; target_snp: string | null }>;
   const since7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
   const adherence = sqlite
     .prepare(
-      `SELECT s.name, COUNT(sl.id) as taken FROM supplement s LEFT JOIN supplement_log sl ON sl.supplement_id = s.id AND sl.date >= ? AND sl.taken = 1 WHERE s.ended_at IS NULL OR s.ended_at > ? GROUP BY s.id`
+      `SELECT s.name, COUNT(sl.id) as taken FROM supplement s LEFT JOIN supplement_log sl ON sl.supplement_id = s.id AND sl.date >= ? AND sl.taken = 1 WHERE s.user_id = ? AND (s.ended_at IS NULL OR s.ended_at > ?) GROUP BY s.id`
     )
-    .all(since7, Date.now()) as Array<{ name: string; taken: number }>;
+    .all(since7, userId, Date.now()) as Array<{ name: string; taken: number }>;
   const adhMap = Object.fromEntries(adherence.map((a) => [a.name, a.taken]));
 
   // 5. Symptoms 30d (averages)
   const since30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
   const symptomAvg = sqlite
-    .prepare(`SELECT key, AVG(value) as avg, COUNT(*) as n FROM symptom_log WHERE date >= ? GROUP BY key ORDER BY n DESC`)
-    .all(since30) as Array<{ key: string; avg: number; n: number }>;
+    .prepare(`SELECT key, AVG(value) as avg, COUNT(*) as n FROM symptom_log WHERE user_id = ? AND date >= ? GROUP BY key ORDER BY n DESC`)
+    .all(userId, since30) as Array<{ key: string; avg: number; n: number }>;
 
   // 6. Habits 30d (counts)
   const habitsCount = sqlite
-    .prepare(`SELECT key, COUNT(*) as n FROM habit_log WHERE date >= ? GROUP BY key ORDER BY n DESC`)
-    .all(since30) as Array<{ key: string; n: number }>;
+    .prepare(`SELECT key, COUNT(*) as n FROM habit_log WHERE user_id = ? AND date >= ? GROUP BY key ORDER BY n DESC`)
+    .all(userId, since30) as Array<{ key: string; n: number }>;
 
   // 7. Wearables 30d averages
   const wearAvg = sqlite
-    .prepare(`SELECT kind, AVG(value) as avg, COUNT(*) as n FROM wearable_metric WHERE date >= ? GROUP BY kind`)
-    .all(since30) as Array<{ kind: string; avg: number; n: number }>;
+    .prepare(`SELECT kind, AVG(value) as avg, COUNT(*) as n FROM wearable_metric WHERE user_id = ? AND date >= ? GROUP BY kind`)
+    .all(userId, since30) as Array<{ kind: string; avg: number; n: number }>;
 
   // 8. Top correlations (precomputed)
   let topCorr: Array<{ a: string; b: string; rho: number; p: number; n: number }> = [];
   try {
-    topCorr = computeTopCorrelations();
+    topCorr = computeTopCorrelations(userId);
   } catch {}
 
   // 9. Active long-term memories
   const memories = sqlite
-    .prepare(`SELECT kind, body, confidence FROM chat_memory WHERE active = 1 ORDER BY kind, created_at DESC LIMIT 200`)
-    .all() as Array<{ kind: string; body: string; confidence: number }>;
+    .prepare(`SELECT kind, body, confidence FROM chat_memory WHERE user_id = ? AND active = 1 ORDER BY kind, created_at DESC LIMIT 200`)
+    .all(userId) as Array<{ kind: string; body: string; confidence: number }>;
 
-  // 10. Last 12 messages of current session
-  const history = sqlite
-    .prepare(`SELECT role, content, created_at FROM chat_message WHERE session_id = ? ORDER BY id DESC LIMIT 12`)
-    .all(activeSession) as Array<{ role: string; content: string; created_at: number }>;
+  // 10. Last 12 messages of current session — verify session ownership first.
+  const sessOwner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(activeSession) as { user_id: number } | undefined;
+  const history = sessOwner && sessOwner.user_id === userId
+    ? sqlite
+        .prepare(`SELECT role, content, created_at FROM chat_message WHERE session_id = ? ORDER BY id DESC LIMIT 12`)
+        .all(activeSession) as Array<{ role: string; content: string; created_at: number }>
+    : [];
   history.reverse();
 
   // 11. RAG hits seeded by current query
@@ -421,22 +426,29 @@ export async function POST(req: Request) {
   if (!lastUser) return new Response(JSON.stringify({ content: "Pas de question." }));
 
   const sqlite = db().$client;
+  const userId = s.userId;
   let activeSession = sessionId;
   if (!activeSession) {
     const ins = sqlite
-      .prepare(`INSERT INTO chat_session (title, created_at, updated_at) VALUES (?, ?, ?)`)
-      .run("Nouvelle conversation", Date.now(), Date.now());
+      .prepare(`INSERT INTO chat_session (title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?)`)
+      .run("Nouvelle conversation", Date.now(), Date.now(), userId);
     activeSession = Number(ins.lastInsertRowid);
+  } else {
+    // Verify the session id provided actually belongs to this user.
+    const owner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(activeSession) as { user_id: number } | undefined;
+    if (!owner || owner.user_id !== userId) {
+      return new Response(JSON.stringify({ error: "session not found" }), { status: 404 });
+    }
   }
-  sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)`).run(activeSession, "user", lastUser.content, Date.now());
+  sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at, user_id) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "user", lastUser.content, Date.now(), userId);
 
   const apiKey = anthropicApiKey();
   if (!apiKey) {
-    sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at) VALUES (?, ?, ?, ?)`).run(activeSession, "assistant", "ANTHROPIC_API_KEY non configurée.", Date.now());
+    sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at, user_id) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "assistant", "ANTHROPIC_API_KEY non configurée.", Date.now(), userId);
     return new Response(JSON.stringify({ content: "ANTHROPIC_API_KEY non configurée.", sessionId: activeSession, sources: [] }));
   }
 
-  const { context, sources: ragHits } = await buildContext(lastUser.content, activeSession);
+  const { context, sources: ragHits } = await buildContext(lastUser.content, activeSession, userId);
   const systemPrompt = buildSystemPrompt(context);
   const client = new Anthropic({ apiKey });
 
@@ -471,7 +483,7 @@ export async function POST(req: Request) {
               if (block.type === "tool_use") {
                 let result: unknown;
                 try {
-                  const out = execTool(block.name, block.input as ToolInput);
+                  const out = execTool(block.name, block.input as ToolInput, userId);
                   result = out instanceof Promise ? await out : out;
                 } catch (e) {
                   result = { error: (e as Error).message };
@@ -507,8 +519,8 @@ export async function POST(req: Request) {
 
         // Persist final assistant message
         sqlite
-          .prepare(`INSERT INTO chat_message (session_id, role, content, sources, created_at) VALUES (?, ?, ?, ?, ?)`)
-          .run(activeSession, "assistant", fullText, JSON.stringify(sourcesAccum), Date.now());
+          .prepare(`INSERT INTO chat_message (session_id, role, content, sources, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`)
+          .run(activeSession, "assistant", fullText, JSON.stringify(sourcesAccum), Date.now(), userId);
         sqlite.prepare(`UPDATE chat_session SET updated_at = ? WHERE id = ?`).run(Date.now(), activeSession);
 
         // Auto-rename on first exchange

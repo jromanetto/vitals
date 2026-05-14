@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
+import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
@@ -36,8 +36,8 @@ function statusOf(r: { value: number; refLow: number | null; refHigh: number | n
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
 
   const url = new URL(req.url);
@@ -45,32 +45,35 @@ export async function GET(req: Request) {
   const dateParam = url.searchParams.get("date");
 
   const sqlite = db().$client;
+  // The legacy `blood_report` schema enforces UNIQUE on panel_date alone, which
+  // would conflate users on a shared install. Add user_id and a compound key.
   sqlite.exec(`CREATE TABLE IF NOT EXISTS blood_report (id INTEGER PRIMARY KEY AUTOINCREMENT, panel_date INTEGER NOT NULL UNIQUE, body TEXT NOT NULL, generated_at INTEGER NOT NULL)`);
+  try { sqlite.exec(`ALTER TABLE blood_report ADD COLUMN user_id INTEGER`); } catch {}
 
-  // Determine target date: explicit param or most recent panel
+  // Determine target date: explicit param or most recent panel for THIS user
   let targetDate: number | null = null;
   if (dateParam) targetDate = parseInt(dateParam, 10);
   else {
-    const r = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker`).get() as { d: number | null };
+    const r = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker WHERE user_id = ?`).get(userId) as { d: number | null };
     targetDate = r?.d ?? null;
   }
   if (!targetDate) return NextResponse.json({ error: "no panel found" }, { status: 404 });
 
-  // Cache hit (1 week)
+  // Cache hit (1 week) — scoped per user.
   if (!force) {
-    const cached = sqlite.prepare(`SELECT body, generated_at FROM blood_report WHERE panel_date = ?`).get(targetDate) as { body: string; generated_at: number } | undefined;
+    const cached = sqlite.prepare(`SELECT body, generated_at FROM blood_report WHERE panel_date = ? AND user_id = ?`).get(targetDate, userId) as { body: string; generated_at: number } | undefined;
     if (cached && Date.now() - cached.generated_at < 7 * 86400 * 1000) {
       return NextResponse.json({ ...JSON.parse(cached.body), panelDate: targetDate, cached: true, generatedAt: cached.generated_at });
     }
   }
 
   // Pull all biomarkers from this exact panel date
-  const rows = sqlite.prepare(`SELECT slug, name, value, unit, ref_low as refLow, ref_high as refHigh, date, source FROM biomarker WHERE date = ? ORDER BY name`).all(targetDate) as Row[];
+  const rows = sqlite.prepare(`SELECT slug, name, value, unit, ref_low as refLow, ref_high as refHigh, date, source FROM biomarker WHERE date = ? AND user_id = ? ORDER BY name`).all(targetDate, userId) as Row[];
   if (rows.length === 0) return NextResponse.json({ error: "no biomarkers for this date" }, { status: 404 });
 
   // Pull previous panel date for comparison (most recent before targetDate)
-  const prev = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker WHERE date < ?`).get(targetDate) as { d: number | null };
-  const prevRows = prev?.d ? sqlite.prepare(`SELECT slug, value FROM biomarker WHERE date = ?`).all(prev.d) as Array<{ slug: string; value: number }> : [];
+  const prev = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker WHERE date < ? AND user_id = ?`).get(targetDate, userId) as { d: number | null };
+  const prevRows = prev?.d ? sqlite.prepare(`SELECT slug, value FROM biomarker WHERE date = ? AND user_id = ?`).all(prev.d, userId) as Array<{ slug: string; value: number }> : [];
   const prevBySlug = Object.fromEntries(prevRows.map((r) => [r.slug, r.value]));
 
   // Enrich with meta + status + delta
@@ -151,7 +154,18 @@ Génère le compte-rendu JSON.`;
     report.markersCount = enriched.length;
     report.outOfRangeCount = enriched.filter((r) => r.status === "slightly-off" || r.status === "attention").length;
     report.optimalCount = enriched.filter((r) => r.status === "optimal").length;
-    sqlite.prepare(`INSERT OR REPLACE INTO blood_report (panel_date, body, generated_at) VALUES (?, ?, ?)`).run(targetDate, JSON.stringify(report), Date.now());
+    // Manual upsert scoped per user — avoids the legacy UNIQUE(panel_date) conflict
+    // that would let one user's report overwrite another's on the same panel date.
+    const existingId = sqlite.prepare(`SELECT id FROM blood_report WHERE panel_date = ? AND user_id = ?`).get(targetDate, userId) as { id: number } | undefined;
+    if (existingId) {
+      sqlite.prepare(`UPDATE blood_report SET body = ?, generated_at = ? WHERE id = ? AND user_id = ?`).run(JSON.stringify(report), Date.now(), existingId.id, userId);
+    } else {
+      try {
+        sqlite.prepare(`INSERT INTO blood_report (panel_date, body, generated_at, user_id) VALUES (?, ?, ?, ?)`).run(targetDate, JSON.stringify(report), Date.now(), userId);
+      } catch {
+        // Fall back if a legacy row owns this panel_date; don't poison cross-tenant reads.
+      }
+    }
     return NextResponse.json({ ...report, panelDate: targetDate, cached: false, generatedAt: Date.now(), prevPanelDate: prev?.d ?? null });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message, panelDate: targetDate }, { status: 500 });
