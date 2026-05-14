@@ -134,4 +134,12 @@ export function ensureSchema() {
   try {
     d.run(sql.raw(`ALTER TABLE reminder ADD COLUMN notified_at INTEGER`));
   } catch {}
+  // Sprint 32: per-user scoping for nutrition_pref so demo and owner don't
+  // share the same preference row. ALTER is idempotent via try/catch.
+  try {
+    d.run(sql.raw(`ALTER TABLE nutrition_pref ADD COLUMN user_id INTEGER DEFAULT 1`));
+  } catch {}
+  try {
+    d.run(sql.raw(`CREATE INDEX IF NOT EXISTS nutrition_pref_user_idx ON nutrition_pref(user_id)`));
+  } catch {}
 }
