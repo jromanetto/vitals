@@ -168,6 +168,40 @@ Next.js 15 · React 19 · TypeScript strict · shadcn pattern · Tailwind v3 · 
 
 ---
 
+## Phase 33 — Exhaustive onboarding wizard [DONE]
+- [x] `lib/medical/{types,disease-catalog,symptom-catalog,screening-catalog,relatives}.ts`: 50 hereditary diseases × heritability, 38 symptoms × 10 body systems (8 red-flag), 22 age/sex-gated screenings, 10 relatives × 3 generations.
+- [x] 19 new sections in `components/profile-form.tsx` (sleep, digestion, womens, mens, dentalVision, skin, pain, energy, recovery, substances, socialWork, envExposure, topical, geneticsExtra, wearablesOwned, advanceDirectives + 3 customRenderer for family/symptoms/screening). 5 new Field types: chipsSingle, frequency, scale10, yesNoUnknown, wearables. Chips-everywhere — `<select>` only for ethnicity.
+- [x] UI primitives in `components/profile/`: frequency-chips, scale-buttons, yes-no-unknown, wearables-chips, family-disease-grid (relative tabs × disease accordions, "Non" by default), symptom-checklist (red-flag warnings + master "Aucun symptôme" toggle), screening-schedule (date inputs + status colors).
+- [x] Wizard grew from 7 to 10 tabs (added Symptômes, Suivi médical, Reproduction, Objectifs; dropped duplicate Sécurité — it lives under /profile).
+- [x] Conditional UX: Reproduction tab picks womens/mens by data.sex; ScreeningSchedule filters by age + sex; family disease grid amplifies card 1 risk when paired with biomarker.
+- [x] `<AnthroComputed>`: live IMC + WHO category + estimated LBM via Boer formula.
+- [x] `lib/profile/prefill.ts`: deterministic pre-fill from biomarkers / wearable_metric (HRV/RHR/sleep avg) / nutrition_pref / supplement / symptom_log / DNA risks. `<PrefillButton>` opens auto on `/data/profile?prefill=1`.
+- [x] `/api/profile/auto-extract` system prompt extended with the new structured schema (familyHistory keys + symptom IDs + screening IDs + sex-conditional blocks).
+
+## Phase 34 — Welcome Report WOW + Doctor Pack premium [DONE]
+- [x] `lib/welcome-report/select-signals.ts`: deterministic 3-signal picker — card 1 = worst biomarker × clinical_weight × DNA/family amplifiers, card 2 = best protective DNA (with lifestyle fallback), card 3 = top heritable family risk × matched screening (with symptoms fallback). Red-flag alert if any red-flag symptom declared.
+- [x] `lib/welcome-report/generate.ts`: 3 LLM calls with shared cached system prompt (`cache_control: ephemeral`), 280-char per card, hard rules against diagnostic language, deterministic fallback bodies on API failure.
+- [x] `POST /api/reports/welcome` creates pending row + fires async `processWelcomeReport(reportId, userId)` returning id immediately. Status polling via `/api/reports/[id]/status` (extended to return meta).
+- [x] `/welcome/report` + `<WelcomeReportClient>`: live ticker (5 steps), framer-motion card stagger, red-flag alert, CTAs to /data/profile / /reports / /dashboard.
+- [x] `/welcome/page.tsx` upload step: multi-file dropzone, per-file status with detected kind label, parallel uploads, async auto-extract trigger when all done, CTA → `/welcome/report`.
+- [x] New `/praticien/[id]` route renders Doctor Pack markdown as premium A4 print layout: cover + TOC + 3 sections (médecin / naturopathe / suivi mensuel) parsed by heading heuristic, `@page A4 / @media print` CSS, fixed footer "Pas un diagnostic médical".
+- [x] `components/feedback/card-feedback.tsx` (👍/👎/💬) + `/api/feedback` + `card_feedback` table + `/admin/feedback` (owner/founder only).
+- [x] Kill switch `VITALS_WELCOME_REPORT_ENABLED` via `lib/welcome-report/enabled.ts`.
+
+## Phase 35 — UX consolidation & privacy hardening [DONE]
+- [x] **Route split account vs health**: `/profile` becomes Account page (email + 2FA status + statut bêta + links to security/legal); `/data/profile` (+ `/family`, `/import`) becomes the health wizard. Legacy `/profile?tab=X` 307→/data/profile. Sidebar Compte gets "Compte", Données gets "Profil santé" (IdCard icon).
+- [x] **Fusions**: `/symptoms` + `/habits` → `/daily` (Quotidien: today's check-in + 60d side-by-side heatmaps); `/supplements` + `/nutrition` → `/stack` (tabbed, ?tab=supplements|nutrition, nutrition plan cached in `report` kind=nutrition-plan with 7d TTL); `/praticien` standalone removed from sidebar, accessible via `/reports` (renamed "Rapports & vue praticien") prominent live-CTA at top.
+- [x] **Multi-tenant privacy lockdown**: 27 API routes audited — every SELECT/UPDATE/DELETE now `WHERE user_id = ?`. `/api/chat` execTool / loadSeries / computeTopCorrelations / buildContext all take userId and scope every SELECT (biomarker, dna_insight, profile, supplement, symptom_log, habit_log, wearable_metric, chat_memory, chat_message). chat_session/message INSERTs write user_id. Session ownership verified before resume. Same audit applied to /reports, /dna page, /api/sparklines, biomarkers/series/latest/compare/commentary, supplements/*, interactions, symptoms, habits, notes, wearables, timeline, correlations, files/[id], action-plan, blood-tests/report, recommendations, nutrition/plan, export, reports/[id]/status, search, profile/auto-extract, profile/prefill.
+- [x] **Anonymize-by-default for LLM**: `lib/anonymize.ts` extended to strip emergencyContact, birthPlace, pedigree.{rel}.name, currentLocation (keep countryCode). `formatProfileForLLM()` pipes through `anonymizeProfile()`. Wired into chat + action-plan + recommendations + profile/auto-extract + biomarker commentary. `/legal/privacy` flipped from "anonymisation activable" to "active par défaut".
+- [x] **Bug fixes en passant**: middleware allows `/api/cron/*` (self-secured via CRON_SECRET); `nutrition_pref` ADD COLUMN user_id (was missing); notes route bind-args mismatch; action-plan wrong table name; DNA "Porteur" semantic — carriers category renders "X mutation porteur" with sky-blue Users icon instead of meaningless "0% favorable".
+- [x] **Other quality**: weekly digest cron `/api/cron/weekly-digest` (Resend-templated deltas), Email + PNG share buttons on Welcome Report, sparkline `responsive` prop fixes overflow on RecoveryWidget, `/reports` filters out `nutrition`/`nutrition-plan` kinds (they have /stack home).
+
+## Phase 36 — Demo "showcase" persona + signup [DONE]
+- [x] `scripts/invite_user.mjs`: bypasses VITALS_BETA_OPEN gate, creates user with bcrypt hash + secret + role='beta'/'founder', sends Resend welcome email with generated temp password, audit logged. Used via `ssh dallas3 'cd /home/script/vitals && node scripts/invite_user.mjs <email>'`.
+- [x] `scripts/enrich_demo.mjs`: re-seeds Marc Dupont, 40 ans, Homme, biohacker — full new-wizard profile (10 tabs, all sections), 392 biomarkers (49 markers × 8 quarterly panels over 24 months with realistic drift LDL→1.50, ApoB→1.15, VO2max→48, HRV→62), 38 DNA insights across all 10 categories incl. carrier SMA, 123 supplement_log + 138 habit_log + 7 contextual notes, pre-generated Welcome Report with 3 spookily-specific cards + Doctor Pack premium.
+
+---
+
 ## After all phases
 
 Write `COMPLETE.md` summarizing what's been built. Stop.

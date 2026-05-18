@@ -171,3 +171,65 @@ All endpoints responding 200 OK
 - Lab order auto-fax (out of scope)
 
 — Built across 27 sprints, ~80 commits, ~120 files, ~14,000 lines of code.
+
+---
+
+# Vitals — Sprint 28–36 addendum (May 2026)
+
+Multi-tenant, exhaustive onboarding, WOW Welcome Report, premium Doctor Pack, route fusion, demo showcase.
+
+## 1. Multi-tenant + privacy lockdown
+- **Signup + invite**: `/api/auth/signup` with closed-beta gate (waitlist when `VITALS_BETA_OPEN!=true`), `/api/auth/demo` (read-only Marc Dupont), `scripts/invite_user.mjs` (sqlite3-CLI based to survive Node upgrades, sends Resend invite mail with bcrypt-hashed temp password).
+- **`user_id` scoping everywhere**: 27 API endpoints + 3 server pages audited and patched. `WHERE user_id = ?` on every SELECT, `user_id` written on every INSERT, session ownership verified before resume. Caught and fixed real cross-tenant leak where demo Marc was seeing Julien's chats + nutrition plans.
+- **Anonymize-by-default for LLM**: `anonymizeProfile()` extended (emergencyContact, birthPlace, pedigree.{rel}.name, currentLocation→keep countryCode). `formatProfileForLLM()` pipes through it. `/legal/privacy` flipped to "active par défaut" + disclosure of Anthropic US sub-processor.
+
+## 2. Exhaustive onboarding (10-tab wizard, 19 sections, 140+ fields)
+- **`/data/profile`** (separated from `/profile` account page) renders the wizard: Identité, Santé, Famille, Symptômes, Suivi médical, Lifestyle, Reproduction, Environnement, Objectifs, Suppléments.
+- **5 new Field types**: `chipsSingle`, `frequency`, `scale10`, `yesNoUnknown`, `wearables`. Replaced every `<select>` (except ethnicity = 16 options) and bucketable numeric input with chips. Caffeine/jour switched from `mg` to nb de cafés.
+- **`lib/medical/*` catalogs**: 50 diseases × heritability, 38 symptoms × 10 body systems (8 red-flag), 22 screenings with age/sex gating + `statusForScreening` helper, 10 relatives × 3 generations.
+- **Famille consolidated**: relative tabs (Père/Mère/4 grand-parents/fratrie/enfants/oncles) → unified person card (Nom + Statut + Âge + cause décès) + structured disease grid with "Non" as default, "Oui"/`?` for explicit declarations + age of diagnosis input.
+- **Welcome flow conditional branching**: cycle express step inserted if `sex==='Femme'`, screening flash if `age>=45`. Multi-file dropzone with per-file detected-kind label + parallel uploads + auto-extract trigger.
+- **Prefill IA** (`lib/profile/prefill.ts`): deterministic patch from biomarker (last blood panel date), wearable_metric (RHR/HRV/sleep 60d avg + wearables list), nutrition_pref, supplement (active list), symptom_log (recent red flags), dna_insight (suggested goals). Opens auto on `/data/profile?prefill=1`.
+- **Live anthropometric compute**: `<AnthroComputed>` shows IMC + WHO category + Boer LBM estimate from height/weight/sex.
+
+## 3. WOW Welcome Report + premium Doctor Pack
+- **Welcome Report pipeline**: `lib/welcome-report/select-signals.ts` (deterministic 3-signal picker scoring biomarker deviation × clinical_weight × DNA/family amplifiers) → `generate.ts` (3 LLM calls, cached system prompt via `cache_control: ephemeral`, fallback bodies on API failure). Mounted at `/welcome/report` with live 5-step polling ticker (Extraction → Analyse génétique → Sélection → Génération → Finalisation), framer-motion card stagger, red-flag alert, CTAs to Profil/Doctor Pack/Dashboard.
+- **Doctor Pack premium A4**: new `/praticien/[id]` route renders markdown body parsed into 3 sections (médecin / naturopathe / suivi mensuel) with cover + TOC + footer disclaimer, `@page A4` + `@media print` CSS hides chrome.
+- **Feedback widget** (👍/👎/💬) under each card → `card_feedback` table + owner/founder-only `/admin/feedback` page.
+- **Kill switch** `VITALS_WELCOME_REPORT_ENABLED` env var fallback to graceful basic report.
+- **Weekly digest cron** `/api/cron/weekly-digest` (CRON_SECRET protected) computes deltas vs last week (new biomarkers, red-flag symptoms, overdue screenings, supplement adherence, vitals-score delta), Resend templated.
+
+## 4. UX consolidation (sidebar fusion)
+- `/symptoms` + `/habits` → **`/daily`** (Quotidien — today's check-in + 60d heatmaps side-by-side).
+- `/supplements` + `/nutrition` → **`/stack`** (tabbed, `?tab=…` query, nutrition plan cached 7d in `report` kind=nutrition-plan for instant render).
+- `/praticien` standalone removed from sidebar — accessible via **`/reports`** (renamed "Rapports & vue praticien", emerald CTA "Vue praticien · Live" at top, click-through to `/praticien` live snapshot).
+- Wizard "Sécurité" tab removed (lived at `/profile/security`); profile→account split (`/profile` = email, 2FA status, légal links; `/data/profile` = the wizard).
+
+## 5. Demo showcase persona
+- **Marc Dupont, 40 ans, Homme**, biohacker leaning, IF 16h, sport intense 7-10h/sem, méditation quotidienne, sauna+cold often, marié + enfants, architecte logiciel.
+- **392 biomarqueurs** (49 markers × 8 quarterly panels over 24 months) — full lipids (incl. ApoB, Lp(a), omega-3 index), glucose/insuline/HOMA, thyroid full, liver, kidney, inflammation (hsCRP, homocystéine), iron, vitamins, minerals, male hormones (T totale/libre/SHBG/DHEA-S/E2/cortisol/IGF-1/PSA), NFS.
+- **38 DNA insights** distributed across all 10 page categories (longevity APOE ε2/ε4-, FOXO3 GG, MTHFR C677T hétéro, LCT persistante, TCF7L2 hétéro, ACTN3, etc.) including carrier SMA rendered with the new sky-blue Users-icon UX.
+- **Pre-generated Welcome Report** with 3 spookily-specific cards using Marc's actual data (LDL 1.50 + ATCD père infarctus 64ans → cible <1.30 via monacolin K, FOXO3 longévité GG, cancer prostate grand-père → PSA précoce 45 ans).
+- **Pre-generated Doctor Pack** with executive summary + naturopathe section + 24-month trends.
+- **5 supplements** + 123 supplement_log adherence ~85%, 138 habit_log on 6 habits ~75%, 7 contextual notes anchored to biomarkers/dna/family.
+
+## 6. Quality fixes en passant
+- DNA "Porteur" category UX: `<DnaCategoryCard>` detects carrier and renders "1 mutation porteur" with sky-blue Users icon + explanatory note instead of meaningless "0% favorable". `/dna` overview excludes carriers from global % favorable computation.
+- Sparkline `responsive` prop: SVG viewBox + 100% width → fixes RecoveryWidget overflow on narrow cards.
+- `/reports` filters out `nutrition`/`nutrition-plan` kinds (they're at /stack).
+- `nutrition_pref` ADD COLUMN user_id (was missing per-user scoping → 500 on demo nutrition tab).
+- `app/welcome/page.tsx` saves canonical French labels for sex/activityLevel/smoker (round-trip with wizard).
+- `recreationalDrugs` text input → multi chips (Aucune / Cannabis / Nicotine vaping / Cocaïne / MDMA / Psychédéliques / Kétamine / Opiacés / Autres).
+- Vapoteur added to smoker chips + `vaperNicotineMg` chips (EU concentrations 0–20 mg/mL + ">20 (sels)").
+- DNA categories realigned (`metabolic`→`metabolism`, `carrier`→`carriers`, added hormones/immunity/detox SNPs) so all 10 demo cards display real content.
+- middleware allows `/api/cron/*` (self-secured via CRON_SECRET); notes route bind-args mismatch fixed; action-plan wrong table name fixed.
+
+## Hard-rule conformance check (still green)
+- `/api/health-check` always 200 ✓
+- Auth required on all routes except public list ✓
+- `data/` gitignored (anchored to `/data/` after the route conflict with `app/(app)/data/`) ✓
+- Build exits 0 before push, verified after deploy via curl ✓
+- Atomic commits, no emojis in messages ✓
+- LLM calls wrapped in `anonymizeProfile()` by default ✓
+
+— Sprint 28–36 = 35 commits, ~5,500 added LOC, ~250 modified files, 3 parallel subagents used twice. Production stable, demo persona ready to share with founder members.
