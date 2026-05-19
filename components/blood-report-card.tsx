@@ -23,24 +23,30 @@ type Report = {
   generatedAt: number;
 };
 
-const HL_CFG = {
+// Lookups defensively typed as records so unknown keys (the LLM occasionally
+// drifts and emits "info", "neutral", "ok", etc.) fall back to a safe shape
+// instead of crashing with "Cannot read properties of undefined (reading 'icon')".
+const HL_CFG: Record<string, { icon: typeof Check; cls: string; iconCls: string }> = {
   good: { icon: Check, cls: "border-emerald/30 bg-emerald/5", iconCls: "text-emerald" },
   warning: { icon: AlertCircle, cls: "border-amber-500/30 bg-amber-500/5", iconCls: "text-amber-400" },
   alert: { icon: AlertTriangle, cls: "border-red-500/30 bg-red-500/5", iconCls: "text-red-400" },
 };
+const HL_FALLBACK = HL_CFG.good;
 
-const SYS_CFG = {
+const SYS_CFG: Record<string, { label: string; cls: string; border: string }> = {
   optimal: { label: "Optimal",      cls: "text-emerald", border: "border-emerald/30 bg-emerald/5" },
   good:    { label: "Bon",          cls: "text-sky-400", border: "border-sky-500/30 bg-sky-500/5" },
   "to-watch": { label: "À surveiller", cls: "text-amber-400", border: "border-amber-500/30 bg-amber-500/5" },
   alert:   { label: "Alerte",       cls: "text-red-400", border: "border-red-500/30 bg-red-500/5" },
 };
+const SYS_FALLBACK = { label: "—", cls: "text-muted-foreground", border: "border-border bg-card" };
 
-const PR_CFG = {
+const PR_CFG: Record<string, { label: string; cls: string }> = {
   high: { label: "Haute",  cls: "bg-red-500/10 text-red-400 border-red-500/20" },
   medium: { label: "Moyenne", cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
   low: { label: "Basse",  cls: "bg-emerald/10 text-emerald border-emerald/20" },
 };
+const PR_FALLBACK = { label: "—", cls: "bg-secondary/40 text-muted-foreground border-border" };
 
 export function BloodReportCard({ panelDate }: { panelDate?: number }) {
   const [report, setReport] = useState<Report | null>(null);
@@ -131,7 +137,7 @@ export function BloodReportCard({ panelDate }: { panelDate?: number }) {
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Points saillants</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {report.highlights.map((h, i) => {
-              const cfg = HL_CFG[h.type];
+              const cfg = HL_CFG[h.type] ?? HL_FALLBACK;
               const Icon = cfg.icon;
               return (
                 <motion.div
@@ -156,7 +162,7 @@ export function BloodReportCard({ panelDate }: { panelDate?: number }) {
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Systèmes corporels</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {report.systems.map((s, i) => {
-              const cfg = SYS_CFG[s.status];
+              const cfg = SYS_CFG[s.status] ?? SYS_FALLBACK;
               return (
                 <motion.div
                   key={i} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
@@ -185,7 +191,7 @@ export function BloodReportCard({ panelDate }: { panelDate?: number }) {
           <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Actions recommandées</h3>
           <div className="space-y-1.5">
             {report.actions.map((a, i) => {
-              const pr = PR_CFG[a.priority];
+              const pr = PR_CFG[a.priority] ?? PR_FALLBACK;
               return (
                 <motion.div
                   key={i} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i * 0.04, 0.4) }}
