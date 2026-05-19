@@ -31,6 +31,13 @@ export type DigestRedFlag = {
   count: number;
 };
 
+export type DigestTodoItem = {
+  title: string;
+  rationale: string;
+  kind: string;
+  priority: "high" | "medium" | "low";
+};
+
 export type WeeklyDeltas = {
   userId: number;
   firstName: string | null;
@@ -42,6 +49,7 @@ export type WeeklyDeltas = {
     current: number | null;
     previousWeek: number | null;
   };
+  topTodos: DigestTodoItem[]; // top-3 pending actions from the recommendations engine
 };
 
 /* ------------------------------------------------------------------ */
@@ -322,6 +330,42 @@ export function computeWeeklyDeltas(userId: number): WeeklyDeltas {
   const current = approxLongevityScore(userId, now);
   const previousWeek = approxLongevityScore(userId, weekAgo);
 
+  // ---- topTodos (top 3 pending actions from recommendations engine) ----
+  let topTodos: DigestTodoItem[] = [];
+  try {
+    // Lazy-import the engine to avoid loading the catalogs on every digest run
+    // when the engine itself fails to resolve in serverless edge edge-cases.
+    const { computeTodo } = require("./recommendations/engine") as typeof import("./recommendations/engine");
+    const biomarkers = safeAll(
+      `SELECT b.slug, b.name, b.value, b.ref_low as refLow, b.ref_high as refHigh
+       FROM biomarker b
+       JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x
+         ON x.slug = b.slug AND x.md = b.date
+       WHERE b.user_id = ?
+       ORDER BY b.name`,
+      userId,
+      userId,
+    ) as Array<{ slug: string; name: string; value: number; refLow: number | null; refHigh: number | null }>;
+    const dna = safeAll(
+      `SELECT rsid, category, has_risk as hasRisk, is_protective as isProtective FROM dna_insight WHERE user_id = ?`,
+      userId,
+    ) as Array<{ rsid: string; category: string; hasRisk: number | null; isProtective: number | null }>;
+    const items = computeTodo({
+      profile: profile as Parameters<typeof computeTodo>[0]["profile"],
+      biomarkers: biomarkers.map((b) => ({ ...b, hasRisk: undefined })) as Parameters<typeof computeTodo>[0]["biomarkers"],
+      dna: dna.map((d) => ({ ...d, hasRisk: !!d.hasRisk, isProtective: !!d.isProtective })) as Parameters<typeof computeTodo>[0]["dna"],
+      supplements: [],
+    });
+    topTodos = items.slice(0, 3).map((it) => ({
+      title: it.title,
+      rationale: it.rationale,
+      kind: it.kind,
+      priority: it.priority,
+    }));
+  } catch {
+    // Best-effort — digest still ships without todos if the engine errors.
+  }
+
   return {
     userId,
     firstName,
@@ -330,6 +374,7 @@ export function computeWeeklyDeltas(userId: number): WeeklyDeltas {
     overdueScreenings: overdue,
     supplementAdherencePct,
     vitalsScoreChange: { current, previousWeek },
+    topTodos,
   };
 }
 
@@ -338,6 +383,7 @@ export function computeWeeklyDeltas(userId: number): WeeklyDeltas {
  * worth emailing the user about. The cron uses this to skip empty digests.
  */
 export function hasMeaningfulDeltas(d: WeeklyDeltas): boolean {
+  if (d.topTodos.length > 0) return true;
   if (d.newBiomarkers.length > 0) return true;
   if (d.redFlagSymptoms.length > 0) return true;
   if (d.overdueScreenings.length > 0) return true;
@@ -394,6 +440,27 @@ function formatDate(ts: number): string {
   } catch {
     return "";
   }
+}
+
+function todoSection(items: DigestTodoItem[]): string {
+  if (items.length === 0) return "";
+  const rows = items
+    .map((t) => {
+      const tone = t.priority === "high" ? "#fca5a5" : t.priority === "medium" ? "#fcd34d" : "#a1a1aa";
+      return `
+        <li style="margin:8px 0;font-size:14px;color:#d4d4d8;list-style:none;padding:8px 12px;background:#18181b;border-left:3px solid ${tone};border-radius:4px">
+          <strong style="color:#ecfdf5">${esc(t.title)}</strong>
+          <div style="font-size:13px;color:#a1a1aa;margin-top:4px;line-height:1.5">${esc(t.rationale)}</div>
+        </li>`;
+    })
+    .join("");
+  return `
+    <div style="${SECTION_TITLE_STYLE}">À faire — top ${items.length}</div>
+    <ul style="list-style:none;padding:0;margin:0">${rows}</ul>
+    <p style="margin:8px 0 16px;font-size:12px;color:#71717a">
+      <a href="https://vitals.blueproject.org/todo" style="color:#10b981;text-decoration:none">Voir toutes mes actions →</a>
+    </p>
+  `;
 }
 
 function biomarkerSection(items: DigestBiomarker[]): string {
@@ -494,6 +561,7 @@ export function weeklyDigestTemplate(deltas: WeeklyDeltas): {
 } {
   const name = deltas.firstName ? `, ${deltas.firstName}` : "";
   const sections =
+    todoSection(deltas.topTodos) +
     biomarkerSection(deltas.newBiomarkers) +
     symptomsSection(deltas.redFlagSymptoms) +
     screeningsSection(deltas.overdueScreenings) +
