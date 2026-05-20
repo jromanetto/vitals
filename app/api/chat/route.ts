@@ -515,7 +515,7 @@ export async function POST(req: Request) {
           break;
         }
 
-        if (!fullText) fullText = "(le panel n'a pas produit de réponse)";
+        if (!fullText) fullText = "(l'équipe médicale n'a pas produit de réponse)";
 
         // Persist final assistant message
         sqlite
@@ -590,7 +590,7 @@ async function fireAndForgetMemoryExtraction(sessionId: number): Promise<void> {
   const transcript = msgs.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
 
   const client = new Anthropic({ apiKey });
-  const sys = `Tu es un extracteur de mémoire médicale long-terme. Lis la conversation entre un patient et son panel médical, et extrais UNIQUEMENT les faits durables qui mériteraient d'être réinjectés dans toutes les futures conversations.
+  const sys = `Tu es un extracteur de mémoire médicale long-terme. Lis la conversation entre un patient et son équipe médicale, et extrais UNIQUEMENT les faits durables qui mériteraient d'être réinjectés dans toutes les futures conversations.
 
 Catégories possibles :
 - "fact" : fait médical objectif (ex: "Cholécystectomie en 2018", "Allergique aux statines")

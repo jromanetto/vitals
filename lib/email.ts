@@ -117,7 +117,7 @@ export function welcomeTemplate(firstName?: string): { subject: string; html: st
       <ol style="font-size:14px;line-height:1.8;color:#d4d4d8;padding-left:20px;margin:16px 0">
         <li><strong>Importe ton premier bilan sanguin</strong> (PDF ou photo) — l'IA extrait tout automatiquement</li>
         <li><strong>Charge ton 23andMe</strong> pour activer les recommandations personnalisées</li>
-        <li><strong>Discute avec le panel médical</strong> dans le chat pour comprendre ton dossier</li>
+        <li><strong>Discute avec l'équipe médicale</strong> dans le chat pour comprendre ton dossier</li>
       </ol>
       <a href="https://vitals.blueproject.org/dashboard" style="${BUTTON_STYLE}">Accéder à mon dashboard →</a>
       <p style="font-size:13px;color:#a1a1aa;margin:16px 0 0">
@@ -125,7 +125,7 @@ export function welcomeTemplate(firstName?: string): { subject: string; html: st
       </p>
     `,
   );
-  const text = `${greeting} !\n\nTon compte Vitals est créé. Étapes recommandées :\n1. Importe ton premier bilan sanguin\n2. Charge ton 23andMe\n3. Discute avec le panel médical\n\nDashboard : https://vitals.blueproject.org/dashboard`;
+  const text = `${greeting} !\n\nTon compte Vitals est créé. Étapes recommandées :\n1. Importe ton premier bilan sanguin\n2. Charge ton 23andMe\n3. Discute avec l'équipe médicale\n\nDashboard : https://vitals.blueproject.org/dashboard`;
   return { subject: "🌿 Bienvenue sur Vitals", html, text };
 }
 

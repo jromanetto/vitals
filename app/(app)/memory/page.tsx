@@ -84,7 +84,7 @@ export default function MemoryPage() {
     <div className="space-y-10">
       <PageHeader
         title="Mémoire long-terme"
-        description="Les mémoires actives sont injectées dans CHAQUE conversation avec le panel médical. Elles sont extraites automatiquement à la fin de chaque session, ou ajoutées manuellement ici."
+        description="Les mémoires actives sont injectées dans CHAQUE conversation avec l'équipe médicale. Elles sont extraites automatiquement à la fin de chaque session, ou ajoutées manuellement ici."
         icon={<Brain className="h-5 w-5 text-emerald" />}
         actions={
           <span className="text-xs text-muted-foreground tabular-nums">
@@ -194,7 +194,7 @@ export default function MemoryPage() {
 
       {!loading && memories.length === 0 && (
         <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
-          Aucune mémoire pour l'instant. Le panel médical en extraira automatiquement après quelques échanges,
+          Aucune mémoire pour l'instant. L'équipe médicale en extraira automatiquement après quelques échanges,
           ou ajoute-en manuellement ci-dessus.
         </div>
       )}

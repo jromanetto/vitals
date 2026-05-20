@@ -82,12 +82,12 @@ export function FloatingChat() {
                 </button>
                 <div className="flex items-center gap-2 pr-8">
                   <Sparkles className="h-4 w-4 text-emerald" />
-                  <h3 className="text-sm font-semibold">Panel médical</h3>
+                  <h3 className="text-sm font-semibold">Équipe médicale</h3>
                   <span className="text-[11px] text-muted-foreground">médecin fonctionnel · généticien · nutrithérapeute</span>
                 </div>
 
                 <p className="text-[11px] text-muted-foreground italic">
-                  Le panel a accès à tes biomarqueurs, ADN, suppléments et wearables. Pose ta question librement.
+                  L&apos;équipe médicale a accès à tes biomarqueurs, ADN, suppléments et wearables. Pose ta question librement.
                 </p>
 
                 <div className="space-y-1.5">

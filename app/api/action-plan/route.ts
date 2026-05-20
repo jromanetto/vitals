@@ -105,7 +105,7 @@ export async function GET(req: Request) {
   }
 
   const client = new Anthropic({ apiKey });
-  const sys = `Tu es un panel médical (médecin fonctionnel + nutrithérapeute + coach longévité).
+  const sys = `Tu es une équipe médicale (médecin fonctionnel + nutrithérapeute + coach longévité).
 À partir des données suivantes, génère un plan d'action structuré en JSON STRICT pour optimiser la longévité et la forme du patient.
 Format de sortie EXACT (aucun préambule, aucun markdown):
 

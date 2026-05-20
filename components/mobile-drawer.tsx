@@ -30,7 +30,7 @@ const groups: Group[] = [
   {
     label: "Insights",
     items: [
-      { href: "/chat", label: "Panel médical", icon: MessageSquare },
+      { href: "/chat", label: "Équipe médicale", icon: MessageSquare },
       { href: "/reports", label: "Rapports", icon: FileText },
       { href: "/correlations", label: "Corrélations", icon: GitMerge },
       { href: "/timeline", label: "Timeline", icon: Clock },

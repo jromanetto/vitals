@@ -163,7 +163,7 @@ export default function ChatPage() {
         ) : (
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             <div className="text-[11px] text-muted-foreground mb-2 leading-relaxed">
-              Recherche directe dans tes documents indexés (rapports, consultations, notes). Pour creuser, demande au panel médical.
+              Recherche directe dans tes documents indexés (rapports, consultations, notes). Pour creuser, demande à l'équipe médicale.
             </div>
             <KnowledgeSearch compact />
           </div>
@@ -173,14 +173,14 @@ export default function ChatPage() {
       <div className="flex flex-col min-h-0">
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="h-5 w-5 text-emerald" />
-          <h1 className="text-2xl font-semibold tracking-tight">Panel médical</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Équipe médicale</h1>
           <span className="text-xs text-muted-foreground ml-2">médecin fonctionnel · généticien · nutrithérapeute · endocrinologue</span>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin">
           {msgs.length === 0 && (
             <div className="text-muted-foreground text-sm space-y-3">
-              Pose une question à ton panel médical. Tu peux parler comme à un médecin qui a tout ton dossier sous les yeux. Exemples :
+              Pose une question à ton équipe médicale. Tu peux parler comme à un médecin qui a tout ton dossier sous les yeux. Exemples :
               <ul className="mt-2 space-y-1.5 text-xs">
                 {[
                   "Avec mon APOE4 et mon LDL actuel, quelle est ma stratégie cardio sur 5 ans ?",
@@ -225,7 +225,7 @@ export default function ChatPage() {
         </div>
 
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="mt-3 flex gap-2">
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Parle à ton panel médical…"
+          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Parle à ton équipe médicale…"
                  className="flex-1 bg-secondary/40 border border-border rounded-md px-3 py-2.5 outline-none focus:border-primary transition" />
           <button id="chat-send-btn" className="px-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50" disabled={loading || !input.trim()}>
             <Send className="h-4 w-4" />

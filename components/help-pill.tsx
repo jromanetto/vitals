@@ -11,7 +11,7 @@ type Props = {
   explanation?: string;
 };
 
-export function HelpPill({ question, label = "Demander au panel médical", title, explanation }: Props) {
+export function HelpPill({ question, label = "Demander à l'équipe médicale", title, explanation }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const href = `/chat?ask=${encodeURIComponent(question)}`;
@@ -73,7 +73,7 @@ export function HelpPill({ question, label = "Demander au panel médical", title
               onClick={() => setOpen(false)}
               className="inline-flex items-center gap-1 text-xs text-emerald hover:underline pt-1"
             >
-              <Sparkles className="h-3 w-3" /> En savoir plus avec le panel médical <ArrowRight className="h-3 w-3" />
+              <Sparkles className="h-3 w-3" /> En savoir plus avec l&apos;équipe médicale <ArrowRight className="h-3 w-3" />
             </Link>
           </motion.div>
         )}

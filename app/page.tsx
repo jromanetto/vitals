@@ -3,7 +3,7 @@ import { ArrowRight, Activity, Brain, Dna, Pill, Target, Heart, FlaskConical, Sp
 
 export const metadata = {
   title: "Vitals — La plateforme de santé qui te connaît mieux que ton médecin",
-  description: "Centralise tes bilans sanguins, ADN, suppléments et wearables. Le panel médical IA t'explique tout.",
+  description: "Centralise tes bilans sanguins, ADN, suppléments et wearables. L'équipe médicale IA t'explique tout.",
 };
 
 export default function LandingPage() {
@@ -35,7 +35,7 @@ export default function LandingPage() {
             La plateforme de santé qui te <span className="text-emerald">connaît mieux</span> que ton médecin
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground mt-6 max-w-2xl mx-auto leading-relaxed">
-            Centralise tes bilans sanguins, ton ADN, tes suppléments et tes wearables. Le panel médical IA t'explique tout, en français, et te guide vers la longévité.
+            Centralise tes bilans sanguins, ton ADN, tes suppléments et tes wearables. L&apos;équipe médicale IA t&apos;explique tout, en français, et te guide vers la longévité.
           </p>
           <div className="flex items-center justify-center gap-3 mt-10 flex-wrap">
             <Link href="/signup" className="px-5 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition inline-flex items-center gap-2">
@@ -83,7 +83,7 @@ export default function LandingPage() {
             {[
               { n: "1", t: "Crée ton compte", d: "Email, mot de passe. Hébergement EU, chiffré." },
               { n: "2", t: "Importe ton 1er bilan", d: "PDF, photo, ou saisie manuelle. L'IA détecte tout." },
-              { n: "3", t: "Discute avec le panel", d: "Pose tes questions comme à un médecin qui a tout ton dossier." },
+              { n: "3", t: "Discute avec ton équipe", d: "Pose tes questions comme à un médecin qui a tout ton dossier." },
               { n: "4", t: "Suis ton plan", d: "Sommeil, sport, nutrition. Score quotidien, rappels santé." },
             ].map((s, i) => (
               <div key={i} className="relative">
@@ -103,10 +103,10 @@ export default function LandingPage() {
       <section className="max-w-6xl mx-auto px-6 py-20">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Panel médical IA</div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Équipe médicale IA</div>
             <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Comme un médecin qui a vraiment lu ton dossier</h2>
             <p className="text-muted-foreground mt-4 leading-relaxed">
-              Médecin fonctionnel, généticien, nutrithérapeute, endocrinologue : un panel d'experts virtuels qui croisent tes données et te répondent en langage clair.
+              Médecin fonctionnel, généticien, nutrithérapeute, endocrinologue : une équipe d&apos;experts virtuels qui croisent tes données et te répondent en langage clair.
             </p>
             <ul className="mt-6 space-y-3 text-sm">
               {[
@@ -125,7 +125,7 @@ export default function LandingPage() {
           <div className="rounded-2xl border border-border bg-card p-6 shadow-2xl">
             <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
               <Sparkles className="h-4 w-4 text-emerald" />
-              <span className="font-semibold">Panel médical</span>
+              <span className="font-semibold">Équipe médicale</span>
               <span className="text-xs text-muted-foreground ml-auto">médecin · généticien · nutrithérapeute</span>
             </div>
             <div className="space-y-3 text-sm">
@@ -174,7 +174,7 @@ export default function LandingPage() {
               <p className="text-sm text-muted-foreground mb-4">Pour optimiser ta longévité</p>
               <ul className="text-sm space-y-2">
                 <li>✓ Bilans illimités</li>
-                <li>✓ Chat illimité avec panel médical</li>
+                <li>✓ Chat illimité avec équipe médicale</li>
                 <li>✓ Sync wearables (Whoop, Oura, Apple Health)</li>
                 <li>✓ Plan d'action quotidien IA</li>
                 <li>✓ Comparaison de bilans</li>

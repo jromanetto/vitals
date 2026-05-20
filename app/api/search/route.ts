@@ -14,7 +14,7 @@ const PAGES: Hit[] = [
   { kind: "page", title: "ADN", subtitle: "variants génétiques par catégorie", href: "/dna" },
   { kind: "page", title: "Plan d'action", subtitle: "sommeil · sport · nutrition", href: "/action-plan" },
   { kind: "page", title: "Vue praticien", subtitle: "résumé imprimable pour ton médecin", href: "/praticien" },
-  { kind: "page", title: "Panel médical", subtitle: "discuter de tes données", href: "/chat" },
+  { kind: "page", title: "Équipe médicale", subtitle: "discuter de tes données", href: "/chat" },
   { kind: "page", title: "Documents", subtitle: "recherche dans tes documents", href: "/chat?tab=docs" },
   { kind: "page", title: "Rapports", href: "/reports" },
   { kind: "page", title: "Timeline", href: "/timeline" },
@@ -39,7 +39,7 @@ const ACTIONS: Hit[] = [
   { kind: "action", title: "+ Nouveau rappel", subtitle: "prise de sang, cure, RDV", href: "/reminders?new=1" },
   { kind: "action", title: "+ Nouveau symptôme", subtitle: "logger un événement santé", href: "/symptoms?new=1" },
   { kind: "action", title: "↑ Importer un fichier", subtitle: "PDF, ADN, CSV wearable", href: "/import" },
-  { kind: "action", title: "💬 Demander au panel médical", subtitle: "question libre", href: "/chat" },
+  { kind: "action", title: "💬 Demander à l'équipe médicale", subtitle: "question libre", href: "/chat" },
   { kind: "action", title: "📋 Générer un rapport longévité", subtitle: "synthèse complète", href: "/reports" },
   { kind: "action", title: "🖨 Imprimer ma vue praticien", subtitle: "résumé pour mon médecin", href: "/praticien" },
 ];

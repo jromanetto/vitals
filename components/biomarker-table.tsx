@@ -196,7 +196,7 @@ export function BiomarkerTable() {
                             <Link href={`/biomarkers/${r.slug}`} className="text-sm font-medium hover:text-emerald transition">{r.name}</Link>
                             <HelpPill
                               title={r.name}
-                              explanation={BIOMARKER_EXPLANATIONS[r.slug] ?? `${r.name} — biomarqueur sanguin. Clique pour demander à ton panel médical une explication détaillée et adaptée à ton profil.`}
+                              explanation={BIOMARKER_EXPLANATIONS[r.slug] ?? `${r.name} — biomarqueur sanguin. Clique pour demander à ton équipe médicale une explication détaillée et adaptée à ton profil.`}
                               question={`Mon ${r.name} est à ${fmtValue(r.value)} ${r.unit ?? ""}${r.refLow != null && r.refHigh != null ? ` (réf. labo ${r.refLow}–${r.refHigh})` : ""}${r.longevityLow != null && r.longevityHigh != null ? ` (cible longévité ${r.longevityLow}–${r.longevityHigh})` : ""}. Statut: ${cfg.label}. Explique-moi ce que ça veut dire pour ma santé, et comment l'optimiser concrètement (nutrition, supplémentation, lifestyle).`}
                             />
                             {fresh === "stale" && (

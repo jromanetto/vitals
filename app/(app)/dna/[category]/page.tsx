@@ -36,9 +36,9 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
                   <h3 className="font-medium tracking-tight">{r.trait}</h3>
                   <HelpPill
                     title={r.trait}
-                    explanation={r.summary ?? r.effect ?? `Variant génétique ${r.rsid}. Clique pour demander à ton panel médical une explication détaillée et adaptée à ton génotype.`}
+                    explanation={r.summary ?? r.effect ?? `Variant génétique ${r.rsid}. Clique pour demander à ton équipe médicale une explication détaillée et adaptée à ton génotype.`}
                     question={`J'ai le variant ${r.rsid} (${r.trait}) avec le génotype ${r.userGenotype ?? "inconnu"}. Explique-moi en termes simples ce que ça veut dire pour ma santé, et quelles actions concrètes je peux prendre (nutrition, supplémentation, sport, sommeil, monitoring biomarqueurs).`}
-                    label={`Demander au panel médical à propos de ${r.trait}`}
+                    label={`Demander à l'équipe médicale à propos de ${r.trait}`}
                   />
                 </div>
                 <div className="text-xs text-muted-foreground font-mono mt-0.5">{r.rsid} · génotype {r.userGenotype ?? "?"}</div>

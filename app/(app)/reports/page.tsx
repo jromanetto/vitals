@@ -84,8 +84,8 @@ export default async function ReportsPage() {
         <EmptyState
           icon={<FileText />}
           title="Aucun rapport généré"
-          description="Génère ton premier rapport depuis le panel médical."
-          actionLabel="Demander au panel"
+          description="Génère ton premier rapport depuis l'équipe médicale."
+          actionLabel="Demander à l'équipe"
           actionHref="/chat"
         />
       ) : (

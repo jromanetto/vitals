@@ -3,6 +3,7 @@ import { db, schema } from "@/lib/db";
 import { sql } from "drizzle-orm";
 import { StatCard } from "@/components/stat-card";
 import { HomeHero } from "@/components/home-hero";
+import { HomeChatBar } from "@/components/home-chat-bar";
 import { computeLongevityScore } from "@/lib/scoring/longevity";
 import { HomeScoreCard } from "@/components/home-score-card";
 import { HomeSparklines } from "@/components/home-sparklines";
@@ -46,6 +47,7 @@ export default async function Home() {
   return (
     <div className="space-y-14 md:space-y-16">
       <HomeHero />
+      <HomeChatBar />
       <OnboardingModal documents={stats.documents} />
 
       {/* Score longévité */}

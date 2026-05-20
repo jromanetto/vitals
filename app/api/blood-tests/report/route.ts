@@ -93,7 +93,7 @@ export async function GET(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "anthropic api key missing" }, { status: 500 });
 
   const client = new Anthropic({ apiKey });
-  const sys = `Tu es un panel médical (médecin fonctionnel + biologiste + nutrithérapeute longévité).
+  const sys = `Tu es une équipe médicale (médecin fonctionnel + biologiste + nutrithérapeute longévité).
 Tu produis un compte-rendu STRUCTURÉ d'une prise de sang spécifique au format JSON STRICT.
 Tu compares à la prise précédente quand disponible. Tu emploies un ton bienveillant, factuel et orienté action.
 Aucun préambule, aucun markdown — uniquement le JSON.

@@ -144,7 +144,7 @@ export default function ActionPlanPage() {
                     href={`/chat?ask=${encodeURIComponent(`Approfondis le pilier ${p.label} de mon plan d'action: ${p.goal}. Donne-moi un protocole détaillé sur 4 semaines avec des étapes hebdomadaires concrètes.`)}`}
                     className="inline-flex items-center gap-1 text-xs text-emerald hover:underline"
                   >
-                    Approfondir avec le panel médical <ArrowRight className="h-3 w-3" />
+                    Approfondir avec l&apos;équipe médicale <ArrowRight className="h-3 w-3" />
                   </Link>
                 </motion.div>
               );
@@ -162,7 +162,7 @@ export default function ActionPlanPage() {
                   <li key={i} className="text-xs leading-relaxed flex items-start gap-2">
                     <span className="text-amber-400 shrink-0">▸</span>
                     <span className="flex-1">{r}</span>
-                    <HelpPill question={`Explique-moi en détail ce point d'attention identifié par mon panel: ${r}. Quelles actions concrètes je peux prendre cette semaine ?`} />
+                    <HelpPill question={`Explique-moi en détail ce point d'attention identifié par mon équipe médicale: ${r}. Quelles actions concrètes je peux prendre cette semaine ?`} />
                   </li>
                 ))}
               </ul>
@@ -184,7 +184,7 @@ export default function ActionPlanPage() {
 
           <div className="text-center pt-4">
             <Link href="/chat" className="inline-flex items-center gap-2 text-sm text-emerald hover:underline">
-              <Sparkles className="h-4 w-4" /> Discuter du plan complet avec ton panel médical
+              <Sparkles className="h-4 w-4" /> Discuter du plan complet avec ton équipe médicale
             </Link>
           </div>
         </>
