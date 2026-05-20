@@ -57,7 +57,7 @@ export function BiomarkerStatusBar({ value, refLow, refHigh, longevityLow, longe
   const userPos = pct(value);
 
   return (
-    <div className="space-y-1.5 pt-3 pb-1">
+    <div className="relative pt-7 pb-5">
       {/* Bar */}
       <div className="relative h-2.5 w-full rounded-full bg-secondary/50 overflow-visible">
         {/* Lab range zone (sky tint) */}
@@ -104,10 +104,10 @@ export function BiomarkerStatusBar({ value, refLow, refHigh, longevityLow, longe
         >
           <div className={`h-3.5 w-3.5 rounded-full border-2 border-background shadow-lg ${MARKER_COLOR[status]}`} />
         </motion.div>
-        {/* Value label above marker */}
+        {/* Value label above marker — chip-style so it remains readable next to a tick */}
         <motion.div
           initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
-          className={`absolute -top-5 -translate-x-1/2 text-[10px] font-mono font-semibold tabular-nums whitespace-nowrap ${VALUE_TEXT[status]}`}
+          className={`absolute -top-6 -translate-x-1/2 text-[10px] font-mono font-semibold tabular-nums whitespace-nowrap px-1 rounded bg-background/80 ${VALUE_TEXT[status]}`}
           style={{ left: `${userPos}%` }}
         >
           {fmtN(value)}

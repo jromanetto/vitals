@@ -3,6 +3,7 @@ import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
+import { convertValue } from "@/lib/parsers/normalize-units";
 
 export const runtime = "nodejs";
 
@@ -72,6 +73,31 @@ export async function GET(req: Request) {
     const b = dateB != null ? valueNearDate(sqlite, userId, m.slug, dateB) : null;
     if (!a && !b) continue; // not measured anywhere near either target
     const meta = META_BY_SLUG[m.slug];
+    let optimalLow = meta?.optimalLow ?? null;
+    let optimalHigh = meta?.optimalHigh ?? null;
+    let longevityLow = meta?.longevityLow ?? null;
+    let longevityHigh = meta?.longevityHigh ?? null;
+    // Convert meta ranges into the user's unit so the bar/scoring stays consistent.
+    if (meta && m.unit && m.unit !== meta.unit) {
+      const c = (v: number | null) => v == null ? null : convertValue(m.slug, meta.unit, m.unit!, v);
+      const newOL = c(optimalLow);
+      const newOH = c(optimalHigh);
+      const newLL = c(longevityLow);
+      const newLH = c(longevityHigh);
+      const failed =
+        (optimalLow != null && newOL == null) ||
+        (optimalHigh != null && newOH == null) ||
+        (longevityLow != null && newLL == null) ||
+        (longevityHigh != null && newLH == null);
+      if (failed) {
+        optimalLow = optimalHigh = longevityLow = longevityHigh = null;
+      } else {
+        optimalLow = newOL;
+        optimalHigh = newOH;
+        longevityLow = newLL;
+        longevityHigh = newLH;
+      }
+    }
     rows.push({
       slug: m.slug,
       name: m.name,
@@ -79,10 +105,10 @@ export async function GET(req: Request) {
       unit: m.unit ?? meta?.unit ?? null,
       refLow: m.refLow,
       refHigh: m.refHigh,
-      optimalLow: meta?.optimalLow ?? null,
-      optimalHigh: meta?.optimalHigh ?? null,
-      longevityLow: meta?.longevityLow ?? null,
-      longevityHigh: meta?.longevityHigh ?? null,
+      optimalLow,
+      optimalHigh,
+      longevityLow,
+      longevityHigh,
       valueA: a?.value ?? null,
       valueB: b?.value ?? null,
       dateA: a?.date ?? null,

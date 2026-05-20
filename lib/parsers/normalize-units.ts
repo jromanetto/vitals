@@ -240,3 +240,32 @@ export function normalizeUnits(slug: string, value: number, unit: string | null)
 
   return { value: convertedValue, unit: conv.canonical };
 }
+
+/**
+ * Convert a numeric value between two units for a known biomarker.
+ * Uses canonical as pivot: factors[X] is the multiplier from X → canonical,
+ * so X → Y is value × factors[X] / factors[Y].
+ *
+ * Returns null when slug has no conversion table, or either unit is unmapped.
+ * Pass-through (value as-is) when fromUnit === toUnit.
+ */
+export function convertValue(slug: string, fromUnit: string, toUnit: string, value: number): number | null {
+  if (fromUnit === toUnit) return value;
+  const conv = TBL[slug];
+  if (!conv) return null;
+
+  const lookup = (u: string): number | null => {
+    const trimmed = u.replace(/µ/g, "μ").trim();
+    if (trimmed === conv.canonical) return 1;
+    if (conv.factors?.[trimmed] !== undefined) return conv.factors[trimmed];
+    const ciKey = Object.keys(conv.factors ?? {}).find((k) => k.toLowerCase() === trimmed.toLowerCase());
+    if (ciKey) return conv.factors![ciKey];
+    return null;
+  };
+
+  const fromFactor = lookup(fromUnit);
+  const toFactor = lookup(toUnit);
+  if (fromFactor == null || toFactor == null) return null;
+
+  return (value * fromFactor) / toFactor;
+}

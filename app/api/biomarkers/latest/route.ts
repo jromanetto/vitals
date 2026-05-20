@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { sql } from "drizzle-orm";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
+import { convertValue } from "@/lib/parsers/normalize-units";
 
 export const runtime = "nodejs";
 
@@ -36,10 +37,34 @@ export async function GET() {
 
   const enriched = deduped.map((r) => {
     const meta = META_BY_SLUG[r.slug];
-    const optimalLow = meta?.optimalLow ?? null;
-    const optimalHigh = meta?.optimalHigh ?? null;
-    const longevityLow = meta?.longevityLow ?? null;
-    const longevityHigh = meta?.longevityHigh ?? null;
+    let optimalLow = meta?.optimalLow ?? null;
+    let optimalHigh = meta?.optimalHigh ?? null;
+    let longevityLow = meta?.longevityLow ?? null;
+    let longevityHigh = meta?.longevityHigh ?? null;
+
+    // Convert meta ranges into the user's unit so status + bar plot stays consistent.
+    // Without this, a row stored in g/L with meta in mg/dL gets a marker stuck at ~1.5%
+    // and status compares raw numbers (1.27 ≤ 70 → "optimal" — wrong).
+    if (meta && r.unit && r.unit !== meta.unit) {
+      const c = (v: number | null) => v == null ? null : convertValue(r.slug, meta.unit, r.unit!, v);
+      const newOL = c(optimalLow);
+      const newOH = c(optimalHigh);
+      const newLL = c(longevityLow);
+      const newLH = c(longevityHigh);
+      const failed =
+        (optimalLow != null && newOL == null) ||
+        (optimalHigh != null && newOH == null) ||
+        (longevityLow != null && newLL == null) ||
+        (longevityHigh != null && newLH == null);
+      if (failed) {
+        optimalLow = optimalHigh = longevityLow = longevityHigh = null;
+      } else {
+        optimalLow = newOL;
+        optimalHigh = newOH;
+        longevityLow = newLL;
+        longevityHigh = newLH;
+      }
+    }
 
     // 4-level status: optimal (in longevity range) > normal (in lab range or optimal) > slightly-off (within 15% of nearest bound) > attention (significantly out)
     let status: "optimal" | "normal" | "slightly-off" | "attention" | "unknown" = "unknown";
