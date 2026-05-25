@@ -2,9 +2,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Check, AlertTriangle, ArrowRight, Sparkles, FileText, Heart, Activity } from "lucide-react";
+import { Loader2, Check, AlertTriangle, ArrowRight, Sparkles, FileText, Heart, Activity, Upload } from "lucide-react";
 
-type CardKind = "biomarker" | "dna-protective" | "lifestyle-fallback" | "family-risk" | "symptoms-fallback";
+type CardKind = "biomarker" | "dna-protective" | "lifestyle-fallback" | "family-risk" | "symptoms-fallback" | "empty-state";
 
 type GeneratedCard = { index: number; kind: CardKind; title: string; body: string };
 type RedFlagAlert = { labels: string[]; body: string };
@@ -29,12 +29,14 @@ const STEPS = [
 function cardIcon(kind: CardKind) {
   if (kind === "biomarker") return <Activity className="h-4 w-4" />;
   if (kind === "dna-protective" || kind === "lifestyle-fallback") return <Heart className="h-4 w-4" />;
+  if (kind === "empty-state") return <Upload className="h-4 w-4" />;
   return <AlertTriangle className="h-4 w-4" />;
 }
 
 function cardTone(kind: CardKind) {
   if (kind === "biomarker") return "border-amber-500/30 bg-amber-500/5";
   if (kind === "dna-protective" || kind === "lifestyle-fallback") return "border-emerald/30 bg-emerald/5";
+  if (kind === "empty-state") return "border-sky-500/30 bg-sky-500/5";
   return "border-red-500/30 bg-red-500/5";
 }
 
@@ -216,28 +218,51 @@ export function WelcomeReportClient({
             </AnimatePresence>
           </div>
 
-          <div className="pt-4 border-t border-border space-y-3">
-            <Link
-              href="/data/profile?tab=identite&prefill=1"
-              className="block w-full px-4 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
-            >
-              <Sparkles className="h-4 w-4" /> Compléter mon profil détaillé
-            </Link>
-            <div className="flex gap-2">
-              <Link
-                href="/reports"
-                className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-sm flex items-center justify-center gap-2"
-              >
-                <FileText className="h-4 w-4" /> Doctor Pack
-              </Link>
-              <Link
-                href="/dashboard"
-                className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-sm flex items-center justify-center gap-2"
-              >
-                Dashboard <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          </div>
+          {(() => {
+            const isEmptyOnly = (meta.cards ?? []).length === 1 && meta.cards![0].kind === "empty-state";
+            if (isEmptyOnly) {
+              return (
+                <div className="pt-4 border-t border-border space-y-3">
+                  <Link
+                    href="/import"
+                    className="block w-full px-4 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
+                  >
+                    <Upload className="h-4 w-4" /> Importer mes documents
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="block w-full px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-sm flex items-center justify-center gap-2"
+                  >
+                    Aller au dashboard <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              );
+            }
+            return (
+              <div className="pt-4 border-t border-border space-y-3">
+                <Link
+                  href="/data/profile?tab=identite&prefill=1"
+                  className="block w-full px-4 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center justify-center gap-2"
+                >
+                  <Sparkles className="h-4 w-4" /> Compléter mon profil détaillé
+                </Link>
+                <div className="flex gap-2">
+                  <Link
+                    href="/reports"
+                    className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-sm flex items-center justify-center gap-2"
+                  >
+                    <FileText className="h-4 w-4" /> Doctor Pack
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="flex-1 px-4 py-2.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-sm flex items-center justify-center gap-2"
+                  >
+                    Dashboard <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+            );
+          })()}
 
           <p className="text-[10px] text-muted-foreground text-center px-4 leading-relaxed">
             Cette analyse est générée par IA à partir des données que tu nous as fournies. Vitals n&apos;est pas un dispositif médical et ne remplace jamais un avis médical. Discute toujours les résultats avec un professionnel de santé qualifié.

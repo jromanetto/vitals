@@ -63,7 +63,7 @@ export default function SignupPage() {
             <Sparkles className="h-3.5 w-3.5" /> Bêta privée
           </div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">Créer mon compte</h1>
-          <p className="text-sm text-muted-foreground mb-4">5 minutes pour démarrer ton dossier santé.</p>
+          <p className="text-sm text-muted-foreground mb-4">Quelques minutes pour démarrer ton dossier santé.</p>
           {hasInvite && (
             <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md border border-emerald/30 bg-emerald/10 text-emerald text-xs">
               <Ticket className="h-3.5 w-3.5 shrink-0" />
@@ -94,13 +94,11 @@ export default function SignupPage() {
                   {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {pwd.length > 0 && (
-                <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
-                  <Check label="≥ 10 car." ok={pwdLen} />
-                  <Check label="1 maj." ok={pwdHasUpper} />
-                  <Check label="1 chiffre" ok={pwdHasDigit} />
-                </div>
-              )}
+              <div className="mt-2 grid grid-cols-3 gap-1.5 text-[10px]">
+                <Check label="≥ 10 car." ok={pwdLen} />
+                <Check label="1 maj." ok={pwdHasUpper} />
+                <Check label="1 chiffre" ok={pwdHasDigit} />
+              </div>
             </div>
 
             <div>

@@ -158,7 +158,7 @@ Rédige la carte "Symptômes à surveiller" en 3 lignes. Reconnaître les sympt�
 
 export type GeneratedCard = {
   index: number;
-  kind: "biomarker" | "dna-protective" | "lifestyle-fallback" | "family-risk" | "symptoms-fallback";
+  kind: "biomarker" | "dna-protective" | "lifestyle-fallback" | "family-risk" | "symptoms-fallback" | "empty-state";
   title: string;
   body: string;
 };
@@ -213,6 +213,21 @@ export async function generateWelcomeReport(signals: SignalSet): Promise<{
         (signals.card3.kind === "family-risk"
           ? `Antécédent familial: ${signals.card3.diseaseLabel}. Un dépistage régulier est recommandé. Discute avec ton médecin.`
           : "Tu as déclaré quelques symptômes — n'hésite pas à en parler à un médecin si ça persiste."),
+    });
+  }
+
+  // Zero-data fallback — when select-signals couldn't find anything to talk
+  // about, we still show a card so the user doesn't land on an empty page.
+  // This is the new-tester first-run case (signed up, didn't upload anything).
+  if (cards.length === 0) {
+    cards.push({
+      index: 0,
+      kind: "empty-state",
+      title: "Prêt à commencer",
+      body:
+        "On n'a pas encore assez de données pour faire ressortir des signaux personnalisés.\n" +
+        "Importe un bilan sanguin (PDF), un export 23andMe ou un CSV wearable depuis l'écran Import.\n" +
+        "Dès le premier document, ton Welcome Report se remplit avec des insights chiffrés.",
     });
   }
 

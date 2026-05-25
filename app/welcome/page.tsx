@@ -1,9 +1,9 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, Loader2, Upload, Check, Sparkles } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, Upload, Check, Sparkles, AlertCircle, RotateCcw } from "lucide-react";
 
 // ---------- Option lists ----------
 const SEX_OPTIONS = [
@@ -196,6 +196,17 @@ export default function WelcomePage() {
 
   const [savingProfile, setSavingProfile] = useState(false);
 
+  // One AbortController for the whole wizard — aborts all pending uploads
+  // and the auto-extract fetch if the user navigates away mid-flight.
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    abortRef.current = new AbortController();
+    return () => { abortRef.current?.abort(); };
+  }, []);
+  function isAborted(): boolean {
+    return abortRef.current?.signal.aborted ?? false;
+  }
+
   // ---------- Derived ----------
   const age = useMemo(() => computeAge(birthDate), [birthDate]);
 
@@ -248,8 +259,14 @@ export default function WelcomePage() {
     try {
       const fd = new FormData();
       fd.append("files", item.file);
-      const r = await fetch("/api/upload/auto", { method: "POST", body: fd });
+      const r = await fetch("/api/upload/auto", {
+        method: "POST",
+        body: fd,
+        signal: abortRef.current?.signal,
+      });
+      if (isAborted()) return;
       const d = await r.json();
+      if (isAborted()) return;
       const result = (d.results || [])[0] ?? {};
       const ok = result.status === "ok";
       setUploadItems((items) =>
@@ -261,12 +278,14 @@ export default function WelcomePage() {
                 detected: result.detected,
                 detectedLabel: labelForDetected(result.detected),
                 message: result.message,
-                error: ok ? undefined : result.message || "Échec de l'import",
+                error: ok ? undefined : result.message || (r.status >= 500 ? "Erreur serveur — réessaye dans un instant" : "Échec de l'import"),
               }
             : x,
         ),
       );
     } catch (e) {
+      // Silent on abort (user navigated away). Surface real errors.
+      if ((e as Error).name === "AbortError" || isAborted()) return;
       setUploadItems((items) =>
         items.map((x) => (x.id === item.id ? { ...x, status: "error", error: (e as Error).message } : x)),
       );
@@ -287,6 +306,28 @@ export default function WelcomePage() {
 
   // Once all uploads are done with at least one OK, kick off auto-extract in
   // the background so the wizard has fresh data ready when the user lands.
+  // Wrapped in useCallback-style closure so the retry button can re-trigger it.
+  async function runAutoExtract() {
+    setExtractStatus("running");
+    try {
+      const r = await fetch("/api/profile/auto-extract", {
+        method: "POST",
+        signal: abortRef.current?.signal,
+      });
+      if (isAborted()) return;
+      if (!r.ok) { setExtractStatus("error"); return; }
+      const d = await r.json();
+      if (isAborted()) return;
+      const extracted = d?.extracted as Record<string, unknown> | undefined;
+      const memories = (d?.memories as string[] | undefined) ?? [];
+      const n = (extracted ? Object.keys(extracted).filter((k) => k !== "_memories").length : 0) + memories.length;
+      setExtractCount(n);
+      setExtractStatus("done");
+    } catch (e) {
+      if ((e as Error).name === "AbortError" || isAborted()) return;
+      setExtractStatus("error");
+    }
+  }
   useEffect(() => {
     if (uploadItems.length === 0) return;
     if (extractStatus !== "idle") return;
@@ -294,52 +335,14 @@ export default function WelcomePage() {
     if (stillRunning) return;
     const anyOk = uploadItems.some((x) => x.status === "done");
     if (!anyOk) return;
-    // Fire and forget — server takes 30+ seconds; we don't block the UI.
-    setExtractStatus("running");
-    fetch("/api/profile/auto-extract", { method: "POST" })
-      .then(async (r) => {
-        if (!r.ok) { setExtractStatus("error"); return; }
-        const d = await r.json();
-        const extracted = d?.extracted as Record<string, unknown> | undefined;
-        const memories = (d?.memories as string[] | undefined) ?? [];
-        const n = (extracted ? Object.keys(extracted).filter((k) => k !== "_memories").length : 0) + memories.length;
-        setExtractCount(n);
-        setExtractStatus("done");
-      })
-      .catch(() => setExtractStatus("error"));
+    runAutoExtract();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadItems, extractStatus]);
 
-  // ---------- Validation per step ----------
-  function canProceed(key: StepKey): boolean {
-    switch (key) {
-      case "welcome":
-        return true;
-      case "identity":
-        return Boolean(firstName || birthDate || sex);
-      case "anthro":
-        return Boolean(height || weight || bloodType);
-      case "lifestyle":
-        return Boolean(activityLevel || sleepHours || smoker);
-      case "cycle":
-        return true; // optional
-      case "goals":
-        return goals.length > 0;
-      case "family":
-        return true; // optional but skippable via "Aucun" pattern -> still allow next
-      case "screenings":
-        return true;
-      case "symptoms":
-        return true;
-      case "wearables":
-        return true;
-      case "upload":
-        return true;
-      default:
-        return true;
-    }
-  }
-
-  // ---------- Navigation + persistence per step ----------
+  // Navigation + persistence per step. Every step is permissive — the data
+  // persists in /data/profile and can be filled in anytime later. Pinning the
+  // user behind "must select" walls during the WOW first-run was the wrong
+  // tradeoff.
   async function persistForStep(key: StepKey) {
     switch (key) {
       case "identity":
@@ -394,12 +397,8 @@ export default function WelcomePage() {
   function skip() {
     router.push("/dashboard");
   }
-  function skipStep() {
-    if (stepIdx < totalSteps - 1) setStepIdx(stepIdx + 1);
-  }
 
   const isLast = currentKey === "upload";
-  const proceedEnabled = canProceed(currentKey);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald/5 via-background to-background flex flex-col">
@@ -417,16 +416,20 @@ export default function WelcomePage() {
 
       <div className="flex-1 flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-xl">
-          {/* Progress dots */}
-          <div className="flex items-center justify-center gap-2 mb-10">
-            {Array.from({ length: totalSteps }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-1.5 rounded-full transition-all ${
-                  i === stepIdx ? "w-8 bg-emerald" : i < stepIdx ? "w-1.5 bg-emerald/50" : "w-1.5 bg-border"
-                }`}
+          {/* Progress bar + step counter */}
+          <div className="mb-10">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mb-2 tabular-nums">
+              <span>Étape {stepIdx + 1} / {totalSteps}</span>
+              <span>{Math.round(((stepIdx + 1) / totalSteps) * 100)}%</span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-secondary/40 overflow-hidden">
+              <motion.div
+                className="h-full bg-emerald"
+                initial={false}
+                animate={{ width: `${((stepIdx + 1) / totalSteps) * 100}%` }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               />
-            ))}
+            </div>
           </div>
 
           <AnimatePresence mode="wait">
@@ -443,7 +446,7 @@ export default function WelcomePage() {
                   <div className="text-6xl mb-4">👋</div>
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Bienvenue sur Vitals</h1>
                   <p className="text-muted-foreground leading-relaxed mb-6">
-                    10 minutes pour poser les bases de ton dossier santé. Toutes les questions sont facultatives.
+                    Quelques minutes pour poser les bases de ton dossier santé. Toutes les questions sont optionnelles — plus tu remplis, mieux c&apos;est.
                   </p>
                   <div className="flex items-center gap-3">
                     <button
@@ -486,9 +489,9 @@ export default function WelcomePage() {
                         onChange={(e) => setBirthDate(e.target.value)}
                         className="w-full bg-secondary/40 border border-border rounded-md px-3 py-2 text-sm outline-none focus:border-primary"
                       />
-                      {age !== null && (
-                        <div className="text-xs text-muted-foreground mt-1.5">{age} ans</div>
-                      )}
+                      <div className="text-xs text-muted-foreground mt-1.5">
+                        {age !== null ? `${age} ans` : "Format : JJ/MM/AAAA"}
+                      </div>
                     </div>
                     <div>
                       <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-2">
@@ -517,7 +520,7 @@ export default function WelcomePage() {
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Anthropométrie minimale</h1>
                   <p className="text-muted-foreground mb-6">Taille, poids, groupe sanguin.</p>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1.5">
                           Taille (cm)
@@ -651,7 +654,7 @@ export default function WelcomePage() {
                 <>
                   <div className="text-6xl mb-4">🎯</div>
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Objectifs santé</h1>
-                  <p className="text-muted-foreground mb-6">Choisis jusqu'à 3 priorités.</p>
+                  <p className="text-muted-foreground mb-6">Choisis jusqu&apos;à 3 priorités (optionnel).</p>
                   <div className="flex flex-wrap gap-2">
                     {GOALS.map((g) => {
                       const selected = goals.includes(g.id);
@@ -743,7 +746,7 @@ export default function WelcomePage() {
                 <>
                   <div className="text-6xl mb-4">⌚</div>
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Wearables possédés</h1>
-                  <p className="text-muted-foreground mb-6">Optionnel — on les branchera plus tard.</p>
+                  <p className="text-muted-foreground mb-6">Optionnel — coche ceux que tu as. Tu activeras la sync depuis Import après l&apos;onboarding.</p>
                   <div className="flex flex-wrap gap-2">
                     {WEARABLES.map((w) => (
                       <button
@@ -785,7 +788,10 @@ export default function WelcomePage() {
                     }`}
                   >
                     <Upload className="h-8 w-8 text-muted-foreground" />
-                    <div className="text-sm font-medium">Glisse tes fichiers ici ou clique pour choisir</div>
+                    <div className="text-sm font-medium">
+                      <span className="hidden sm:inline">Glisse tes fichiers ici ou clique pour choisir</span>
+                      <span className="sm:hidden">Touche ici pour ouvrir tes fichiers</span>
+                    </div>
                     <div className="text-xs text-muted-foreground">PDF, JPG, PNG, CSV, TXT — plusieurs à la fois</div>
                     <input
                       type="file"
@@ -841,6 +847,26 @@ export default function WelcomePage() {
                         </p>
                       );
                     }
+                    if (allFinished && extractStatus === "error") {
+                      return (
+                        <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+                          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-amber-400 mb-2 font-medium">
+                            <AlertCircle className="h-3.5 w-3.5" /> Extraction IA indisponible
+                          </div>
+                          <p className="text-sm text-muted-foreground mb-3">
+                            Tes documents sont bien importés ({done}/{total}), mais l&apos;analyse automatique a
+                            échoué. Tu peux réessayer maintenant ou continuer — l&apos;extraction se relancera
+                            depuis le profil.
+                          </p>
+                          <button
+                            onClick={() => { setExtractStatus("idle"); runAutoExtract(); }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-card hover:bg-secondary/40 transition text-xs"
+                          >
+                            <RotateCcw className="h-3 w-3" /> Réessayer l&apos;analyse
+                          </button>
+                        </div>
+                      );
+                    }
                     return (
                       <div className="mt-5 rounded-xl border border-emerald/30 bg-emerald/5 p-4">
                         <div className="text-xs uppercase tracking-wider text-emerald mb-2 font-medium">
@@ -888,22 +914,14 @@ export default function WelcomePage() {
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Précédent
               </button>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={skipStep}
-                  className="text-xs text-muted-foreground hover:text-foreground transition"
-                >
-                  Passer cette étape →
-                </button>
-                <button
-                  onClick={next}
-                  disabled={savingProfile || !proceedEnabled}
-                  className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50"
-                >
-                  {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Suivant <ArrowRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <button
+                onClick={next}
+                disabled={savingProfile}
+                className="px-4 py-2 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition flex items-center gap-2 disabled:opacity-50"
+              >
+                {savingProfile ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                Suivant <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
 
