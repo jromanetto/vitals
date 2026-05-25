@@ -25,7 +25,7 @@ export function HomeChatBar() {
     <motion.section
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.05 }}
+      transition={{ duration: 0.25, delay: 0.05 }}
       className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 md:p-8"
     >
       <div className="absolute inset-0 gradient-emerald pointer-events-none opacity-60" />

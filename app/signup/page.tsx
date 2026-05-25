@@ -13,12 +13,24 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteStatus, setInviteStatus] = useState<"none" | "checking" | "valid" | "invalid">("none");
 
-  // Read ?invite=XXX from URL on mount — using window.location instead of
-  // useSearchParams to avoid the Suspense boundary requirement.
+  // Read ?invite=XXX from URL on mount, then ping /api/auth/invite-check to
+  // know whether to show the green "Invitation valide" badge or an amber
+  // "Code invalide" warning. Using window.location instead of useSearchParams
+  // to avoid the Suspense boundary requirement.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setInviteCode((params.get("invite") || "").trim());
+    const code = (params.get("invite") || "").trim();
+    setInviteCode(code);
+    if (!code) { setInviteStatus("none"); return; }
+    setInviteStatus("checking");
+    const ctrl = new AbortController();
+    fetch(`/api/auth/invite-check?code=${encodeURIComponent(code)}`, { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((d) => setInviteStatus(d.valid ? "valid" : "invalid"))
+      .catch(() => { if (!ctrl.signal.aborted) setInviteStatus("invalid"); });
+    return () => ctrl.abort();
   }, []);
   const hasInvite = inviteCode.length > 0;
 
@@ -51,7 +63,7 @@ export default function SignupPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-6 bg-gradient-to-br from-emerald/5 via-background to-background">
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
                   className="w-full max-w-md">
         <Link href="/" className="flex items-center gap-2.5 mb-8 justify-center">
           <div className="h-2.5 w-2.5 rounded-full bg-emerald" />
@@ -64,13 +76,25 @@ export default function SignupPage() {
           </div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">Créer mon compte</h1>
           <p className="text-sm text-muted-foreground mb-4">Quelques minutes pour démarrer ton dossier santé.</p>
-          {hasInvite && (
+          {inviteStatus === "checking" && (
+            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-secondary/40 text-muted-foreground text-xs">
+              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+              <span>Vérification du code d&apos;invitation…</span>
+            </div>
+          )}
+          {inviteStatus === "valid" && (
             <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md border border-emerald/30 bg-emerald/10 text-emerald text-xs">
               <Ticket className="h-3.5 w-3.5 shrink-0" />
               <span>Invitation valide — tu peux créer ton compte directement.</span>
             </div>
           )}
-          {!hasInvite && <div className="mb-2" />}
+          {inviteStatus === "invalid" && (
+            <div className="mb-6 flex items-start gap-2 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs">
+              <Ticket className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>Code d&apos;invitation invalide — vérifie le lien que tu as reçu. Tu peux quand même t&apos;inscrire, mais tu seras ajouté à la liste d&apos;attente.</span>
+            </div>
+          )}
+          {inviteStatus === "none" && <div className="mb-2" />}
 
           <form onSubmit={submit} className="space-y-4">
             <div>

@@ -56,6 +56,17 @@ export function BiomarkerStatusBar({ value, refLow, refHigh, longevityLow, longe
   const longEnd = longevityHigh != null ? pct(longevityHigh) : null;
   const userPos = pct(value);
 
+  // Hide the user-value chip when it would overlap a longevity tick (both
+  // sit above the bar; same horizontal position = the chip's opaque
+  // background hides the tick number). The marker dot + the big value on
+  // the row's right column still convey the value.
+  const TICK_PROXIMITY_PCT = 5;
+  const userOverlapsLongLow =
+    longStart != null && longevityLow !== refLow && Math.abs(userPos - longStart) < TICK_PROXIMITY_PCT;
+  const userOverlapsLongHigh =
+    longEnd != null && longevityHigh !== refHigh && Math.abs(userPos - longEnd) < TICK_PROXIMITY_PCT;
+  const hideUserLabel = userOverlapsLongLow || userOverlapsLongHigh;
+
   return (
     <div className="relative pt-7 pb-5">
       {/* Bar */}
@@ -104,14 +115,18 @@ export function BiomarkerStatusBar({ value, refLow, refHigh, longevityLow, longe
         >
           <div className={`h-3.5 w-3.5 rounded-full border-2 border-background shadow-lg ${MARKER_COLOR[status]}`} />
         </motion.div>
-        {/* Value label above marker — chip-style so it remains readable next to a tick */}
-        <motion.div
-          initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
-          className={`absolute -top-6 -translate-x-1/2 text-[10px] font-mono font-semibold tabular-nums whitespace-nowrap px-1 rounded bg-background/80 ${VALUE_TEXT[status]}`}
-          style={{ left: `${userPos}%` }}
-        >
-          {fmtN(value)}
-        </motion.div>
+        {/* Value label above marker — chip-style so it remains readable next
+            to a tick. Hidden when it would visually mask a nearby longevity
+            tick (proximity check above). */}
+        {!hideUserLabel && (
+          <motion.div
+            initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
+            className={`absolute -top-6 -translate-x-1/2 text-[10px] font-mono font-semibold tabular-nums whitespace-nowrap px-1 rounded bg-background/80 ${VALUE_TEXT[status]}`}
+            style={{ left: `${userPos}%` }}
+          >
+            {fmtN(value)}
+          </motion.div>
+        )}
       </div>
     </div>
   );

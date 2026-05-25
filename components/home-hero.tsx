@@ -6,7 +6,7 @@ export function HomeHero() {
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
+      transition={{ duration: 0.25 }}
       className="relative overflow-hidden rounded-2xl border border-border p-8 md:p-10 bg-card"
     >
       <div className="absolute inset-0 gradient-emerald pointer-events-none" />
