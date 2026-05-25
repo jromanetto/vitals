@@ -74,10 +74,16 @@ export async function POST(req: Request) {
     } catch (e) { console.error("[signup] waitlist insert", e); }
     // Send waitlist confirmation email (best-effort, non-blocking)
     sendEmail({ to: email, ...waitlistTemplate(email) }).catch((e) => console.error("[signup] waitlist email", e));
-    logAudit("signup_waitlist", `email=${email}`, req);
+    // Distinguish "wrong code" from "no code at all" so a legit invitee who
+    // mistyped the code understands what to fix.
+    const wrongCode = inviteCode.length > 0 && !validInvite;
+    logAudit(wrongCode ? "signup_invite_wrong" : "signup_waitlist", `email=${email}`, req);
     return NextResponse.json({
-      error: "La bêta privée est actuellement complète. On t'a ajouté à la liste d'attente — un email de confirmation t'a été envoyé.",
+      error: wrongCode
+        ? "Code d'invitation invalide. Vérifie le lien complet que tu as reçu — en attendant on t'a ajouté à la liste d'attente."
+        : "La bêta privée est actuellement complète. On t'a ajouté à la liste d'attente — un email de confirmation t'a été envoyé.",
       waitlist: true,
+      wrongCode,
     }, { status: 403 });
   }
 
