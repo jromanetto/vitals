@@ -178,15 +178,25 @@ export function WelcomeReportClient({
           animate={{ opacity: 1, y: 0 }}
           className="space-y-6"
         >
-          <div className="text-center space-y-1">
-            <div className="flex items-center justify-center gap-2 text-emerald text-xs font-medium uppercase tracking-wider">
-              <Sparkles className="h-3.5 w-3.5" /> Ton analyse personnalisée
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Voici ce qu&apos;on a remarqué
-            </h1>
-            <p className="text-sm text-muted-foreground">3 choses concrètes à actionner.</p>
-          </div>
+          {(() => {
+            const cards = meta.cards ?? [];
+            const isEmptyOnly = cards.length === 1 && cards[0]?.kind === "empty-state";
+            return (
+              <div className="text-center space-y-1">
+                <div className="flex items-center justify-center gap-2 text-emerald text-xs font-medium uppercase tracking-wider">
+                  <Sparkles className="h-3.5 w-3.5" /> {isEmptyOnly ? "Premier pas" : "Ton analyse personnalisée"}
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight">
+                  {isEmptyOnly ? "On t'attend" : "Voici ce qu'on a remarqué"}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {isEmptyOnly
+                    ? "Importe ton premier document pour débloquer ton analyse personnalisée."
+                    : `${cards.length} choses concrètes à actionner.`}
+                </p>
+              </div>
+            );
+          })()}
 
           {meta.redFlagAlert && meta.redFlagAlert.labels?.length ? (
             <div className="rounded-xl border-2 border-red-500/40 bg-red-500/5 p-4 flex items-start gap-3">

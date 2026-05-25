@@ -432,12 +432,17 @@ export default function WelcomePage() {
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
+          {/* mode="wait" queues exits and gets stuck when the user clicks
+              Suivant faster than 250ms — progress bar advances but content
+              stays on the first step's exit-animating snapshot. popLayout
+              absolutely-positions the exiting node so the new step can mount
+              immediately, and we shorten exit so multi-clicks feel responsive. */}
+          <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={currentKey}
               initial={{ opacity: 0, x: 16 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
+              exit={{ opacity: 0, x: -16, transition: { duration: 0.15 } }}
               transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="rounded-2xl border border-border bg-card p-8 md:p-10"
             >
