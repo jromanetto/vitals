@@ -1,8 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Loader2, Sparkles } from "lucide-react";
+import { Eye, EyeOff, Loader2, Sparkles, Ticket } from "lucide-react";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -12,6 +12,15 @@ export default function SignupPage() {
   const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteCode, setInviteCode] = useState("");
+
+  // Read ?invite=XXX from URL on mount — using window.location instead of
+  // useSearchParams to avoid the Suspense boundary requirement.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setInviteCode((params.get("invite") || "").trim());
+  }, []);
+  const hasInvite = inviteCode.length > 0;
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const pwdLen = pwd.length >= 10;
@@ -29,7 +38,7 @@ export default function SignupPage() {
       const r = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: pwd }),
+        body: JSON.stringify({ email, password: pwd, inviteCode: inviteCode || undefined }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Erreur lors de la création du compte");
@@ -54,7 +63,14 @@ export default function SignupPage() {
             <Sparkles className="h-3.5 w-3.5" /> Bêta privée
           </div>
           <h1 className="text-2xl font-semibold tracking-tight mb-1">Créer mon compte</h1>
-          <p className="text-sm text-muted-foreground mb-6">5 minutes pour démarrer ton dossier santé.</p>
+          <p className="text-sm text-muted-foreground mb-4">5 minutes pour démarrer ton dossier santé.</p>
+          {hasInvite && (
+            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md border border-emerald/30 bg-emerald/10 text-emerald text-xs">
+              <Ticket className="h-3.5 w-3.5 shrink-0" />
+              <span>Invitation valide — tu peux créer ton compte directement.</span>
+            </div>
+          )}
+          {!hasInvite && <div className="mb-2" />}
 
           <form onSubmit={submit} className="space-y-4">
             <div>

@@ -38,10 +38,11 @@ export async function POST(req: Request) {
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`);
 
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; inviteCode?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "invalid body" }, { status: 400 }); }
   const email = (body.email || "").trim().toLowerCase();
   const password = body.password || "";
+  const inviteCode = (body.inviteCode || "").trim();
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Email invalide" }, { status: 400 });
   if (password.length < 10) return NextResponse.json({ error: "Mot de passe trop court (10 caractères minimum)" }, { status: 400 });
@@ -50,9 +51,12 @@ export async function POST(req: Request) {
   const existing = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email) as { id: number } | undefined;
   if (existing) return NextResponse.json({ error: "Cet email est déjà utilisé" }, { status: 409 });
 
-  // For the closed beta we keep enrollment gated: only allow if BETA_OPEN env is true.
-  // Otherwise, return a soft notice that signup is currently waitlist-only.
-  if (process.env.VITALS_BETA_OPEN !== "true") {
+  // Gating: either the beta is fully open, or the request carries a valid invite code.
+  // Anyone else lands on the waitlist.
+  const betaOpen = process.env.VITALS_BETA_OPEN === "true";
+  const envInvite = (process.env.VITALS_INVITE_CODE || "").trim();
+  const validInvite = envInvite.length > 0 && inviteCode === envInvite;
+  if (!betaOpen && !validInvite) {
     // Persist to waitlist table for later invitation
     try {
       sqlite.exec(`CREATE TABLE IF NOT EXISTS waitlist (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), invited_at INTEGER)`);
@@ -79,6 +83,6 @@ export async function POST(req: Request) {
   res.cookies.set("vitals_active", "1", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 15 });
   // Send welcome email (best-effort)
   sendEmail({ to: email, ...welcomeTemplate() }).catch((e) => console.error("[signup] welcome email", e));
-  logAudit("signup", `userId=${userId} email=${email}`, req);
+  logAudit(validInvite ? "signup_invite" : "signup", `userId=${userId} email=${email}`, req);
   return res;
 }
