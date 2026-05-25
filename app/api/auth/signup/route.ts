@@ -25,6 +25,16 @@ function getSessionPassword(): string {
   throw new Error("session secret not configured");
 }
 
+/** Read the shareable invite code from data/auth.json (preferred) or env. */
+function getInviteCode(): string {
+  try {
+    const p = process.env.VITALS_CREDS_PATH || path.join(process.cwd(), "data", "auth.json");
+    const c = JSON.parse(fs.readFileSync(p, "utf8"));
+    if (typeof c.inviteCode === "string" && c.inviteCode.trim().length > 0) return c.inviteCode.trim();
+  } catch {}
+  return (process.env.VITALS_INVITE_CODE || "").trim();
+}
+
 export async function POST(req: Request) {
   ensureSchema();
   const sqlite = db().$client;
@@ -54,8 +64,8 @@ export async function POST(req: Request) {
   // Gating: either the beta is fully open, or the request carries a valid invite code.
   // Anyone else lands on the waitlist.
   const betaOpen = process.env.VITALS_BETA_OPEN === "true";
-  const envInvite = (process.env.VITALS_INVITE_CODE || "").trim();
-  const validInvite = envInvite.length > 0 && inviteCode === envInvite;
+  const configuredInvite = getInviteCode();
+  const validInvite = configuredInvite.length > 0 && inviteCode === configuredInvite;
   if (!betaOpen && !validInvite) {
     // Persist to waitlist table for later invitation
     try {
