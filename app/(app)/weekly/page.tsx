@@ -2,8 +2,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Loader2, Check, Calendar, ArrowRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Check, Calendar, ArrowRight, FileText, Target, TrendingUp, AlertCircle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+
+type DerivedRoutine = {
+  id: string;
+  label: string;
+  hint?: string;
+  target: { min: number; max: number; unit: string };
+  weeklyMax: number;
+  source: "profile" | "default";
+};
 
 const SYMPTOMS = [
   { key: "energy", label: "Énergie", hint: "0=épuisé · 10=débordant" },
@@ -16,15 +25,8 @@ const SYMPTOMS = [
   { key: "libido", label: "Libido", hint: "ressenti général" },
 ];
 
-const HABITS = [
-  { key: "sleep_7h", label: "Sommeil ≥ 7h", target: "nuits" },
-  { key: "water_2L", label: "Hydratation ≥ 2L", target: "jours" },
-  { key: "training", label: "Sport / mouvement", target: "sessions" },
-  { key: "fasting_14h", label: "Jeûne ≥ 14h", target: "jours" },
-  { key: "sun", label: "Lumière naturelle matin", target: "jours" },
-  { key: "meditation", label: "Méditation / respiration", target: "sessions" },
-  { key: "cold_exposure", label: "Exposition froid", target: "sessions" },
-];
+// Habits now come dynamically from the user's declared profile routines
+// via GET /api/weekly. See lib/weekly/routines.ts for the derivation map.
 
 // ────────── ISO week helpers (client-side mirror of the API ones) ──────────
 function isoWeekString(d: Date): string {
@@ -74,6 +76,8 @@ export default function WeeklyPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [trend, setTrend] = useState<TrendRow[]>([]);
+  const [routines, setRoutines] = useState<DerivedRoutine[]>([]);
+  const [routinesFromProfile, setRoutinesFromProfile] = useState(false);
 
   const load = useCallback(async (week: string) => {
     setLoading(true);
@@ -86,6 +90,8 @@ export default function WeeklyPage() {
       setNotes(d.checkin?.notes ?? "");
       setHasCheckin(Boolean(d.checkin));
       setTrend(d.trend ?? []);
+      setRoutines(d.routines ?? []);
+      setRoutinesFromProfile(Boolean(d.routinesFromProfile));
     } catch {
       // swallow — empty state is acceptable
     } finally {
@@ -197,37 +203,91 @@ export default function WeeklyPage() {
         )}
       </section>
 
-      {/* Habits */}
+      {/* Routines — dynamiques selon le profil */}
       <section className="rounded-2xl border border-border bg-card p-6 md:p-8 space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">Habitudes — nombre de jours / sessions</h2>
-          <p className="text-xs text-muted-foreground mt-1">Combien de fois cette semaine (sur 7) ?</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Routines — adherence</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              {routinesFromProfile
+                ? "Basé sur ce que tu as déclaré dans Profil santé. Combien de fois cette semaine ?"
+                : "Routines par défaut. Remplis Profil santé pour personnaliser."}
+            </p>
+          </div>
+          {routinesFromProfile ? (
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border border-emerald/30 bg-emerald/10 text-emerald">
+              <Target className="h-3 w-3" /> personnalisé
+            </span>
+          ) : (
+            <Link href="/data/profile?tab=lifestyle" className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider px-2 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition">
+              <AlertCircle className="h-3 w-3" /> personnaliser →
+            </Link>
+          )}
         </div>
         {loading ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Chargement…
           </div>
+        ) : routines.length === 0 ? (
+          <div className="text-sm text-muted-foreground">Aucune routine à suivre cette semaine.</div>
         ) : (
-          <div className="space-y-3">
-            {HABITS.map((h) => {
-              const v = habits[h.key];
+          <div className="space-y-4">
+            {routines.map((r) => {
+              const v = habits[r.id];
+              const set = v !== undefined;
+              const onTarget = set && v >= r.target.min && v <= r.target.max;
+              const belowTarget = set && v < r.target.min;
+              const aboveTarget = set && v > r.target.max;
+              const max = r.weeklyMax;
+              const buttons = Array.from({ length: max + 1 }, (_, i) => i);
               return (
-                <div key={h.key} className="flex items-center justify-between gap-3 flex-wrap">
-                  <div className="text-sm font-medium min-w-[180px]">{h.label}</div>
-                  <div className="flex gap-1">
-                    {[0, 1, 2, 3, 4, 5, 6, 7].map((n) => {
+                <div key={r.id} className="space-y-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{r.label}</div>
+                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+                        <Target className="h-3 w-3 text-emerald" />
+                        <span>
+                          cible <span className="text-foreground font-mono tabular-nums">
+                            {r.target.min === r.target.max ? r.target.min : `${r.target.min}-${r.target.max}`}
+                          </span> {r.target.unit}/sem
+                        </span>
+                        {r.hint && <span className="text-muted-foreground/70">· {r.hint}</span>}
+                      </div>
+                    </div>
+                    {set && (
+                      <span className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
+                        onTarget
+                          ? "border border-emerald/30 bg-emerald/10 text-emerald"
+                          : belowTarget
+                          ? "border border-amber-500/30 bg-amber-500/10 text-amber-400"
+                          : aboveTarget
+                          ? "border border-sky-500/30 bg-sky-500/10 text-sky-400"
+                          : ""
+                      }`}>
+                        {onTarget && <><Check className="h-3 w-3" /> sur la cible</>}
+                        {belowTarget && <><AlertCircle className="h-3 w-3" /> {r.target.min - v} sous la cible</>}
+                        {aboveTarget && <><TrendingUp className="h-3 w-3" /> +{v - r.target.max} au-dessus</>}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1 flex-wrap">
+                    {buttons.map((n) => {
                       const active = v === n;
+                      const inTargetBand = n >= r.target.min && n <= r.target.max;
                       return (
                         <button
                           key={n}
                           type="button"
-                          onClick={() => setHabits({ ...habits, [h.key]: n })}
+                          onClick={() => setHabits({ ...habits, [r.id]: n })}
                           className={`h-8 w-8 rounded-md text-xs font-mono tabular-nums transition border ${
                             active
-                              ? "bg-emerald/15 border-emerald text-emerald"
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : inTargetBand
+                              ? "bg-emerald/10 border-emerald/30 text-emerald hover:bg-emerald/20"
                               : "bg-secondary/30 border-border text-muted-foreground hover:text-foreground"
                           }`}
-                          aria-label={`${h.label}: ${n} ${h.target}`}
+                          aria-label={`${r.label}: ${n} ${r.target.unit}`}
                         >
                           {n}
                         </button>

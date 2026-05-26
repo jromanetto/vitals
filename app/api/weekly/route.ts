@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { decryptProfile } from "@/lib/crypto-fields";
+import { getRoutinesOrDefault } from "@/lib/weekly/routines";
 
 export const runtime = "nodejs";
 
@@ -96,7 +98,23 @@ export async function GET(req: Request) {
     )
     .all(userId) as Array<{ id: number; weekIso: string; weekStart: number; avgSymptom: number | null; avgHabit: number | null }>;
 
-  return NextResponse.json({ weekIso, checkin: checkin ?? null, symptoms, habits, trend });
+  // Personalise routines from the user's declared profile (activityLevel,
+  // meditation, intermittentFasting, sleep target, water target, sauna /
+  // cold / stretching / breathwork / morning light frequencies). Fallback
+  // to a sensible default list if the profile is empty.
+  const profileRow = sqlite
+    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
+    .get(userId) as { data: string | object } | undefined;
+  let profile: Record<string, unknown> = {};
+  if (profileRow) {
+    try {
+      const raw = typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data;
+      profile = decryptProfile(raw) ?? {};
+    } catch { profile = {}; }
+  }
+  const { routines, fromProfile } = getRoutinesOrDefault(profile);
+
+  return NextResponse.json({ weekIso, checkin: checkin ?? null, symptoms, habits, trend, routines, routinesFromProfile: fromProfile });
 }
 
 export async function POST(req: Request) {
