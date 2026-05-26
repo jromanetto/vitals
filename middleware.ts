@@ -22,7 +22,7 @@ const PUBLIC_PATHS = new Set<string>([
 
 // Path prefixes that are always public (api auth + health-check + cron).
 // /api/cron/* endpoints are self-secured via CRON_SECRET header inside the route.
-const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/"];
+const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/", "/api/csp-report"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;
@@ -72,6 +72,26 @@ export function middleware(req: NextRequest) {
   res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   res.headers.set("CDN-Cache-Control", "no-store");
   res.headers.set("Cloudflare-CDN-Cache-Control", "no-store");
+  // CSP in report-only mode — defense in depth. Cloudflare already sets HSTS,
+  // X-Frame-Options, X-Content-Type-Options, Referrer-Policy. CSP is the only
+  // missing layer. Started in report-only so we can watch /api/csp-report
+  // collect violations for a week before flipping to enforce mode.
+  res.headers.set(
+    "Content-Security-Policy-Report-Only",
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data:",
+      "connect-src 'self' https://api.anthropic.com",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "report-uri /api/csp-report",
+    ].join("; "),
+  );
+  res.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
   res.cookies.set("vitals_active", "1", {
     httpOnly: true,
     secure: true,
