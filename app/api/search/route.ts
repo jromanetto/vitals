@@ -22,6 +22,8 @@ const PAGES: Hit[] = [
   { kind: "page", title: "Notes", href: "/notes" },
   { kind: "page", title: "Suppléments", href: "/supplements" },
   { kind: "page", title: "Nutrition", subtitle: "à privilégier · à éviter · par repas", href: "/nutrition" },
+  { kind: "page", title: "Bilan semaine", subtitle: "check-in hebdo", href: "/weekly" },
+  { kind: "page", title: "Quotidien", subtitle: "historique journalier", href: "/daily" },
   { kind: "page", title: "Symptômes", href: "/symptoms" },
   { kind: "page", title: "Habitudes", href: "/habits" },
   { kind: "page", title: "Rappels", subtitle: "échéances santé", href: "/reminders" },

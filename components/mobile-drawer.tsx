@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu, X,
   LayoutDashboard, Activity, Dna, FileText, Clock, MessageSquare,
-  User, Pill, HeartPulse, GitMerge, Upload, StickyNote, Brain, Shield,
+  User, Pill, GitMerge, Upload, StickyNote, Brain, Shield, CalendarCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ const groups: Group[] = [
     items: [
       { href: "/biomarkers", label: "Biomarqueurs", icon: Activity },
       { href: "/dna", label: "DNA", icon: Dna },
-      { href: "/daily", label: "Quotidien", icon: HeartPulse },
+      { href: "/weekly", label: "Bilan semaine", icon: CalendarCheck },
       { href: "/supplements", label: "Suppléments", icon: Pill },
     ],
   },

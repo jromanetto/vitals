@@ -116,6 +116,33 @@ export function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS card_feedback_user_idx ON card_feedback(user_id)`,
     `CREATE INDEX IF NOT EXISTS card_feedback_report_idx ON card_feedback(report_id)`,
     `CREATE INDEX IF NOT EXISTS card_feedback_created_idx ON card_feedback(created_at)`,
+    // Weekly check-in — replaces daily entry for users who'd rather reflect
+    // once on Sunday than ping a slider every morning. Each row = one user's
+    // bilan for one ISO week (Mon-Sun). Symptoms = avg 1-10, habits = count 0-7.
+    `CREATE TABLE IF NOT EXISTS weekly_checkin (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      week_iso TEXT NOT NULL,
+      week_start INTEGER NOT NULL,
+      notes TEXT,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      UNIQUE(user_id, week_iso)
+    )`,
+    `CREATE INDEX IF NOT EXISTS weekly_checkin_user_idx ON weekly_checkin(user_id)`,
+    `CREATE INDEX IF NOT EXISTS weekly_checkin_week_idx ON weekly_checkin(week_iso)`,
+    `CREATE TABLE IF NOT EXISTS weekly_symptom (
+      checkin_id INTEGER NOT NULL REFERENCES weekly_checkin(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      avg_value REAL NOT NULL,
+      PRIMARY KEY (checkin_id, key)
+    )`,
+    `CREATE TABLE IF NOT EXISTS weekly_habit (
+      checkin_id INTEGER NOT NULL REFERENCES weekly_checkin(id) ON DELETE CASCADE,
+      key TEXT NOT NULL,
+      count_out_of_7 INTEGER NOT NULL,
+      PRIMARY KEY (checkin_id, key)
+    )`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {
