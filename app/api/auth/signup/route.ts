@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
 import { sendEmail, welcomeTemplate, waitlistTemplate } from "@/lib/email";
+import { rateLimitByIp, extractIp } from "@/lib/lockout";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -36,6 +37,19 @@ function getInviteCode(): string {
 }
 
 export async function POST(req: Request) {
+  // Rate limit: 5 signup attempts per IP per 10 minutes. Blocks ~10 min once
+  // tripped. Sits in front of bcrypt + invite-code comparison + waitlist
+  // insert so a script can't spam the box.
+  const ip = extractIp(req);
+  const rl = rateLimitByIp(ip, "signup", 5, 10 * 60 * 1000);
+  if (!rl.ok) {
+    logAudit("signup_rate_limited", `ip=${ip}`, req);
+    return NextResponse.json(
+      { error: "Trop de tentatives. Réessaye dans quelques minutes." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } },
+    );
+  }
+
   ensureSchema();
   const sqlite = db().$client;
   // Ensure user table exists (idempotent)

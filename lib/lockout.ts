@@ -52,3 +52,53 @@ if (typeof setInterval !== "undefined") {
     }
   }, 5 * 60 * 1000).unref?.();
 }
+
+// ────────────────────────────────────────────────────────────────────
+// Generic IP rate limiter — separate buckets from the email-keyed
+// login lockout above. Used to throttle public endpoints that don't
+// have a per-account identity yet (signup, invite-check).
+//
+// Sliding window: counts requests in the last `windowMs`; blocks for
+// `blockMs` once `limit` is exceeded.
+// ────────────────────────────────────────────────────────────────────
+type IpBucket = { count: number; firstReqAt: number; blockedUntil: number };
+const ipBuckets = new Map<string, IpBucket>();
+
+export type RateLimitResult = { ok: true } | { ok: false; retryAfter: number };
+
+export function rateLimitByIp(
+  ip: string | null,
+  scope: string,
+  limit: number,
+  windowMs: number,
+  blockMs: number = windowMs,
+): RateLimitResult {
+  // If we can't identify the client, fail open — better to let through than
+  // block every request behind a misconfigured proxy.
+  if (!ip) return { ok: true };
+  const k = `${scope}::${ip}`;
+  const now = Date.now();
+  const b = ipBuckets.get(k);
+  if (b && b.blockedUntil > now) {
+    return { ok: false, retryAfter: Math.ceil((b.blockedUntil - now) / 1000) };
+  }
+  if (!b || now - b.firstReqAt > windowMs) {
+    ipBuckets.set(k, { count: 1, firstReqAt: now, blockedUntil: 0 });
+    return { ok: true };
+  }
+  b.count += 1;
+  if (b.count > limit) {
+    b.blockedUntil = now + blockMs;
+    return { ok: false, retryAfter: Math.ceil(blockMs / 1000) };
+  }
+  return { ok: true };
+}
+
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, b] of ipBuckets.entries()) {
+      if (b.blockedUntil < now && now - b.firstReqAt > 60 * 60 * 1000) ipBuckets.delete(k);
+    }
+  }, 10 * 60 * 1000).unref?.();
+}

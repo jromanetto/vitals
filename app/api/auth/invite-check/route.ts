@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { rateLimitByIp, extractIp } from "@/lib/lockout";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,18 @@ function getInviteCode(): string {
  * (that only happens on the real POST /signup).
  */
 export async function GET(req: Request) {
+  // Rate limit: this endpoint is a yes/no oracle for the invite code. Without
+  // this, a script can enumerate codes at thousands of requests per second.
+  // Cap at 20 checks per IP per minute, blocked for 5 minutes if tripped.
+  const ip = extractIp(req);
+  const rl = rateLimitByIp(ip, "invite-check", 20, 60 * 1000, 5 * 60 * 1000);
+  if (!rl.ok) {
+    return NextResponse.json(
+      { valid: false, rateLimited: true },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfter) } },
+    );
+  }
+
   const url = new URL(req.url);
   const provided = (url.searchParams.get("code") || "").trim();
   if (!provided) return NextResponse.json({ valid: false });
