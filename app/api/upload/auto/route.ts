@@ -3,9 +3,9 @@ import { getSession, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
+import { ingestPdfFile, ingestDnaForUser } from "@/lib/ingest";
 import path from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
-import { spawn } from "node:child_process";
 
 async function pdfParse(buf: Buffer): Promise<string> {
   try {
@@ -174,8 +174,14 @@ function parseGenericCsv(text: string, source: string): Row[] {
   return out;
 }
 
-async function saveBinary(folder: string, filename: string, buf: ArrayBuffer): Promise<string> {
-  const dir = path.join(DATA_ROOT, folder);
+/** Per-user data root: data/u/<userId>/. Keeps each account's files (and the
+ * globally-unique document.path) isolated on disk. */
+function userDataRoot(userId: number): string {
+  return path.join(DATA_ROOT, "u", String(userId));
+}
+
+async function saveBinary(userId: number, folder: string, filename: string, buf: ArrayBuffer): Promise<string> {
+  const dir = path.join(userDataRoot(userId), folder);
   await mkdir(dir, { recursive: true });
   // Avoid collisions: prefix with date if file already exists conceptually
   const safeName = filename.replace(/[^\w.\-_éèàâêîôûäëïöüç ()]/g, "_");
@@ -184,30 +190,17 @@ async function saveBinary(folder: string, filename: string, buf: ArrayBuffer): P
   return target;
 }
 
-function triggerIngest() {
-  // Detached background ingest. Don't await it.
-  try {
-    const cwd = process.cwd();
-    const tsx = path.join(cwd, "node_modules", ".bin", "tsx");
-    const script = path.join(cwd, "scripts", "ingest.ts");
-    const proc = spawn(tsx, [script], { cwd, env: process.env, detached: true, stdio: "ignore" });
-    proc.unref();
-  } catch (e) {
-    console.error("[upload-auto] failed to spawn ingest", e);
-  }
-}
-
 function ensureWearableTable() {
   const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind))`);
 }
 
-function insertWearables(rows: Row[]): number {
+function insertWearables(rows: Row[], userId: number): number {
   if (rows.length === 0) return 0;
   ensureWearableTable();
   const sqlite = db().$client;
-  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit) VALUES (?, ?, ?, ?, ?)`);
-  const tx = sqlite.transaction((items: Row[]) => { for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null); });
+  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit, user_id) VALUES (?, ?, ?, ?, ?, ?)`);
+  const tx = sqlite.transaction((items: Row[]) => { for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null, userId); });
   tx(rows);
   return rows.length;
 }
@@ -234,7 +227,6 @@ export async function POST(req: Request) {
   if (files.length === 0) return NextResponse.json({ error: "no files" }, { status: 400 });
 
   const results: FileResult[] = [];
-  let needsIngest = false;
 
   for (const f of files) {
     const filename = f.name;
@@ -262,17 +254,17 @@ export async function POST(req: Request) {
           results.push({ filename, size, detected, reason, status: "skipped", message: "Journal entries non importés (v1)" });
           continue;
         }
-        const inserted = insertWearables(rows);
+        const inserted = insertWearables(rows, s.userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "oura-trends") {
         const text = await f.text();
         const rows = parseGenericCsv(text, "oura"); // headers cover most kinds
-        const inserted = insertWearables(rows);
+        const inserted = insertWearables(rows, s.userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "generic-csv") {
         const text = await f.text();
         const rows = parseGenericCsv(text, "generic");
-        const inserted = insertWearables(rows);
+        const inserted = insertWearables(rows, s.userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "pdf-document" || detected === "image" || detected === "spreadsheet" || detected === "dna-23andme") {
         let targetFolder = detected === "dna-23andme" ? "genetique" : (folder ?? "divers");
@@ -287,20 +279,29 @@ export async function POST(req: Request) {
             reason = "PDF · analyse sanguine (détecté par contenu)";
           }
         }
-        const dest = await saveBinary(targetFolder, filename, buf);
-        needsIngest = true;
+        const dest = await saveBinary(s.userId, targetFolder, filename, buf);
+        // Ingest inline with the uploader's userId: the data lands in THEIR
+        // account and is queryable immediately (the welcome wizard calls
+        // auto-extract right after this returns). No detached global ingest.
+        let extra = "";
+        if (detected === "pdf-document") {
+          const res = await ingestPdfFile(dest, s.userId, targetFolder);
+          extra = res.biomarkers > 0 ? ` · ${res.biomarkers} biomarqueurs extraits` : "";
+        } else if (detected === "dna-23andme") {
+          const res = await ingestDnaForUser(s.userId, userDataRoot(s.userId));
+          extra = ` · ${res.insights} insights ADN`;
+        }
         const msg = bloodSwitched
-          ? `Reclassé en analyse sanguine (détection auto). Ingestion + compte-rendu en cours…`
-          : `Sauvegardé dans data/${targetFolder}/ — ingestion en cours…`;
+          ? `Analyse sanguine détectée — importée${extra}.`
+          : `Importé${extra}.`;
         results.push({ filename, size, detected, reason, status: "ok", message: msg, destination: dest });
       } else if (detected === "markdown-note") {
         const buf = await f.arrayBuffer();
-        const dest = await saveBinary("knowledge-base", filename, buf);
-        needsIngest = true;
-        results.push({ filename, size, detected, reason, status: "ok", message: "Sauvegardé dans la knowledge base — ingestion en cours…", destination: dest });
+        const dest = await saveBinary(s.userId, "knowledge-base", filename, buf);
+        results.push({ filename, size, detected, reason, status: "ok", message: "Sauvegardé dans la knowledge base.", destination: dest });
       } else {
         const buf = await f.arrayBuffer();
-        const dest = await saveBinary("divers", filename, buf);
+        const dest = await saveBinary(s.userId, "divers", filename, buf);
         results.push({ filename, size, detected, reason, status: "ok", message: "Type inconnu — sauvegardé dans divers/", destination: dest });
       }
     } catch (e) {
@@ -308,7 +309,6 @@ export async function POST(req: Request) {
     }
   }
 
-  logAudit("upload-auto", `files=${files.length}`, req);
-  if (needsIngest) triggerIngest();
-  return NextResponse.json({ results, ingestionTriggered: needsIngest });
+  logAudit("upload-auto", `files=${files.length} user=${s.userId}`, req);
+  return NextResponse.json({ results });
 }
