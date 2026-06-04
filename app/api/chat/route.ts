@@ -146,7 +146,7 @@ function execTool(name: string, input: ToolInput, userId: number): unknown {
     const q = String(input.q ?? "");
     const limit = Math.min(Number(input.limit ?? 6), 12);
     // searchRag is async — we'll return a Promise; caller awaits.
-    return searchRag(q, limit).then((hits) =>
+    return searchRag(q, limit, userId).then((hits) =>
       hits.map((h) => ({ path: h.path, snippet: h.snippet, score: Math.round(h.score * 100) / 100, doc_id: h.docId }))
     );
   }
@@ -326,7 +326,7 @@ async function buildContext(userQuery: string, activeSession: number, userId: nu
   // 11. RAG hits seeded by current query
   let hits: Hit[] = [];
   try {
-    hits = await searchRag(userQuery, 6);
+    hits = await searchRag(userQuery, 6, userId);
   } catch {}
 
   const memorySection = memories.length

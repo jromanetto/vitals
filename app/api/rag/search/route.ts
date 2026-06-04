@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (!q.trim()) return NextResponse.json({ hits: [] });
 
   // BM25 first pass — wider net if AI rerank
-  let hits = await searchRag(q, useAI ? 25 : 20);
+  let hits = await searchRag(q, useAI ? 25 : 20, s.userId);
 
   // Optional category filter
   if (category && category !== "all") {

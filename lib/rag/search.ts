@@ -17,23 +17,26 @@ export function tokenize(s: string): string[] {
 
 type Hit = { docId: number; chunkId: number; path: string; category: string; snippet: string; score: number; date: number | null };
 
-export async function searchRag(query: string, limit = 10): Promise<Hit[]> {
+export async function searchRag(query: string, limit = 10, userId: number): Promise<Hit[]> {
   const terms = [...new Set(tokenize(query))];
   if (terms.length === 0) return [];
   const sqlite = db().$client;
 
   const placeholders = terms.map(() => "?").join(",");
+  // Scope to the caller's own documents — RAG indexes every user's PDFs into a
+  // shared rag_chunk/rag_keyword table, so without this filter the chat would
+  // surface another account's medical documents.
   const rows = sqlite.prepare(`
     SELECT k.chunk_id as chunkId, c.doc_id as docId, c.text as text, d.path as path, d.category as category, d.date as date,
            SUM(k.tf) as score
     FROM rag_keyword k
     JOIN rag_chunk c ON c.id = k.chunk_id
     JOIN document d ON d.id = c.doc_id
-    WHERE k.term IN (${placeholders})
+    WHERE k.term IN (${placeholders}) AND d.user_id = ?
     GROUP BY k.chunk_id
     ORDER BY score DESC
     LIMIT ?
-  `).all(...terms, limit) as Array<{ chunkId: number; docId: number; text: string; path: string; category: string; date: number | null; score: number }>;
+  `).all(...terms, userId, limit) as Array<{ chunkId: number; docId: number; text: string; path: string; category: string; date: number | null; score: number }>;
 
   return rows.map((r) => ({
     docId: r.docId,
