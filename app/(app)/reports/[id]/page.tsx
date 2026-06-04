@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId } from "@/lib/auth";
 import Link from "next/link";
 import { renderMarkdown } from "@/lib/markdown";
 import { ReportBodyPoller } from "@/components/report-body-poller";
@@ -7,9 +8,9 @@ import { PrintTrigger } from "@/components/print-trigger";
 
 export const dynamic = "force-dynamic";
 
-async function load(id: number) {
+async function load(id: number, userId: number) {
   ensureSchema();
-  return db().$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ?`).get(id) as { id: number; kind: string; title: string; body: string; created_at: number } | undefined;
+  return db().$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ? AND user_id = ?`).get(id, userId) as { id: number; kind: string; title: string; body: string; created_at: number } | undefined;
 }
 
 export default async function ReportPage({
@@ -21,7 +22,9 @@ export default async function ReportPage({
 }) {
   const { id } = await params;
   const { print } = await searchParams;
-  const r = await load(+id);
+  const userId = await currentUserId();
+  if (!userId) return <div className="text-muted-foreground">Rapport introuvable.</div>;
+  const r = await load(+id, userId);
   if (!r) return <div className="text-muted-foreground">Rapport introuvable.</div>;
 
   const generating = !r.body || r.body.length < 30;

@@ -1,23 +1,25 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId } from "@/lib/auth";
 import Link from "next/link";
 import { NotesWidget } from "@/components/notes-widget";
 import { HelpPill } from "@/components/help-pill";
 
 export const dynamic = "force-dynamic";
 
-async function load(category: string) {
+async function load(category: string, userId: number) {
   ensureSchema();
   const d = db();
   return d.$client.prepare(`
     SELECT rsid, trait, effect, magnitude, risk_allele as riskAllele, user_genotype as userGenotype, has_risk as hasRisk, is_protective as isProtective, summary, source
-    FROM dna_insight WHERE category = ? ORDER BY (has_risk * COALESCE(magnitude,0)) DESC, magnitude DESC NULLS LAST
-  `).all(category) as Array<{ rsid: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number | null; isProtective: number | null; summary: string | null; source: string | null }>;
+    FROM dna_insight WHERE category = ? AND user_id = ? ORDER BY (has_risk * COALESCE(magnitude,0)) DESC, magnitude DESC NULLS LAST
+  `).all(category, userId) as Array<{ rsid: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number | null; isProtective: number | null; summary: string | null; source: string | null }>;
 }
 
 export default async function DnaCat({ params }: { params: Promise<{ category: string }> }) {
   const { category } = await params;
-  const rows = await load(category);
+  const userId = await currentUserId();
+  const rows = userId ? await load(category, userId) : [];
   return (
     <div className="space-y-10">
       <Link href="/dna" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Toutes les catégories</Link>

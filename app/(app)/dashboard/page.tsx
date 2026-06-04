@@ -1,6 +1,8 @@
 import { ensureSchema } from "@/lib/db/migrate";
 import { db, schema } from "@/lib/db";
 import { sql } from "drizzle-orm";
+import { currentUserId } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { StatCard } from "@/components/stat-card";
 import { HomeHero } from "@/components/home-hero";
 import { HomeChatBar } from "@/components/home-chat-bar";
@@ -18,15 +20,16 @@ import { OnboardingModal } from "@/components/onboarding-modal";
 
 export const dynamic = "force-dynamic";
 
-async function getStats() {
+async function getStats(userId: number) {
   ensureSchema();
   const d = db();
-  const [bmUnique] = await d.select({ c: sql<number>`count(distinct slug)` }).from(schema.biomarker);
-  const [bmTotal] = await d.select({ c: sql<number>`count(*)` }).from(schema.biomarker);
-  const [docs] = await d.select({ c: sql<number>`count(*)` }).from(schema.document);
-  const [variants] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaVariant);
-  const [insights] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaInsight);
-  const [latest] = await d.select({ d: schema.biomarker.date }).from(schema.biomarker).orderBy(sql`${schema.biomarker.date} desc`).limit(1);
+  const scope = sql`user_id = ${userId}`;
+  const [bmUnique] = await d.select({ c: sql<number>`count(distinct slug)` }).from(schema.biomarker).where(scope);
+  const [bmTotal] = await d.select({ c: sql<number>`count(*)` }).from(schema.biomarker).where(scope);
+  const [docs] = await d.select({ c: sql<number>`count(*)` }).from(schema.document).where(scope);
+  const [variants] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaVariant).where(scope);
+  const [insights] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaInsight).where(scope);
+  const [latest] = await d.select({ d: schema.biomarker.date }).from(schema.biomarker).where(scope).orderBy(sql`${schema.biomarker.date} desc`).limit(1);
   return {
     biomarkersUnique: bmUnique?.c ?? 0,
     biomarkersTotal: bmTotal?.c ?? 0,
@@ -38,8 +41,10 @@ async function getStats() {
 }
 
 export default async function Home() {
-  const stats = await getStats();
-  const score = computeLongevityScore();
+  const userId = await currentUserId();
+  if (!userId) redirect("/login");
+  const stats = await getStats(userId);
+  const score = computeLongevityScore(userId);
   const latestStr = stats.latestPanel
     ? new Date(stats.latestPanel).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" })
     : "—";

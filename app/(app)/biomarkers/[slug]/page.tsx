@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId } from "@/lib/auth";
 import { BiomarkerChart } from "@/components/biomarker-chart";
 import { BiomarkerCommentary } from "@/components/biomarker-commentary";
 import { NotesWidget } from "@/components/notes-widget";
@@ -10,19 +11,20 @@ export const dynamic = "force-dynamic";
 
 type Series = { date: number; value: number; source: string | null }[];
 
-async function loadHistory(slug: string) {
+async function loadHistory(slug: string, userId: number) {
   ensureSchema();
   const d = db();
   const rows = d.$client.prepare(`
     SELECT name, category, value, unit, ref_low as refLow, ref_high as refHigh, date, source
-    FROM biomarker WHERE slug = ? ORDER BY date ASC
-  `).all(slug) as Array<{ name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
+    FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC
+  `).all(slug, userId) as Array<{ name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
   return rows;
 }
 
 export default async function BiomarkerDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const rows = await loadHistory(slug);
+  const userId = await currentUserId();
+  const rows = userId ? await loadHistory(slug, userId) : [];
   const meta = rows[0];
   const md = META_BY_SLUG[slug];
   const series: Series = rows.map((r) => ({ date: r.date, value: r.value, source: r.source }));

@@ -5,19 +5,21 @@ import { schema } from "@/lib/db";
 import { PedigreeEditor } from "@/components/pedigree-editor";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { PageHeader } from "@/components/page-header";
+import { currentUserId } from "@/lib/auth";
 import { Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-async function getProfile() {
+async function getProfile(userId: number) {
   ensureSchema();
   const d = db();
-  const rows = await d.select().from(schema.profile).orderBy(sql`${schema.profile.updatedAt} desc`).limit(1);
+  const rows = await d.select().from(schema.profile).where(sql`user_id = ${userId}`).orderBy(sql`${schema.profile.updatedAt} desc`).limit(1);
   return decryptProfile((rows[0]?.data as Record<string, unknown>) ?? {});
 }
 
 export default async function FamilyPage() {
-  const profile = await getProfile();
+  const userId = await currentUserId();
+  const profile = userId ? await getProfile(userId) : {};
   const pedigree = (profile.pedigree as Record<string, unknown>) ?? {};
   return (
     <div className="space-y-12">

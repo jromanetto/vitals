@@ -1,22 +1,25 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId } from "@/lib/auth";
 import { NotesWidget } from "@/components/notes-widget";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-async function load(id: number) {
+async function load(id: number, userId: number) {
   ensureSchema();
   const sqlite = db().$client;
-  const doc = sqlite.prepare(`SELECT id, path, title, category, date, pages FROM document WHERE id = ?`).get(id) as { id: number; path: string; title: string | null; category: string; date: number | null; pages: number | null } | undefined;
+  const doc = sqlite.prepare(`SELECT id, path, title, category, date, pages FROM document WHERE id = ? AND user_id = ?`).get(id, userId) as { id: number; path: string; title: string | null; category: string; date: number | null; pages: number | null } | undefined;
   if (!doc) return null;
-  const bms = sqlite.prepare(`SELECT name, value, unit FROM biomarker WHERE source = ? ORDER BY name LIMIT 30`).all(doc.path) as Array<{ name: string; value: number; unit: string | null }>;
+  const bms = sqlite.prepare(`SELECT name, value, unit FROM biomarker WHERE source = ? AND user_id = ? ORDER BY name LIMIT 30`).all(doc.path, userId) as Array<{ name: string; value: number; unit: string | null }>;
   return { doc, bms };
 }
 
 export default async function FilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await load(+id);
+  const userId = await currentUserId();
+  if (!userId) return <div className="text-muted-foreground">Document introuvable.</div>;
+  const data = await load(+id, userId);
   if (!data) return <div className="text-muted-foreground">Document introuvable.</div>;
   const { doc, bms } = data;
   const fileName = doc.path.split("/").slice(-1)[0];

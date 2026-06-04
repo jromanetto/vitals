@@ -26,16 +26,17 @@ export type ScoreBreakdown = {
   };
 };
 
-export function computeLongevityScore(): ScoreBreakdown {
+export function computeLongevityScore(userId: number): ScoreBreakdown {
   const sqlite = db().$client;
 
   // ---------- 1. Biomarkers (40%) ----------
   const latestBms = sqlite.prepare(`
     SELECT b.slug, b.name, b.value, b.ref_low, b.ref_high
     FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x
+    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x
     ON x.slug = b.slug AND x.md = b.date
-  `).all() as Array<{ slug: string; name: string; value: number; ref_low: number | null; ref_high: number | null }>;
+    WHERE b.user_id = ?
+  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; ref_low: number | null; ref_high: number | null }>;
 
   let inRange = 0;
   let evaluable = 0;
@@ -48,8 +49,8 @@ export function computeLongevityScore(): ScoreBreakdown {
 
   // ---------- 2. DNA (25%) ----------
   const dna = sqlite.prepare(`
-    SELECT category, has_risk, magnitude FROM dna_insight WHERE has_risk IS NOT NULL
-  `).all() as Array<{ category: string; has_risk: number; magnitude: number | null }>;
+    SELECT category, has_risk, magnitude FROM dna_insight WHERE user_id = ? AND has_risk IS NOT NULL
+  `).all(userId) as Array<{ category: string; has_risk: number; magnitude: number | null }>;
 
   let dnaFavorable = 0;
   let dnaRisk = 0;
@@ -72,7 +73,7 @@ export function computeLongevityScore(): ScoreBreakdown {
     : 12.5;
 
   // ---------- 3. Lifestyle (20%) ----------
-  const profileRow = sqlite.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get() as { data: string } | undefined;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
   const profile: Record<string, unknown> = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
 
   const lifestyleChecks: { label: string; ok: boolean; weight: number }[] = [
@@ -99,7 +100,7 @@ export function computeLongevityScore(): ScoreBreakdown {
     "hba1c": "lower-better",
   };
   for (const slug of TREND_BIOMARKERS) {
-    const points = sqlite.prepare(`SELECT value, date FROM biomarker WHERE slug = ? ORDER BY date ASC`).all(slug) as Array<{ value: number; date: number }>;
+    const points = sqlite.prepare(`SELECT value, date FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(slug, userId) as Array<{ value: number; date: number }>;
     if (points.length < 2) continue;
     const first = points[0].value;
     const last = points[points.length - 1].value;
