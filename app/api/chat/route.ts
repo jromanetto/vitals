@@ -10,7 +10,11 @@ import { formatProfileForLLM } from "@/lib/profile/format";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = "claude-opus-4-8";
+// Cheap, fast model for the throwaway 6-word conversation title.
+const TITLE_MODEL = "claude-haiku-4-5-20251001";
+// Background memory extraction — structured, not user-facing; no need for Opus.
+const EXTRACT_MODEL = "claude-sonnet-4-6";
 
 // ──────────────────────────────────────────────────────────────────
 // Tool definitions exposed to Claude
@@ -464,15 +468,26 @@ export async function POST(req: Request) {
     async start(controller) {
       let fullText = "";
       try {
-        // Tool-use loop, max 5 iterations
+        // Tool-use loop, max 5 iterations. Each turn streams its text deltas to
+        // the client in real time (the model is Opus and otherwise slow to first
+        // token), then we inspect the final message for tool calls.
         for (let iter = 0; iter < 5; iter++) {
-          const resp = await client.messages.create({
+          const turnStream = client.messages.stream({
             model: MODEL,
             max_tokens: 2500,
             system: systemPrompt,
             tools,
             messages: conv,
           });
+          turnStream.on("text", (delta) => {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "delta", text: delta })}\n\n`));
+          });
+          const resp = await turnStream.finalMessage();
+
+          const turnText = resp.content
+            .filter((b): b is Anthropic.TextBlock => b.type === "text")
+            .map((b) => b.text)
+            .join("");
 
           if (resp.stop_reason === "tool_use") {
             // Add the assistant's tool_use block to conversation
@@ -501,17 +516,8 @@ export async function POST(req: Request) {
             continue;
           }
 
-          // Final turn: extract text and stream it pseudo-progressively (chunked).
-          const text = resp.content
-            .filter((b): b is Anthropic.TextBlock => b.type === "text")
-            .map((b) => b.text)
-            .join("");
-          fullText = text;
-          // Chunk text into ~40-char pieces for a streaming feel
-          const chunks = text.match(/[\s\S]{1,80}/g) ?? [text];
-          for (const c of chunks) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "delta", text: c })}\n\n`));
-          }
+          // Final turn — text already streamed above; keep it for persistence.
+          fullText = turnText;
           break;
         }
 
@@ -528,7 +534,7 @@ export async function POST(req: Request) {
         if (msgCount === 2) {
           try {
             const titleResp = await client.messages.create({
-              model: MODEL,
+              model: TITLE_MODEL,
               max_tokens: 30,
               messages: [{ role: "user", content: `Titre court (max 6 mots, sans guillemets) pour: USER: "${lastUser.content.slice(0, 200)}"` }],
             });
@@ -608,7 +614,7 @@ Si rien à extraire : {"items":[]}`;
 
   try {
     const resp = await client.messages.create({
-      model: MODEL,
+      model: EXTRACT_MODEL,
       max_tokens: 1200,
       system: sys,
       messages: [{ role: "user", content: transcript.slice(-15000) }],
