@@ -17,6 +17,10 @@ import { iterate23andMe } from "../parsers/dna23";
 import { CATALOG, evaluate } from "../dna/catalog";
 import { tokenize } from "../rag/search";
 
+/** Lab-panel markers — if the parsed text matches, extract biomarkers even when
+ * the file landed in a non-blood folder (e.g. a timestamp-named scan in divers/). */
+const BLOOD_TEST_MARKERS = /\b(cholest[ée]rol|hdl|ldl|trigly|h[ée]moglobin|h[ée]matocr|leucocyt|plaquett|cr[ée]atinin|gly[cé]mie|hba1c|insulin[ea]|tsh|t3 ?libre|t4 ?libre|alat|asat|gamma ?gt|ggt|ferritin|fer ?s[ée]rique|transferrin|crp|hscrp|magn[ée]sium|vitamin[ea]? ?d|vitamin[ea]? ?b12|folate|homocyst[ée]in|testost[ée]ron|oestradiol|cortisol|dhea|igf-?1|apolipoprot[ée]in|apo ?b|apo ?a|lp\(?a\)?|shbg|prolactin|\blh\b|\bfsh\b)\b/i;
+
 function hashFile(buf: Buffer): string {
   return crypto.createHash("sha1").update(buf).digest("hex");
 }
@@ -92,9 +96,11 @@ export async function ingestPdfFile(
     docId = Number(r.lastInsertRowid);
   }
 
-  // Biomarkers — only blood analyses + sha-wellness for now.
+  // Biomarkers — blood panels by folder, or by content (catches lab reports
+  // with non-descriptive filenames that landed in divers/).
   let biomarkers = 0;
-  if (category.includes("analyses-sang") || category.includes("sha-wellness")) {
+  const isBloodPanel = category.includes("analyses-sang") || category.includes("sha-wellness") || BLOOD_TEST_MARKERS.test(parsed.text);
+  if (isBloodPanel) {
     const bms = parseBiomarkersFromText(parsed.text);
     const bmDate = dateMs ?? Date.now();
     const ins = sqlite.prepare(
