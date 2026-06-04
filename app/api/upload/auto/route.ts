@@ -192,7 +192,7 @@ async function saveBinary(userId: number, folder: string, filename: string, buf:
 
 function ensureWearableTable() {
   const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind))`);
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id))`);
 }
 
 function insertWearables(rows: Row[], userId: number): number {
@@ -285,7 +285,7 @@ export async function POST(req: Request) {
         // auto-extract right after this returns). No detached global ingest.
         let extra = "";
         if (detected === "pdf-document") {
-          const res = await ingestPdfFile(dest, s.userId, targetFolder);
+          const res = await ingestPdfFile(dest, s.userId, targetFolder, { useLlm: true });
           extra = res.biomarkers > 0 ? ` · ${res.biomarkers} biomarqueurs extraits` : "";
         } else if (detected === "dna-23andme") {
           const res = await ingestDnaForUser(s.userId, userDataRoot(s.userId));

@@ -39,7 +39,7 @@ export function ensureSchema() {
     `CREATE INDEX IF NOT EXISTS habit_log_date_idx ON habit_log(date)`,
     `CREATE INDEX IF NOT EXISTS habit_log_key_idx ON habit_log(key)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS habit_log_unique ON habit_log(date, key)`,
-    `CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`,
+    `CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id))`,
     `CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`,
     `CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`,
     // Sprint 28: cross-session chat memory
@@ -169,4 +169,29 @@ export function ensureSchema() {
   try {
     d.run(sql.raw(`CREATE INDEX IF NOT EXISTS nutrition_pref_user_idx ON nutrition_pref(user_id)`));
   } catch {}
+
+  // Per-user uniqueness for wearable_metric. The original table had
+  // UNIQUE(date, source, kind), so a beta user's Whoop/Oura import could
+  // INSERT OR REPLACE over another user's same-day metric. Rebuild to include
+  // user_id in the constraint. One-time, idempotent (detected via the stored
+  // table SQL); rows with the same (date, source, kind, user_id) collapse via
+  // INSERT OR IGNORE, cross-user duplicates are preserved.
+  try {
+    const sqlite = d.$client as unknown as { prepare: (q: string) => { get: () => { sql: string } | undefined }; exec: (q: string) => void };
+    const row = sqlite.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='wearable_metric'`).get();
+    if (row && !/UNIQUE\s*\([^)]*user_id[^)]*\)/i.test(row.sql)) {
+      sqlite.exec(`
+        BEGIN;
+        CREATE TABLE wearable_metric_new (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id));
+        INSERT OR IGNORE INTO wearable_metric_new (id, date, source, kind, value, unit, user_id) SELECT id, date, source, kind, value, unit, COALESCE(user_id, 1) FROM wearable_metric;
+        DROP TABLE wearable_metric;
+        ALTER TABLE wearable_metric_new RENAME TO wearable_metric;
+        CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date);
+        CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind);
+        CREATE INDEX IF NOT EXISTS wearable_metric_user_idx ON wearable_metric(user_id);
+        COMMIT;
+      `);
+      console.log("[migrate] rebuilt wearable_metric with per-user UNIQUE(date, source, kind, user_id)");
+    }
+  } catch (e) { console.error("[migrate] wearable_metric rebuild failed", e); }
 }

@@ -11,11 +11,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db";
 import { parsePdf, extractDateFromPath, extractDateFromText } from "../parsers/pdf";
-import { parseBiomarkersFromText } from "../parsers/biomarkers";
+import { type Biomarker, parseBiomarkersFromText } from "../parsers/biomarkers";
+import { extractBiomarkersLLM } from "../parsers/biomarkers-llm";
 import { normalizeUnits } from "../parsers/normalize-units";
 import { iterate23andMe } from "../parsers/dna23";
 import { CATALOG, evaluate } from "../dna/catalog";
 import { tokenize } from "../rag/search";
+import { anthropicApiKey } from "../secrets";
 
 /** Lab-panel markers — if the parsed text matches, extract biomarkers even when
  * the file landed in a non-blood folder (e.g. a timestamp-named scan in divers/). */
@@ -63,6 +65,7 @@ export async function ingestPdfFile(
   filePath: string,
   userId: number,
   category: string,
+  opts?: { useLlm?: boolean },
 ): Promise<PdfIngestResult> {
   const sqlite = db().$client;
   const buf = await fsp.readFile(filePath);
@@ -101,19 +104,31 @@ export async function ingestPdfFile(
   let biomarkers = 0;
   const isBloodPanel = category.includes("analyses-sang") || category.includes("sha-wellness") || BLOOD_TEST_MARKERS.test(parsed.text);
   if (isBloodPanel) {
-    const bms = parseBiomarkersFromText(parsed.text);
     const bmDate = dateMs ?? Date.now();
+    // Prefer Claude for accuracy on OCR-scrambled lab tables (user uploads);
+    // fall back to the regex parser when there's no key or the LLM returns
+    // nothing (and for the owner CLI, which re-ingests clean PDFs in bulk).
+    let finalBms: Biomarker[] = [];
+    const apiKey = opts?.useLlm ? anthropicApiKey() : null;
+    if (apiKey) {
+      try { finalBms = await extractBiomarkersLLM(parsed.text, apiKey); } catch { finalBms = []; }
+    }
+    if (finalBms.length === 0) {
+      for (const bm of parseBiomarkersFromText(parsed.text)) {
+        const norm = normalizeUnits(bm.slug, bm.value, bm.unit);
+        if (!norm) continue; // rejected as garbage by sanity check
+        let nLow = bm.refLow;
+        let nHigh = bm.refHigh;
+        if (nLow != null) { const r = normalizeUnits(bm.slug, nLow, bm.unit); if (r) nLow = r.value; }
+        if (nHigh != null) { const r = normalizeUnits(bm.slug, nHigh, bm.unit); if (r) nHigh = r.value; }
+        finalBms.push({ ...bm, value: norm.value, unit: norm.unit ?? null, refLow: nLow, refHigh: nHigh });
+      }
+    }
     const ins = sqlite.prepare(
       `INSERT INTO biomarker (name, slug, category, value, unit, ref_low, ref_high, date, source, raw_text, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    for (const bm of bms) {
-      const norm = normalizeUnits(bm.slug, bm.value, bm.unit);
-      if (!norm) continue; // rejected as garbage by sanity check
-      let nLow = bm.refLow;
-      let nHigh = bm.refHigh;
-      if (nLow != null) { const r = normalizeUnits(bm.slug, nLow, bm.unit); if (r) nLow = r.value; }
-      if (nHigh != null) { const r = normalizeUnits(bm.slug, nHigh, bm.unit); if (r) nHigh = r.value; }
-      ins.run(bm.name, bm.slug, bm.category, norm.value, norm.unit ?? null, nLow, nHigh, bmDate, filePath, bm.raw, userId);
+    for (const bm of finalBms) {
+      ins.run(bm.name, bm.slug, bm.category, bm.value, bm.unit ?? null, bm.refLow, bm.refHigh, bmDate, filePath, bm.raw, userId);
       biomarkers++;
     }
   }
