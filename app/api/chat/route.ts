@@ -318,6 +318,11 @@ async function buildContext(userQuery: string, activeSession: number, userId: nu
     .prepare(`SELECT kind, body, confidence FROM chat_memory WHERE user_id = ? AND active = 1 ORDER BY kind, created_at DESC LIMIT 200`)
     .all(userId) as Array<{ kind: string; body: string; confidence: number }>;
 
+  // 9b. User notes — free-text observations attached to biomarkers/docs/etc.
+  const notes = sqlite
+    .prepare(`SELECT target_type as t, target_id as tid, body, created_at FROM note WHERE user_id = ? ORDER BY created_at DESC LIMIT 40`)
+    .all(userId) as Array<{ t: string; tid: string; body: string; created_at: number }>;
+
   // 10. Last 12 messages of current session — verify session ownership first.
   const sessOwner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(activeSession) as { user_id: number } | undefined;
   const history = sessOwner && sessOwner.user_id === userId
@@ -370,6 +375,9 @@ async function buildContext(userQuery: string, activeSession: number, userId: nu
     `## Symptômes 30j (moyennes /10)\n${symptomAvg.map((s) => `- ${s.key}: ${s.avg.toFixed(2)} (n=${s.n})`).join("\n") || "(aucun log)"}`,
     `## Habitudes 30j (jours validés)\n${habitsCount.map((h) => `- ${h.key}: ${h.n}j`).join("\n") || "(aucun)"}`,
     `## Wearables 30j (moyennes)\n${wearAvg.map((w) => `- ${w.kind}: ${w.avg.toFixed(1)} (n=${w.n})`).join("\n") || "(aucun)"}`,
+    notes.length
+      ? `## Notes du patient (observations libres)\n${notes.map((n) => `- [${n.t}:${n.tid}] ${n.body.slice(0, 400)}`).join("\n")}`
+      : "",
     `## Top corrélations Spearman (rho>0.3, p<0.15)\n${
       topCorr.length
         ? topCorr.map((c) => `- ${c.a} ↔ ${c.b}: rho=${c.rho.toFixed(2)}, p=${c.p.toFixed(3)}, n=${c.n}`).join("\n")

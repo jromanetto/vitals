@@ -33,9 +33,9 @@ export async function POST(req: Request) {
   // Match /api/profile POST behaviour: store plaintext (legacy), scoped to the user.
   d.$client.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(merged), Date.now(), s.userId);
 
-  // Mirror profile.md
+  // Mirror profile.md — per-user so accounts don't overwrite each other on disk.
   try {
-    const mdPath = path.join(process.cwd(), "data", "profile.md");
+    const mdPath = path.join(process.cwd(), "data", "u", String(s.userId), "profile.md");
     await fs.mkdir(path.dirname(mdPath), { recursive: true });
     const lines: string[] = ["# Profile", "", `_Last updated: ${new Date().toISOString()}_`, ""];
     for (const [k, v] of Object.entries(merged)) {

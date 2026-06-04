@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Maximize2 } from "lucide-react";
 import { LongevityGauge } from "@/components/longevity-gauge";
@@ -7,8 +8,22 @@ import { ScoreBreakdownCard } from "@/components/score-breakdown";
 import { ScoreBreakdownModal } from "@/components/score-breakdown-modal";
 import type { ScoreBreakdown } from "@/lib/scoring/longevity";
 
-export function HomeScoreCard({ breakdown }: { breakdown: ScoreBreakdown }) {
+export function HomeScoreCard({ breakdown, empty = false }: { breakdown: ScoreBreakdown; empty?: boolean }) {
   const [open, setOpen] = useState(false);
+  if (empty) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card p-8 flex flex-col items-center justify-center text-center gap-3">
+        <div className="text-4xl">🧬</div>
+        <div className="text-base font-medium">Score pas encore calculable</div>
+        <p className="text-sm text-muted-foreground max-w-sm">
+          Importe un bilan sanguin, ton ADN ou complète ton profil — ton Score longévité s&apos;affiche dès qu&apos;il y a des données à analyser.
+        </p>
+        <Link href="/import" className="mt-1 inline-flex items-center gap-1.5 text-sm font-medium px-4 py-2 rounded-md bg-emerald text-white hover:bg-emerald/90 transition">
+          Importer mes données →
+        </Link>
+      </div>
+    );
+  }
   const blurb =
     breakdown.total >= 80
       ? "Excellent — continue comme ça."

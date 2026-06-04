@@ -29,8 +29,9 @@ export async function POST(req: Request) {
   const sqlite = db().$client;
   sqlite.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(data), Date.now(), userId);
 
-  // also write a profile.md mirror for easy backup / offline reading
-  const mdPath = path.join(process.cwd(), "data", "profile.md");
+  // also write a profile.md mirror for easy backup / offline reading — per-user
+  // so one account's profile never overwrites another's on disk.
+  const mdPath = path.join(process.cwd(), "data", "u", String(userId), "profile.md");
   await fs.mkdir(path.dirname(mdPath), { recursive: true });
   const md = renderMarkdown(data);
   await fs.writeFile(mdPath, md, "utf8");
