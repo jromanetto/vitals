@@ -713,14 +713,20 @@ export default function WelcomePage() {
                   <h1 className="text-3xl font-semibold tracking-tight mb-3">Dépistage à jour ?</h1>
                   <p className="text-muted-foreground mb-6">Examens réalisés dans les 2 dernières années.</p>
                   <div className="flex flex-wrap gap-2">
-                    {SCREENINGS.map((s) => (
+                    {SCREENINGS
+                      .filter((s) => {
+                        if (s === "Mammo (femme)" && sex === "Homme") return false;
+                        if (s === "PSA (homme)" && sex === "Femme") return false;
+                        return true;
+                      })
+                      .map((s) => (
                       <button
                         key={s}
                         type="button"
                         onClick={() => setScreeningsFlashDone(toggleArray(screeningsFlashDone, s))}
                         className={pillClass(screeningsFlashDone.includes(s))}
                       >
-                        {s}
+                        {s.replace(/\s*\((?:femme|homme)\)/, "")}
                       </button>
                     ))}
                   </div>
