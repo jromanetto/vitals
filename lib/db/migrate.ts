@@ -170,6 +170,29 @@ export function ensureSchema() {
     d.run(sql.raw(`CREATE INDEX IF NOT EXISTS nutrition_pref_user_idx ON nutrition_pref(user_id)`));
   } catch {}
 
+  // Multi-tenant baseline. The `user` table (also created lazily by signup) and
+  // a user_id column on every legacy single-tenant table. Prod acquired these
+  // via earlier migrations that are no longer in this file; recreating them here
+  // keeps a FRESH database (new deploy, or a test DB) consistent with prod so the
+  // per-user queries don't fail. Idempotent via IF NOT EXISTS / try-catch.
+  d.run(sql.raw(`CREATE TABLE IF NOT EXISTS user (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    hash TEXT NOT NULL,
+    secret TEXT NOT NULL,
+    role TEXT DEFAULT 'beta',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`));
+  for (const t of [
+    "biomarker", "document", "dna_variant", "dna_insight", "note", "rag_chunk",
+    "rag_keyword", "ingest_log", "report", "profile", "symptom_log", "habit_log",
+    "supplement", "supplement_log", "blood_report", "action_plan", "reminder",
+    "chat_memory", "chat_session", "chat_message",
+  ]) {
+    try { d.run(sql.raw(`ALTER TABLE ${t} ADD COLUMN user_id INTEGER DEFAULT 1`)); } catch {}
+    try { d.run(sql.raw(`CREATE INDEX IF NOT EXISTS ${t}_user_idx ON ${t}(user_id)`)); } catch {}
+  }
+
   // Per-user uniqueness for wearable_metric. The original table had
   // UNIQUE(date, source, kind), so a beta user's Whoop/Oura import could
   // INSERT OR REPLACE over another user's same-day metric. Rebuild to include
