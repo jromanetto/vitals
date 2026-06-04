@@ -22,7 +22,7 @@ export async function GET() {
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;
-  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref ORDER BY updated_at DESC LIMIT 1`).get() as
+  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(s.userId) as
     | { diet_type: string; allergies: string; aversions: string; budget: string; cuisines: string }
     | undefined;
   if (!row) return NextResponse.json(DEFAULT);
@@ -49,10 +49,10 @@ export async function POST(req: Request) {
   const cuisines = (Array.isArray(body.cuisines) ? body.cuisines : []).slice(0, 10).map(String);
 
   const sqlite = db().$client;
-  // Single-row pattern: delete then insert
-  sqlite.prepare(`DELETE FROM nutrition_pref`).run();
-  sqlite.prepare(`INSERT INTO nutrition_pref (diet_type, allergies, aversions, budget, cuisines, updated_at) VALUES (?, ?, ?, ?, ?, ?)`).run(
-    dietType, JSON.stringify(allergies), aversions, budget, JSON.stringify(cuisines), Date.now()
+  // Single-row-per-user pattern: delete this user's row then insert
+  sqlite.prepare(`DELETE FROM nutrition_pref WHERE user_id = ?`).run(s.userId);
+  sqlite.prepare(`INSERT INTO nutrition_pref (diet_type, allergies, aversions, budget, cuisines, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    dietType, JSON.stringify(allergies), aversions, budget, JSON.stringify(cuisines), Date.now(), s.userId
   );
 
   return NextResponse.json({ ok: true, prefs: { dietType, allergies, aversions, budget, cuisines } });

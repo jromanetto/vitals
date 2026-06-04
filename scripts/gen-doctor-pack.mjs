@@ -18,27 +18,31 @@ const reportId = parseInt(process.argv[2], 10);
 const auth = JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "auth.json"), "utf8"));
 const apiKey = auth.anthropicApiKey;
 const db = new Database(path.join(process.cwd(), "data", "vitals.db"));
+// Scope every read to the report's owner so a beta user never gets the owner's data.
+const ownerRow = db.prepare(`SELECT user_id FROM report WHERE id = ?`).get(reportId);
+const userId = ownerRow?.user_id ?? 1;
 
 (async () => {
   let body;
   try {
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
 
-    const profile = (db.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get())?.data;
+    const profile = (db.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId))?.data;
     const profileObj = profile ? JSON.parse(profile) : {};
 
     const bms = db.prepare(`
       SELECT b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
       FROM biomarker b
-      JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+      JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
+      WHERE b.user_id = ?
       ORDER BY name
-    `).all();
+    `).all(userId, userId);
 
     // Trends: for each biomarker with >2 measurements, compute first vs last
-    const trendable = db.prepare(`SELECT slug, COUNT(*) c FROM biomarker GROUP BY slug HAVING c >= 2`).all();
+    const trendable = db.prepare(`SELECT slug, COUNT(*) c FROM biomarker WHERE user_id = ? GROUP BY slug HAVING c >= 2`).all(userId);
     const trends = [];
     for (const t of trendable) {
-      const points = db.prepare(`SELECT name, value, date FROM biomarker WHERE slug = ? ORDER BY date ASC`).all(t.slug);
+      const points = db.prepare(`SELECT name, value, date FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(t.slug, userId);
       const first = points[0], last = points[points.length - 1];
       const change = ((last.value - first.value) / first.value) * 100;
       if (Math.abs(change) > 10) {
@@ -46,10 +50,11 @@ const db = new Database(path.join(process.cwd(), "data", "vitals.db"));
       }
     }
 
-    const dnaRisks = db.prepare(`SELECT trait, user_genotype as ug, summary, magnitude, category FROM dna_insight WHERE has_risk = 1 ORDER BY COALESCE(magnitude, 1) DESC LIMIT 12`).all();
+    const dnaRisks = db.prepare(`SELECT trait, user_genotype as ug, summary, magnitude, category FROM dna_insight WHERE user_id = ? AND has_risk = 1 ORDER BY COALESCE(magnitude, 1) DESC LIMIT 12`).all(userId);
 
-    const supplements = db.prepare(`SELECT name, dose, timing, frequency FROM supplement WHERE ended_at IS NULL ORDER BY name`).all();
-    const symptomsRecent = db.prepare(`SELECT key, AVG(value) avg, COUNT(*) n FROM symptom_log WHERE date >= ? GROUP BY key`).all(
+    const supplements = db.prepare(`SELECT name, dose, timing, frequency FROM supplement WHERE user_id = ? AND ended_at IS NULL ORDER BY name`).all(userId);
+    const symptomsRecent = db.prepare(`SELECT key, AVG(value) avg, COUNT(*) n FROM symptom_log WHERE user_id = ? AND date >= ? GROUP BY key`).all(
+      userId,
       new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10),
     );
 

@@ -1,12 +1,21 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { db, schema } from "@/lib/db";
+import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
 import { spawn } from "node:child_process";
 import path from "node:path";
 
 export const runtime = "nodejs";
+
+/** Insert a placeholder report row owned by the requesting user. Raw SQL because
+ * the Drizzle schema doesn't model the user_id column. Returns the new id. */
+function insertReport(kind: string, title: string, userId: number): number {
+  const r = db().$client
+    .prepare(`INSERT INTO report (kind, title, body, meta, user_id) VALUES (?, ?, ?, ?, ?)`)
+    .run(kind, title, "", JSON.stringify({ status: "generating" }), userId);
+  return Number(r.lastInsertRowid);
+}
 
 const KINDS = ["overview", "cardiovascular", "metabolic", "longevity", "nutrition", "cognition", "hormonal", "inflammation", "dna-deep-dive", "next-bloodwork-prep", "supplement-recommendations"] as const;
 const TITLES: Record<string, string> = {
@@ -32,8 +41,7 @@ export async function POST(req: Request) {
   const { kind = "overview" } = await req.json().catch(() => ({}));
   const validKind = (KINDS as readonly string[]).includes(kind) ? kind : "overview";
   const title = TITLES[validKind];
-  const ins = await db().insert(schema.report).values({ kind: validKind, title: `${title} — génération…`, body: "", meta: { status: "generating" } }).returning({ id: schema.report.id });
-  const id = ins[0].id;
+  const id = insertReport(validKind, `${title} — génération…`, s.userId);
   startGen(id, validKind);
   logAudit("report_create", `id=${id} kind=${validKind}`, req);
   return NextResponse.json({ id, kind: validKind, redirect: `/reports/${id}` });
@@ -49,8 +57,7 @@ export async function GET(req: Request) {
   const kind = url.searchParams.get("kind") ?? "overview";
   const validKind = (KINDS as readonly string[]).includes(kind) ? kind : "overview";
   const title = TITLES[validKind];
-  const ins = await db().insert(schema.report).values({ kind: validKind, title: `${title} — génération…`, body: "", meta: { status: "generating" } }).returning({ id: schema.report.id });
-  const id = ins[0].id;
+  const id = insertReport(validKind, `${title} — génération…`, s.userId);
   startGen(id, validKind);
   logAudit("report_create", `id=${id} kind=${validKind}`, req);
   return NextResponse.redirect(new URL(`/reports/${id}`, baseUrl));

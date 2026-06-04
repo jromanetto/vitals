@@ -13,9 +13,9 @@ export async function GET() {
   ensureSchema();
   const rows = db()
     .$client.prepare(
-      `SELECT id, kind, body, source_session_id, confidence, created_at, active FROM chat_memory ORDER BY active DESC, kind, created_at DESC`
+      `SELECT id, kind, body, source_session_id, confidence, created_at, active FROM chat_memory WHERE user_id = ? ORDER BY active DESC, kind, created_at DESC`
     )
-    .all();
+    .all(s.userId);
   return NextResponse.json({ memories: rows });
 }
 
@@ -46,8 +46,8 @@ export async function POST(req: Request) {
       vals.push(body.active ? 1 : 0);
     }
     if (!cols.length) return NextResponse.json({ error: "nothing to update" }, { status: 400 });
-    vals.push(body.id);
-    sqlite.prepare(`UPDATE chat_memory SET ${cols.join(", ")} WHERE id = ?`).run(...vals);
+    vals.push(body.id, s.userId);
+    sqlite.prepare(`UPDATE chat_memory SET ${cols.join(", ")} WHERE id = ? AND user_id = ?`).run(...vals);
     return NextResponse.json({ ok: true });
   }
   // Create new memory
@@ -55,9 +55,9 @@ export async function POST(req: Request) {
   if (!body.body || typeof body.body !== "string") return NextResponse.json({ error: "body required" }, { status: 400 });
   const ins = sqlite
     .prepare(
-      `INSERT INTO chat_memory (kind, body, confidence, created_at, active) VALUES (?, ?, ?, ?, 1)`
+      `INSERT INTO chat_memory (kind, body, confidence, created_at, active, user_id) VALUES (?, ?, ?, ?, 1, ?)`
     )
-    .run(body.kind, body.body.slice(0, 500), body.confidence ?? 0.9, Date.now());
+    .run(body.kind, body.body.slice(0, 500), body.confidence ?? 0.9, Date.now(), s.userId);
   return NextResponse.json({ ok: true, id: Number(ins.lastInsertRowid) });
 }
 
@@ -68,6 +68,6 @@ export async function DELETE(req: Request) {
   const url = new URL(req.url);
   const id = Number(url.searchParams.get("id"));
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  db().$client.prepare(`DELETE FROM chat_memory WHERE id = ?`).run(id);
+  db().$client.prepare(`DELETE FROM chat_memory WHERE id = ? AND user_id = ?`).run(id, s.userId);
   return NextResponse.json({ ok: true });
 }

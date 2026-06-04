@@ -33,10 +33,13 @@ const apiKey = auth.anthropicApiKey;
 const anonymizeEnabled = auth.anonymizeLLM === undefined ? true : !!auth.anonymizeLLM;
 
 const db = new Database(path.join(process.cwd(), "data", "vitals.db"));
-const profile = db.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`).get();
+// Scope every read to the report's owner so a beta user never gets the owner's data.
+const ownerRow = db.prepare(`SELECT user_id FROM report WHERE id = ?`).get(reportId);
+const userId = ownerRow?.user_id ?? 1;
+const profile = db.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId);
 const profileObj = profile ? JSON.parse(profile.data) : {};
-const bms = db.prepare(`SELECT b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date`).all();
-const dna = db.prepare(`SELECT trait, user_genotype as ug, has_risk as hasRisk, summary FROM dna_insight ORDER BY (has_risk * COALESCE(magnitude,1)) DESC`).all();
+const bms = db.prepare(`SELECT b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date WHERE b.user_id = ?`).all(userId, userId);
+const dna = db.prepare(`SELECT trait, user_genotype as ug, has_risk as hasRisk, summary FROM dna_insight WHERE user_id = ? ORDER BY (has_risk * COALESCE(magnitude,1)) DESC`).all(userId);
 
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 

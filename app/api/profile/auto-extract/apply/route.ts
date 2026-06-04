@@ -4,7 +4,7 @@ import { db, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const memories = Array.isArray(body.memories) ? body.memories.filter((x) => typeof x === "string") : [];
 
   const d = db();
-  const rows = await d.select().from(schema.profile).orderBy(desc(schema.profile.updatedAt)).limit(1);
+  const rows = await d.select().from(schema.profile).where(sql`user_id = ${s.userId}`).orderBy(desc(schema.profile.updatedAt)).limit(1);
   const existing = decryptProfile((rows[0]?.data as Record<string, unknown>) ?? {});
 
   const merged: Record<string, unknown> = { ...existing };
@@ -30,8 +30,8 @@ export async function POST(req: Request) {
     merged[k] = v;
   }
 
-  // Match /api/profile POST behaviour: store plaintext (legacy)
-  await d.insert(schema.profile).values({ data: merged, updatedAt: new Date() });
+  // Match /api/profile POST behaviour: store plaintext (legacy), scoped to the user.
+  d.$client.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(merged), Date.now(), s.userId);
 
   // Mirror profile.md
   try {
@@ -54,14 +54,14 @@ export async function POST(req: Request) {
   let memCreated = 0;
   if (memories.length) {
     const sqlite = d.$client;
-    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? LIMIT 1`);
-    const ins = sqlite.prepare(`INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active) VALUES (?, ?, NULL, ?, ?, 1)`);
+    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? AND user_id = ? LIMIT 1`);
+    const ins = sqlite.prepare(`INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active, user_id) VALUES (?, ?, NULL, ?, ?, 1, ?)`);
     for (const m of memories) {
       const trimmed = m.trim().slice(0, 500);
       if (!trimmed) continue;
-      const exists = dedup.get("medical_history", trimmed);
+      const exists = dedup.get("medical_history", trimmed, s.userId);
       if (exists) continue;
-      ins.run("medical_history", trimmed, 0.9, Date.now());
+      ins.run("medical_history", trimmed, 0.9, Date.now(), s.userId);
       memCreated++;
     }
   }
