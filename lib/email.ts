@@ -100,7 +100,7 @@ function wrap(title: string, body: string): string {
       <hr style="border:none;border-top:1px solid #27272a;margin:32px 0 16px" />
       <p style="font-size:12px;color:#71717a;margin:0;line-height:1.5">
         Vitals · plateforme de santé personnelle · données chiffrées · hébergement EU<br/>
-        Tu reçois cet email parce que tu utilises Vitals. <a href="https://vitals.blueproject.org/legal/privacy" style="color:#10b981">Politique de confidentialité</a>.
+        Tu reçois cet email parce que tu utilises Vitals. <a href="https://vitals.club/legal/privacy" style="color:#10b981">Politique de confidentialité</a>.
       </p>
     </div>
   </body></html>`;
@@ -119,13 +119,13 @@ export function welcomeTemplate(firstName?: string): { subject: string; html: st
         <li><strong>Charge ton 23andMe</strong> pour activer les recommandations personnalisées</li>
         <li><strong>Discute avec l'équipe médicale</strong> dans le chat pour comprendre ton dossier</li>
       </ol>
-      <a href="https://vitals.blueproject.org/dashboard" style="${BUTTON_STYLE}">Accéder à mon dashboard →</a>
+      <a href="https://vitals.club/dashboard" style="${BUTTON_STYLE}">Accéder à mon dashboard →</a>
       <p style="font-size:13px;color:#a1a1aa;margin:16px 0 0">
         Une question ? Réponds simplement à cet email.
       </p>
     `,
   );
-  const text = `${greeting} !\n\nTon compte Vitals est créé. Étapes recommandées :\n1. Importe ton premier bilan sanguin\n2. Charge ton 23andMe\n3. Discute avec l'équipe médicale\n\nDashboard : https://vitals.blueproject.org/dashboard`;
+  const text = `${greeting} !\n\nTon compte Vitals est créé. Étapes recommandées :\n1. Importe ton premier bilan sanguin\n2. Charge ton 23andMe\n3. Discute avec l'équipe médicale\n\nDashboard : https://vitals.club/dashboard`;
   return { subject: "🌿 Bienvenue sur Vitals", html, text };
 }
 
@@ -142,15 +142,15 @@ export function waitlistTemplate(email: string): { subject: string; html: string
       <p style="font-size:14px;color:#a1a1aa;margin:24px 0 8px">
         En attendant, tu peux explorer une démo avec un patient fictif :
       </p>
-      <a href="https://vitals.blueproject.org/login?demo=1" style="${BUTTON_STYLE}">Voir la démo →</a>
+      <a href="https://vitals.club/login?demo=1" style="${BUTTON_STYLE}">Voir la démo →</a>
     `,
   );
-  const text = `Merci pour ton intérêt ! La bêta privée est complète. On t'a ajouté à la liste avec ${email}. Démo : https://vitals.blueproject.org/login?demo=1`;
+  const text = `Merci pour ton intérêt ! La bêta privée est complète. On t'a ajouté à la liste avec ${email}. Démo : https://vitals.club/login?demo=1`;
   return { subject: "📋 Liste d'attente Vitals", html, text };
 }
 
 export function shareLinkTemplate(opts: { token: string; expiresAt: number; senderName?: string; note?: string }): { subject: string; html: string; text: string } {
-  const url = `https://vitals.blueproject.org/share/${opts.token}`;
+  const url = `https://vitals.club/share/${opts.token}`;
   const expires = new Date(opts.expiresAt).toLocaleDateString("fr-FR", { dateStyle: "long" });
   const senderLine = opts.senderName ? `${opts.senderName} t'a partagé un dossier santé Vitals.` : "Un dossier santé Vitals t'a été partagé.";
   const html = wrap(
@@ -180,9 +180,9 @@ export function reminderTemplate(opts: { title: string; description?: string; du
       </p>
       <p style="font-size:14px;color:#a1a1aa">📅 ${opts.dueDate}</p>
       ${opts.description ? `<p style="font-size:14px;line-height:1.6;color:#d4d4d8">${opts.description}</p>` : ""}
-      <a href="https://vitals.blueproject.org/reminders" style="${BUTTON_STYLE}">Voir mes rappels →</a>
+      <a href="https://vitals.club/reminders" style="${BUTTON_STYLE}">Voir mes rappels →</a>
     `,
   );
-  const text = `Rappel — ${opts.title}\n${opts.dueDate}\n${opts.description ?? ""}\nhttps://vitals.blueproject.org/reminders`;
+  const text = `Rappel — ${opts.title}\n${opts.dueDate}\n${opts.description ?? ""}\nhttps://vitals.club/reminders`;
   return { subject: `⏰ Rappel : ${opts.title}`, html, text };
 }

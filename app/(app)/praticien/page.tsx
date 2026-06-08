@@ -23,7 +23,7 @@ export default async function PraticienPage() {
       <PraticienReport data={data} />
 
       <footer className="mt-10 pt-4 border-t border-gray-300 text-xs text-gray-500 text-center">
-        Document généré par Vitals — vitals.blueproject.org
+        Document généré par Vitals — vitals.club
       </footer>
     </div>
   );

@@ -458,7 +458,7 @@ function todoSection(items: DigestTodoItem[]): string {
     <div style="${SECTION_TITLE_STYLE}">À faire — top ${items.length}</div>
     <ul style="list-style:none;padding:0;margin:0">${rows}</ul>
     <p style="margin:8px 0 16px;font-size:12px;color:#71717a">
-      <a href="https://vitals.blueproject.org/todo" style="color:#10b981;text-decoration:none">Voir toutes mes actions →</a>
+      <a href="https://vitals.club/todo" style="color:#10b981;text-decoration:none">Voir toutes mes actions →</a>
     </p>
   `;
 }
@@ -583,12 +583,12 @@ export function weeklyDigestTemplate(deltas: WeeklyDeltas): {
         Un résumé court de tes 7 derniers jours. Ouvre le dashboard pour creuser.
       </p>
       ${sections}
-      <a href="https://vitals.blueproject.org/dashboard" style="${BUTTON_STYLE}">Ouvrir mon dashboard →</a>
+      <a href="https://vitals.club/dashboard" style="${BUTTON_STYLE}">Ouvrir mon dashboard →</a>
       <hr style="border:none;border-top:1px solid #27272a;margin:32px 0 16px" />
       <p style="font-size:12px;color:#71717a;margin:0;line-height:1.5">
         Vitals · plateforme de santé personnelle · données chiffrées · hébergement EU<br/>
         Tu reçois cet email parce que tu as une activité récente sur Vitals.
-        <a href="https://vitals.blueproject.org/legal/privacy" style="color:#10b981">Confidentialité</a>.
+        <a href="https://vitals.club/legal/privacy" style="color:#10b981">Confidentialité</a>.
       </p>
     </div>
   </body></html>`;
@@ -634,7 +634,7 @@ export function weeklyDigestTemplate(deltas: WeeklyDeltas): {
     }
     lines.push("");
   }
-  lines.push("Dashboard : https://vitals.blueproject.org/dashboard");
+  lines.push("Dashboard : https://vitals.club/dashboard");
 
   return {
     subject: "Ton résumé Vitals de la semaine",

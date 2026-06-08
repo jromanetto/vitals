@@ -73,5 +73,5 @@ export async function POST(req: Request) {
 }
 
 function getOrigin(): string {
-  return process.env.NEXT_PUBLIC_APP_URL || "https://vitals.blueproject.org";
+  return process.env.NEXT_PUBLIC_APP_URL || "https://vitals.club";
 }

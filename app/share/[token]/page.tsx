@@ -34,7 +34,7 @@ export default async function SharePage({ params }: Ctx) {
           <p className="text-sm text-gray-600 mt-3">
             Ce lien partagé n’est plus valide. Demande au patient de générer un nouveau lien.
           </p>
-          <p className="text-xs text-gray-400 mt-6">vitals.blueproject.org</p>
+          <p className="text-xs text-gray-400 mt-6">vitals.club</p>
         </div>
       </div>
     );
@@ -65,7 +65,7 @@ export default async function SharePage({ params }: Ctx) {
         <div className="praticien-doc bg-white text-black">
           <PraticienReport data={data} anonymized />
           <footer className="mt-10 pt-4 border-t border-gray-300 text-xs text-gray-500 text-center">
-            Document généré par Vitals · vitals.blueproject.org
+            Document généré par Vitals · vitals.club
           </footer>
         </div>
       </div>
