@@ -143,6 +143,16 @@ export function ensureSchema() {
       count_out_of_7 INTEGER NOT NULL,
       PRIMARY KEY (checkin_id, key)
     )`,
+    // Password reset: one row per request, token stored hashed, single-use + expiry.
+    `CREATE TABLE IF NOT EXISTS password_reset (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    )`,
+    `CREATE INDEX IF NOT EXISTS password_reset_email_idx ON password_reset(email)`,
   ];
   for (const s of stmts) d.run(sql.raw(s));
   for (const c of ["url", "brand", "image_url", "ingredients", "serving_size", "suggested_use", "price", "duration"]) {

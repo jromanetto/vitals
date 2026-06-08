@@ -149,6 +149,23 @@ export function waitlistTemplate(email: string): { subject: string; html: string
   return { subject: "📋 Liste d'attente Vitals", html, text };
 }
 
+export function passwordResetTemplate(resetUrl: string): { subject: string; html: string; text: string } {
+  const html = wrap(
+    "Réinitialisation du mot de passe",
+    `
+      <p style="font-size:15px;line-height:1.6;color:#d4d4d8">
+        Tu as demandé à réinitialiser ton mot de passe Vitals. Clique sur le bouton ci-dessous pour en choisir un nouveau.
+      </p>
+      <a href="${resetUrl}" style="${BUTTON_STYLE}">Choisir un nouveau mot de passe →</a>
+      <p style="font-size:13px;color:#a1a1aa;margin:16px 0 0">
+        Ce lien expire dans 1 heure et ne fonctionne qu'une fois. Si tu n'es pas à l'origine de cette demande, ignore cet email — ton mot de passe reste inchangé.
+      </p>
+    `,
+  );
+  const text = `Réinitialisation du mot de passe Vitals.\n\nChoisis un nouveau mot de passe : ${resetUrl}\n\nCe lien expire dans 1 heure et ne fonctionne qu'une fois. Si tu n'es pas à l'origine de cette demande, ignore cet email.`;
+  return { subject: "🔑 Réinitialise ton mot de passe Vitals", html, text };
+}
+
 export function shareLinkTemplate(opts: { token: string; expiresAt: number; senderName?: string; note?: string }): { subject: string; html: string; text: string } {
   const url = `https://vitals.club/share/${opts.token}`;
   const expires = new Date(opts.expiresAt).toLocaleDateString("fr-FR", { dateStyle: "long" });

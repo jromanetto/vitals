@@ -102,6 +102,9 @@ export function LoginForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full bg-secondary/50 border border-border rounded-md px-3 py-2.5 outline-none focus:border-primary transition"
               />
+              <div className="text-right">
+                <a href="/forgot-password" className="text-xs text-muted-foreground hover:text-emerald transition">Mot de passe oublié ?</a>
+              </div>
             </div>
             {needTotp && (
               <div className="space-y-1.5">
