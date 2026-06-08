@@ -41,7 +41,7 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; i
     console.warn("[email] Resend API key not configured — skipping send to", payload.to);
     return { ok: false, error: "not configured" };
   }
-  const from = payload.from || auth.emailFrom || "Vitals <onboarding@resend.dev>";
+  const from = payload.from || auth.emailFrom || "Vitals <noreply@vitals.blueproject.org>";
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
