@@ -3,8 +3,12 @@ import type { NextRequest } from "next/server";
 
 export const config = {
   matcher: [
-    // Match everything except static files, _next, favicon, public
-    "/((?!_next|favicon|public|.*\\..*).*)",
+    // Match everything except static files, _next, favicon, public — and
+    // /api/upload, which streams large medical files (scans, imaging) that
+    // exceed Next's ~10MB middleware body buffer; passing through middleware
+    // truncated the body and broke `req.formData()`. The upload route does its
+    // own getSession() auth check, so skipping middleware there is safe.
+    "/((?!_next|favicon|public|api/upload|.*\\..*).*)",
   ],
 };
 
