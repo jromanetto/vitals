@@ -2,7 +2,7 @@
 
 Personal health intelligence platform. Self-hosted, single-user, AI-grounded.
 
-- **Live** : https://vitals.blueproject.org
+- **Live** : https://vitals.club (canonical ; vitals.blueproject.org redirige 301 → vitals.club)
 - **Repo** : https://github.com/jromanetto/vitals
 - **VPS** : `cursor@77.87.110.100` (alias SSH `dallas3`) — path `/home/script/vitals/`
 
