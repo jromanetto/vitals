@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -55,7 +56,11 @@ const groups: Group[] = [
 
 export function MobileDrawer() {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
+
+  // Portal target only exists on the client.
+  useEffect(() => { setMounted(true); }, []);
 
   // Close on route change
   useEffect(() => {
@@ -89,6 +94,7 @@ export function MobileDrawer() {
         <Menu className="h-5 w-5" />
       </button>
 
+      {mounted && createPortal(
       <AnimatePresence>
         {open && (
           <>
@@ -168,7 +174,9 @@ export function MobileDrawer() {
             </motion.aside>
           </>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+      )}
     </>
   );
 }
