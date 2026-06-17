@@ -27,6 +27,9 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium">Catégorie ADN</div>
         <h1 className="text-3xl md:text-4xl font-semibold tracking-tight capitalize mt-2">{category}</h1>
         <p className="text-muted-foreground mt-3 text-[15px]">{rows.length} traits analysés</p>
+        <p className="text-muted-foreground/80 mt-1.5 text-xs leading-relaxed max-w-2xl">
+          Les variantes marquées « Bon à savoir » sont des prédispositions, pas des diagnostics — leur effet est souvent modeste et largement influençable par le mode de vie.
+        </p>
       </div>
       <div className="grid gap-4">
         {rows.length === 0 && <div className="rounded-xl border border-border p-8 bg-card text-muted-foreground">Aucun insight encore généré pour cette catégorie.</div>}
@@ -48,7 +51,7 @@ export default async function DnaCat({ params }: { params: Promise<{ category: s
               {r.isProtective === 1 ? (
                 <span className="px-2 py-0.5 rounded-full text-xs border bg-emerald/15 text-emerald border-emerald/30 shrink-0">Protecteur</span>
               ) : r.hasRisk === 1 ? (
-                <span className="px-2 py-0.5 rounded-full text-xs border bg-amber-500/15 text-amber-400 border-amber-500/30 shrink-0">À surveiller</span>
+                <span className="px-2 py-0.5 rounded-full text-xs border bg-sky-500/10 text-sky-400 border-sky-500/25 shrink-0">Bon à savoir</span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-xs border bg-secondary text-muted-foreground border-border shrink-0">Standard</span>
               )}

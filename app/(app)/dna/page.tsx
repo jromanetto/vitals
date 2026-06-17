@@ -72,7 +72,7 @@ export default async function DnaPage() {
         title="Analyse ADN"
         description={
           totalVariants > 0
-            ? `${totalVariants.toLocaleString()} SNPs analysés depuis ton 23andMe — répartis par système corporel avec leurs forces et points d'attention.`
+            ? `${totalVariants.toLocaleString()} SNPs analysés depuis ton 23andMe — répartis par système corporel, avec tes forces et ce qui est bon à savoir.`
             : "Aucun ADN ingéré. Lance l'ingestion DNA depuis Profile pour démarrer."
         }
         icon={<DnaIcon className="h-5 w-5 text-emerald" />}
@@ -95,7 +95,7 @@ export default async function DnaPage() {
         <SectionHeader
           eyebrow="Catégories"
           title="Par système corporel"
-          description="10 systèmes analysés avec leur ratio favorable et points d'attention."
+          description="10 systèmes analysés avec leur part favorable et ce qui est bon à savoir."
           icon={<Layers className="h-4 w-4 text-emerald" />}
         />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

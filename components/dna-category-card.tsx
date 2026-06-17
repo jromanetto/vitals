@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Shield, AlertCircle, Users } from "lucide-react";
+import { Shield, Users } from "lucide-react";
 
 export type Cat = { id: string; title: string; desc: string };
 export type Stat = { c: number; risk: number; protective: number };
@@ -73,7 +73,7 @@ export function DnaCategoryCard({ cat, stats, idx }: { cat: Cat; stats?: Stat; i
             <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-2">
               {prot > 0 && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-emerald" />{prot} protecteur{prot > 1 ? "s" : ""}</span>}
               <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-sky-500/60" />{standard} standard{standard > 1 ? "s" : ""}</span>
-              {risk > 0 && <span className="flex items-center gap-1 text-amber-400/90"><AlertCircle className="h-2.5 w-2.5" />{risk}</span>}
+              {risk > 0 && <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-amber-400/70" />{risk} à connaître</span>}
             </div>
           </>
         ) : (

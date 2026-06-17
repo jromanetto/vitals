@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { Shield, Sparkles, AlertCircle, Dna as DnaIcon } from "lucide-react";
+import { Shield, Sparkles, Lightbulb, Dna as DnaIcon } from "lucide-react";
 
 type Props = {
   totalVariants: number;
@@ -36,7 +36,7 @@ export function DnaOverview({ totalVariants, totalAnalyzed, riskCount, protectiv
         <div className="p-6 grid grid-cols-3 gap-3">
           <Card icon={<Shield className="h-4 w-4 text-emerald" />} value={protectiveCount} label="Protecteurs" sub="variants favorables identifiés" tone="emerald" />
           <Card icon={<Sparkles className="h-4 w-4 text-sky-400" />} value={standardCount} label="Standards" sub="génotype neutre, pas de risque" tone="sky" />
-          <Card icon={<AlertCircle className="h-4 w-4 text-amber-400" />} value={riskCount} label="À surveiller" sub="variants à monitorer" tone="amber" />
+          <Card icon={<Lightbulb className="h-4 w-4 text-amber-400" />} value={riskCount} label="Bon à savoir" sub="à connaître, souvent modulables" tone="amber" />
 
           <div className="col-span-3 mt-2">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Répartition</div>
@@ -54,7 +54,7 @@ export function DnaOverview({ totalVariants, totalAnalyzed, riskCount, protectiv
             </div>
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1.5">
               <span>{((favorableCount / totalAnalyzed) * 100).toFixed(0)}% favorable</span>
-              <span>{((riskCount / totalAnalyzed) * 100).toFixed(0)}% à surveiller</span>
+              <span>{((riskCount / totalAnalyzed) * 100).toFixed(0)}% à connaître</span>
             </div>
           </div>
         </div>
