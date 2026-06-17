@@ -209,24 +209,16 @@ export function ensureSchema() {
   // user_id in the constraint. One-time, idempotent (detected via the stored
   // table SQL); rows with the same (date, source, kind, user_id) collapse via
   // INSERT OR IGNORE, cross-user duplicates are preserved.
-  try {
-    const sqlite = d.$client as unknown as { prepare: (q: string) => { get: () => { sql: string } | undefined }; exec: (q: string) => void };
-    const row = sqlite.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='wearable_metric'`).get();
-    if (row && !/UNIQUE\s*\([^)]*user_id[^)]*\)/i.test(row.sql)) {
-      sqlite.exec(`
-        BEGIN;
-        CREATE TABLE wearable_metric_new (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id));
-        INSERT OR IGNORE INTO wearable_metric_new (id, date, source, kind, value, unit, user_id) SELECT id, date, source, kind, value, unit, COALESCE(user_id, 1) FROM wearable_metric;
-        DROP TABLE wearable_metric;
-        ALTER TABLE wearable_metric_new RENAME TO wearable_metric;
-        CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date);
-        CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind);
-        CREATE INDEX IF NOT EXISTS wearable_metric_user_idx ON wearable_metric(user_id);
-        COMMIT;
-      `);
-      console.log("[migrate] rebuilt wearable_metric with per-user UNIQUE(date, source, kind, user_id)");
-    }
-  } catch (e) { console.error("[migrate] wearable_metric rebuild failed", e); }
+  const client = d.$client as unknown as SqliteClient;
+  rebuildIf(client, "wearable_metric", (sql) => !/UNIQUE\s*\([^)]*user_id[^)]*\)/i.test(sql), [
+    `CREATE TABLE wearable_metric_new (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id))`,
+    `INSERT OR IGNORE INTO wearable_metric_new (id, date, source, kind, value, unit, user_id) SELECT id, date, source, kind, value, unit, COALESCE(user_id, 1) FROM wearable_metric`,
+    `DROP TABLE wearable_metric`,
+    `ALTER TABLE wearable_metric_new RENAME TO wearable_metric`,
+    `CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`,
+    `CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`,
+    `CREATE INDEX IF NOT EXISTS wearable_metric_user_idx ON wearable_metric(user_id)`,
+  ], "rebuilt wearable_metric with per-user UNIQUE(date, source, kind, user_id)");
 
   // Per-user isolation for dna_variant. The original table had
   // `rsid TEXT PRIMARY KEY` (global), so a second user's genome import would
@@ -235,21 +227,42 @@ export function ensureSchema() {
   // person's genotypes under another's row. Rebuild with a composite
   // PRIMARY KEY (rsid, user_id). One-time, idempotent (detected via the absence
   // of a table-level composite PRIMARY KEY in the stored SQL).
+  rebuildIf(client, "dna_variant", (sql) => !/PRIMARY KEY\s*\(/i.test(sql), [
+    `CREATE TABLE dna_variant_new (rsid TEXT NOT NULL, chromosome TEXT NOT NULL, position INTEGER NOT NULL, genotype TEXT NOT NULL, user_id INTEGER DEFAULT 1, PRIMARY KEY (rsid, user_id))`,
+    `INSERT OR IGNORE INTO dna_variant_new (rsid, chromosome, position, genotype, user_id) SELECT rsid, chromosome, position, genotype, COALESCE(user_id, 1) FROM dna_variant`,
+    `DROP TABLE dna_variant`,
+    `ALTER TABLE dna_variant_new RENAME TO dna_variant`,
+    `CREATE INDEX IF NOT EXISTS dna_chr_idx ON dna_variant(chromosome)`,
+    `CREATE INDEX IF NOT EXISTS dna_variant_user_idx ON dna_variant(user_id)`,
+  ], "rebuilt dna_variant with composite PRIMARY KEY (rsid, user_id)");
+}
+
+type SqliteClient = {
+  prepare: (q: string) => { get: () => { sql: string } | undefined };
+  exec: (q: string) => void;
+};
+
+/**
+ * Atomically rebuild a table when `needsRebuild(currentSql)` is true. Each DDL
+ * step runs inside an explicit transaction; on ANY failure we ROLLBACK so the
+ * connection never leaks an open transaction. (A leaked transaction is far
+ * worse than a skipped migration: every subsequent write on that connection —
+ * a user's biomarker, genome, note — would silently never commit.)
+ */
+function rebuildIf(client: SqliteClient, table: string, needsRebuild: (sql: string) => boolean, steps: string[], doneMsg: string) {
   try {
-    const sqlite = d.$client as unknown as { prepare: (q: string) => { get: () => { sql: string } | undefined }; exec: (q: string) => void };
-    const row = sqlite.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='dna_variant'`).get();
-    if (row && !/PRIMARY KEY\s*\(/i.test(row.sql)) {
-      sqlite.exec(`
-        BEGIN;
-        CREATE TABLE dna_variant_new (rsid TEXT NOT NULL, chromosome TEXT NOT NULL, position INTEGER NOT NULL, genotype TEXT NOT NULL, user_id INTEGER DEFAULT 1, PRIMARY KEY (rsid, user_id));
-        INSERT OR IGNORE INTO dna_variant_new (rsid, chromosome, position, genotype, user_id) SELECT rsid, chromosome, position, genotype, COALESCE(user_id, 1) FROM dna_variant;
-        DROP TABLE dna_variant;
-        ALTER TABLE dna_variant_new RENAME TO dna_variant;
-        CREATE INDEX IF NOT EXISTS dna_chr_idx ON dna_variant(chromosome);
-        CREATE INDEX IF NOT EXISTS dna_variant_user_idx ON dna_variant(user_id);
-        COMMIT;
-      `);
-      console.log("[migrate] rebuilt dna_variant with composite PRIMARY KEY (rsid, user_id)");
+    const row = client.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='${table}'`).get();
+    if (!row || !needsRebuild(row.sql)) return;
+    client.exec("BEGIN");
+    try {
+      for (const step of steps) client.exec(step);
+      client.exec("COMMIT");
+    } catch (inner) {
+      try { client.exec("ROLLBACK"); } catch {}
+      throw inner;
     }
-  } catch (e) { console.error("[migrate] dna_variant rebuild failed", e); }
+    console.log(`[migrate] ${doneMsg}`);
+  } catch (e) {
+    console.error(`[migrate] ${table} rebuild failed`, e);
+  }
 }
