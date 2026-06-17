@@ -8,7 +8,7 @@ export function ensureSchema() {
     `CREATE TABLE IF NOT EXISTS biomarker (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL, category TEXT, value REAL NOT NULL, unit TEXT, ref_low REAL, ref_high REAL, date INTEGER NOT NULL, source TEXT, raw_text TEXT)`,
     `CREATE INDEX IF NOT EXISTS biomarker_slug_idx ON biomarker(slug)`,
     `CREATE INDEX IF NOT EXISTS biomarker_date_idx ON biomarker(date)`,
-    `CREATE TABLE IF NOT EXISTS dna_variant (rsid TEXT PRIMARY KEY, chromosome TEXT NOT NULL, position INTEGER NOT NULL, genotype TEXT NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS dna_variant (rsid TEXT NOT NULL, chromosome TEXT NOT NULL, position INTEGER NOT NULL, genotype TEXT NOT NULL, user_id INTEGER DEFAULT 1, PRIMARY KEY (rsid, user_id))`,
     `CREATE INDEX IF NOT EXISTS dna_chr_idx ON dna_variant(chromosome)`,
     `CREATE TABLE IF NOT EXISTS dna_insight (id INTEGER PRIMARY KEY AUTOINCREMENT, rsid TEXT NOT NULL, category TEXT NOT NULL, trait TEXT NOT NULL, effect TEXT, magnitude REAL, risk_allele TEXT, user_genotype TEXT, has_risk INTEGER, summary TEXT, source TEXT)`,
     `CREATE INDEX IF NOT EXISTS dna_insight_cat_idx ON dna_insight(category)`,
@@ -227,4 +227,29 @@ export function ensureSchema() {
       console.log("[migrate] rebuilt wearable_metric with per-user UNIQUE(date, source, kind, user_id)");
     }
   } catch (e) { console.error("[migrate] wearable_metric rebuild failed", e); }
+
+  // Per-user isolation for dna_variant. The original table had
+  // `rsid TEXT PRIMARY KEY` (global), so a second user's genome import would
+  // INSERT OR REPLACE over the first user's raw variants (same rsids for
+  // everyone) — corrupting their "X SNPs analysés" count and storing one
+  // person's genotypes under another's row. Rebuild with a composite
+  // PRIMARY KEY (rsid, user_id). One-time, idempotent (detected via the absence
+  // of a table-level composite PRIMARY KEY in the stored SQL).
+  try {
+    const sqlite = d.$client as unknown as { prepare: (q: string) => { get: () => { sql: string } | undefined }; exec: (q: string) => void };
+    const row = sqlite.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='dna_variant'`).get();
+    if (row && !/PRIMARY KEY\s*\(/i.test(row.sql)) {
+      sqlite.exec(`
+        BEGIN;
+        CREATE TABLE dna_variant_new (rsid TEXT NOT NULL, chromosome TEXT NOT NULL, position INTEGER NOT NULL, genotype TEXT NOT NULL, user_id INTEGER DEFAULT 1, PRIMARY KEY (rsid, user_id));
+        INSERT OR IGNORE INTO dna_variant_new (rsid, chromosome, position, genotype, user_id) SELECT rsid, chromosome, position, genotype, COALESCE(user_id, 1) FROM dna_variant;
+        DROP TABLE dna_variant;
+        ALTER TABLE dna_variant_new RENAME TO dna_variant;
+        CREATE INDEX IF NOT EXISTS dna_chr_idx ON dna_variant(chromosome);
+        CREATE INDEX IF NOT EXISTS dna_variant_user_idx ON dna_variant(user_id);
+        COMMIT;
+      `);
+      console.log("[migrate] rebuilt dna_variant with composite PRIMARY KEY (rsid, user_id)");
+    }
+  } catch (e) { console.error("[migrate] dna_variant rebuild failed", e); }
 }

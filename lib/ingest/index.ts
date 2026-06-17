@@ -193,7 +193,7 @@ export async function ingestDnaForUser(userId: number, baseDir: string): Promise
     const ev = evaluate(cat, ug);
     insIns.run(
       cat.rsid, cat.category, cat.trait, cat.effect ?? null, cat.magnitude ?? null,
-      cat.riskGenotypes.join(",") || null, ug, ev.hasRisk, ev.isProtective, cat.summary, cat.source, userId,
+      cat.riskGenotypes.join(",") || null, ug, ev.hasRisk ? 1 : 0, ev.isProtective ? 1 : 0, cat.summary, cat.source, userId,
     );
     insights++;
   }
