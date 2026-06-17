@@ -64,7 +64,7 @@ export default async function Home() {
           icon={<Heart className="h-4 w-4 text-emerald" />}
           cta={{ href: "/action-plan", label: "Plan d'action" }}
         />
-        <HomeScoreCard breakdown={score} empty={stats.biomarkersTotal === 0 && stats.dnaVariants === 0 && stats.documents === 0} />
+        <HomeScoreCard breakdown={score} />
       </section>
 
       {/* Biomarqueurs et tendances */}

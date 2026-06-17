@@ -20,24 +20,30 @@ export function ScoreBreakdownCard({ breakdown }: { breakdown: ScoreBreakdown })
       <div className="mt-5 space-y-4">
         {ROWS.map((r, i) => {
           const value = breakdown[r.key];
+          const measured = breakdown.measured[r.key];
           const pct = (value / r.max) * 100;
           return (
             <motion.div key={r.key}
               initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3, delay: i * 0.08 }}
+              className={measured ? "" : "opacity-60"}
             >
               <div className="flex justify-between text-sm mb-1.5">
                 <span>{r.label}</span>
-                <span className="text-muted-foreground tabular-nums">{value} / {r.max}</span>
+                <span className="text-muted-foreground tabular-nums">{measured ? `${value} / ${r.max}` : "Non mesuré"}</span>
               </div>
               <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-emerald rounded-full"
-                  initial={{ width: 0 }} animate={{ width: `${pct}%` }}
-                  transition={{ duration: 0.9, delay: 0.2 + i * 0.08, ease: "easeOut" }}
-                />
+                {measured && (
+                  <motion.div
+                    className="h-full bg-emerald rounded-full"
+                    initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.9, delay: 0.2 + i * 0.08, ease: "easeOut" }}
+                  />
+                )}
               </div>
-              <div className="text-[11px] text-muted-foreground mt-1">{r.hint(breakdown)}</div>
+              <div className="text-[11px] text-muted-foreground mt-1">
+                {measured ? r.hint(breakdown) : "Pas encore de données — n'impacte pas ton score."}
+              </div>
             </motion.div>
           );
         })}

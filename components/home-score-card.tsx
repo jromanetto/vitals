@@ -5,12 +5,18 @@ import { motion } from "framer-motion";
 import { Maximize2 } from "lucide-react";
 import { LongevityGauge } from "@/components/longevity-gauge";
 import { ScoreBreakdownCard } from "@/components/score-breakdown";
+import { ScoreCompleteness } from "@/components/score-completeness";
 import { ScoreBreakdownModal } from "@/components/score-breakdown-modal";
 import type { ScoreBreakdown } from "@/lib/scoring/longevity";
 
-export function HomeScoreCard({ breakdown, empty = false }: { breakdown: ScoreBreakdown; empty?: boolean }) {
+export function HomeScoreCard({ breakdown, empty }: { breakdown: ScoreBreakdown; empty?: boolean }) {
   const [open, setOpen] = useState(false);
-  if (empty) {
+  const { completeness } = breakdown;
+  // No score axis has data yet → full onboarding state. (Falls back to the
+  // legacy `empty` prop if completeness isn't present for any reason.)
+  const isEmpty = empty ?? !completeness.scorable;
+  const isPartial = !isEmpty && completeness.doneCount < completeness.totalCount;
+  if (isEmpty) {
     return (
       <div className="rounded-2xl border border-dashed border-border bg-card p-8 flex flex-col items-center justify-center text-center gap-3">
         <div className="text-4xl">🧬</div>
@@ -48,14 +54,19 @@ export function HomeScoreCard({ breakdown, empty = false }: { breakdown: ScoreBr
             <Maximize2 className="h-3.5 w-3.5" />
           </span>
           <LongevityGauge score={breakdown.total} />
-          <div className="mt-4 text-xs text-center text-muted-foreground max-w-[200px] leading-relaxed">
-            {blurb}
+          {isPartial && (
+            <span className="mt-2 inline-flex items-center rounded-full bg-amber-400/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-500">
+              Provisoire · {completeness.doneCount}/{completeness.totalCount} sources
+            </span>
+          )}
+          <div className="mt-3 text-xs text-center text-muted-foreground max-w-[200px] leading-relaxed">
+            {isPartial ? "Estimation sur les données déjà fournies." : blurb}
           </div>
           <div className="mt-3 text-[11px] font-medium text-emerald opacity-0 group-hover:opacity-100 transition">
             Voir le détail →
           </div>
         </motion.button>
-        <ScoreBreakdownCard breakdown={breakdown} />
+        {isPartial ? <ScoreCompleteness completeness={completeness} /> : <ScoreBreakdownCard breakdown={breakdown} />}
       </div>
       <ScoreBreakdownModal open={open} onClose={() => setOpen(false)} breakdown={breakdown} />
     </>

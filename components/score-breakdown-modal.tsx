@@ -153,8 +153,11 @@ export function ScoreBreakdownModal({
               <div className="text-sm font-medium tracking-tight">Décomposition par axe</div>
               {AXES.map((axis, i) => {
                 const value = breakdown[axis.key];
+                const measured = breakdown.measured[axis.key];
                 const pct = (value / axis.max) * 100;
-                const c = colorFor(pct);
+                const c = measured
+                  ? colorFor(pct)
+                  : { bar: "bg-muted-foreground/30", text: "text-muted-foreground", chip: "bg-secondary/60 text-muted-foreground ring-border", ring: "ring-border" };
                 return (
                   <motion.div
                     key={axis.key}
@@ -170,30 +173,32 @@ export function ScoreBreakdownModal({
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate">{axis.label}</div>
-                          <div className="text-[11px] text-muted-foreground mt-0.5">{axis.hint(breakdown)}</div>
+                          <div className="text-[11px] text-muted-foreground mt-0.5">{measured ? axis.hint(breakdown) : "Pas encore de données"}</div>
                         </div>
                       </div>
                       <div className={`text-xs font-semibold tabular-nums px-2 py-1 rounded-md ring-1 ${c.chip} ${c.ring}`}>
-                        {value} / {axis.max}
+                        {measured ? `${value} / ${axis.max}` : "Non mesuré"}
                       </div>
                     </div>
                     <div className="mt-3 h-1.5 w-full bg-border/50 rounded-full overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full ${c.bar}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, pct)}%` }}
-                        transition={{ duration: 0.8, delay: 0.25 + i * 0.06, ease: "easeOut" }}
-                      />
+                      {measured && (
+                        <motion.div
+                          className={`h-full rounded-full ${c.bar}`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, pct)}%` }}
+                          transition={{ duration: 0.8, delay: 0.25 + i * 0.06, ease: "easeOut" }}
+                        />
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-2.5 leading-relaxed">
-                      {axis.description(breakdown)}
+                      {measured ? axis.description(breakdown) : `${axis.description(breakdown)} Cet axe n'est pas encore comptabilisé — ajoute ces données pour l'inclure.`}
                     </p>
                     <Link
-                      href="/action-plan"
+                      href={measured ? "/action-plan" : axis.key === "lifestyle" ? "/profile" : "/import"}
                       onClick={onClose}
-                      className={`mt-3 inline-flex items-center gap-1 text-xs font-medium ${c.text} hover:brightness-110 transition`}
+                      className={`mt-3 inline-flex items-center gap-1 text-xs font-medium ${measured ? c.text : "text-emerald"} hover:brightness-110 transition`}
                     >
-                      Comment améliorer
+                      {measured ? "Comment améliorer" : "Ajouter ces données"}
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                   </motion.div>
