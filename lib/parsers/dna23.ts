@@ -26,12 +26,16 @@ export async function* iterate23andMe(filePath: string): AsyncGenerator<Variant>
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
   for await (const line of rl) {
     if (!line || line.startsWith("#")) continue;
-    const parts = line.split("\t");
+    const parts = line.split(/\t| +/);
     if (parts.length < 4) continue;
-    const [rsid, chromosome, posStr, genotype] = parts;
+    const [rsid, chromosome, posStr] = parts;
+    // 23andMe puts the genotype in one column (col 4: "AG"); AncestryDNA splits
+    // it across two allele columns (col 4 + col 5: "A" "G"). Recombine so risk
+    // evaluation gets the full diplotype for both vendors.
+    const genotype = parts.length >= 5 ? `${parts[3]}${parts[4]}` : parts[3];
     const position = parseInt(posStr, 10);
     if (!Number.isFinite(position)) continue;
-    if (genotype === "--" || genotype === "II" || genotype === "DD" || genotype === "ID" || genotype === "DI") continue;
+    if (genotype === "--" || genotype === "00" || genotype === "II" || genotype === "DD" || genotype === "ID" || genotype === "DI") continue;
     yield { rsid, chromosome, position, genotype };
   }
 }
