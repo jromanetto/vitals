@@ -30,5 +30,19 @@ rm -f "$TMP_FILE"
 
 find "$BACKUP_DIR" -name "*.db.enc" -mtime +30 -delete
 
+# Optional offsite copy — the local backups live on the same VPS as the DB, so
+# a server loss would take them with it. Set VITALS_BACKUP_REMOTE to an rclone
+# remote (e.g. "r2:vitals-backups" for Cloudflare R2) to push the encrypted
+# file off-box. No-op when unset or rclone is missing, so it's safe to ship.
+if [ -n "${VITALS_BACKUP_REMOTE:-}" ] && command -v rclone >/dev/null 2>&1; then
+  if rclone copy "$OUT_FILE" "$VITALS_BACKUP_REMOTE" --quiet; then
+    echo "[backup] offsite copy -> $VITALS_BACKUP_REMOTE ok"
+  else
+    echo "[backup] WARNING offsite copy to $VITALS_BACKUP_REMOTE FAILED" >&2
+  fi
+else
+  echo "[backup] offsite copy skipped (set VITALS_BACKUP_REMOTE + install rclone to enable)"
+fi
+
 SIZE=$(stat -c %s "$OUT_FILE" 2>/dev/null || stat -f %z "$OUT_FILE" 2>/dev/null || echo "?")
 echo "[backup] $(date -Iseconds) ok size=${SIZE} -> $OUT_FILE"
