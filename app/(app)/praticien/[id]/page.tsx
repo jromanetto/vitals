@@ -24,18 +24,18 @@ type ReportRow = {
 
 type ProfileRow = { data: string };
 
-async function loadReport(id: number): Promise<ReportRow | undefined> {
+async function loadReport(id: number, userId: number): Promise<ReportRow | undefined> {
   ensureSchema();
   return db()
-    .$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ?`)
-    .get(id) as ReportRow | undefined;
+    .$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ? AND user_id = ?`)
+    .get(id, userId) as ReportRow | undefined;
 }
 
-function loadPatientLabel(): string {
+function loadPatientLabel(userId: number): string {
   try {
     const row = db()
-      .$client.prepare(`SELECT data FROM profile ORDER BY updated_at DESC LIMIT 1`)
-      .get() as ProfileRow | undefined;
+      .$client.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
+      .get(userId) as ProfileRow | undefined;
     if (!row?.data) return "Patient";
     const obj = JSON.parse(row.data) as { firstName?: string; lastName?: string };
     const first = (obj.firstName || "").trim();
@@ -169,7 +169,7 @@ export default async function PraticienDoctorPackPage({
     );
   }
 
-  const report = await loadReport(numericId);
+  const report = await loadReport(numericId, userId);
   if (!report) {
     return (
       <div className="max-w-2xl">
@@ -186,7 +186,7 @@ export default async function PraticienDoctorPackPage({
 
   const generating = !report.body || report.body.length < 30;
   const printMode = print === "1";
-  const patientLabel = loadPatientLabel();
+  const patientLabel = loadPatientLabel(userId);
 
   const { sections } = generating
     ? { sections: [] as Array<{ heading: string; body: string }> }

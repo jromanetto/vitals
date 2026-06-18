@@ -596,6 +596,12 @@ async function fireAndForgetMemoryExtraction(sessionId: number): Promise<void> {
   const apiKey = anthropicApiKey();
   if (!apiKey) return;
   const sqlite = db().$client;
+  // Derive the session owner so extracted memories are stamped with THEIR user_id.
+  // Without this the INSERT below defaulted to user_id 1, leaking every beta
+  // user's chat memories into the owner's account.
+  const owner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(sessionId) as { user_id: number } | undefined;
+  if (!owner) return;
+  const userId = owner.user_id;
   const msgs = sqlite
     .prepare(`SELECT role, content FROM chat_message WHERE session_id = ? ORDER BY id ASC LIMIT 40`)
     .all(sessionId) as Array<{ role: string; content: string }>;
@@ -638,16 +644,16 @@ Si rien à extraire : {"items":[]}`;
 
     const allowedKinds = new Set(["fact", "preference", "goal", "concern", "medical_history"]);
     const insert = sqlite.prepare(
-      `INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active) VALUES (?, ?, ?, ?, ?, 1)`
+      `INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active, user_id) VALUES (?, ?, ?, ?, ?, 1, ?)`
     );
-    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? LIMIT 1`);
+    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? AND user_id = ? LIMIT 1`);
     for (const it of parsed.items) {
       if (!allowedKinds.has(it.kind)) continue;
       const body = String(it.body).slice(0, 500).trim();
       if (!body) continue;
-      const existing = dedup.get(it.kind, body) as { id: number } | undefined;
+      const existing = dedup.get(it.kind, body, userId) as { id: number } | undefined;
       if (existing) continue;
-      insert.run(it.kind, body, sessionId, Math.min(Math.max(Number(it.confidence ?? 0.8), 0), 1), Date.now());
+      insert.run(it.kind, body, sessionId, Math.min(Math.max(Number(it.confidence ?? 0.8), 0), 1), Date.now(), userId);
     }
   } catch {
     // silent — extraction is best-effort
