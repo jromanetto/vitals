@@ -25,6 +25,7 @@ let sqlite: Sqlite;
 let searchRag: (q: string, limit: number, userId: number) => Promise<Array<{ docId: number; path: string }>>;
 let computeLongevityScore: (userId: number) => { total: number; details: { biomarkersTotal: number } };
 let ingestDnaForUser: (userId: number, baseDir: string) => Promise<{ variants: number; insights: number }>;
+let rederiveDnaInsights: (userId: number) => { insights: number };
 
 const U1 = 101;
 const U2 = 202;
@@ -35,6 +36,7 @@ before(async () => {
   ({ searchRag } = await import("../lib/rag/search.ts"));
   ({ computeLongevityScore } = await import("../lib/scoring/longevity.ts"));
   ({ ingestDnaForUser } = await import("../lib/ingest/index.ts"));
+  ({ rederiveDnaInsights } = await import("../lib/dna/rederive.ts"));
   ensureSchema();
   sqlite = (db() as unknown as { $client: Sqlite }).$client;
   seed();
@@ -128,6 +130,23 @@ test("ingestDnaForUser isolates raw variants per user (composite PK, no clobber)
 
   const u1insights = sqlite.prepare(`SELECT COUNT(*) c FROM dna_insight WHERE user_id=?`).get(U1) as { c: number };
   assert.equal(u1insights.c, 0, "U1 got no insights from U2's import");
+});
+
+test("rederiveDnaInsights rebuilds insights from stored variants, user-scoped", () => {
+  // Dedicated ids, untouched by other tests. A has a catalog genotype; B has none.
+  const A = 303, B = 404;
+  sqlite.prepare(`INSERT OR REPLACE INTO dna_variant (rsid, chromosome, position, genotype, user_id) VALUES ('rs28940279','12',1,'CC',?)`).run(A);
+
+  const rA = rederiveDnaInsights(A);
+  assert.ok(rA.insights >= 1, "A's insights derived from stored variants (no genome file needed)");
+
+  const aPku = sqlite.prepare(`SELECT has_risk FROM dna_insight WHERE rsid='rs28940279' AND user_id=?`).get(A) as { has_risk: number } | undefined;
+  assert.equal(aPku?.has_risk, 1, "CC is flagged per the current catalog (PKU risk = AC/CC)");
+
+  const rB = rederiveDnaInsights(B);
+  assert.equal(rB.insights, 0, "B has no stored variants → nothing derived");
+  const bCount = sqlite.prepare(`SELECT COUNT(*) c FROM dna_insight WHERE user_id=?`).get(B) as { c: number };
+  assert.equal(bCount.c, 0, "re-deriving A never touches another account");
 });
 
 test("wearable_metric allows the same (date, source, kind) across users", () => {
