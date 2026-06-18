@@ -78,12 +78,11 @@ export function middleware(req: NextRequest) {
   res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   res.headers.set("CDN-Cache-Control", "no-store");
   res.headers.set("Cloudflare-CDN-Cache-Control", "no-store");
-  // CSP in report-only mode — defense in depth. Cloudflare already sets HSTS,
-  // X-Frame-Options, X-Content-Type-Options, Referrer-Policy. CSP is the only
-  // missing layer. Started in report-only so we can watch /api/csp-report
-  // collect violations for a week before flipping to enforce mode.
+  // CSP enforced — defense in depth. Ran in report-only first; zero violations
+  // were recorded, so this is now enforcing. report-uri is kept so any future
+  // breakage still surfaces in logs/csp-violations.jsonl.
   res.headers.set(
-    "Content-Security-Policy-Report-Only",
+    "Content-Security-Policy",
     [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
