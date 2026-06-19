@@ -60,6 +60,31 @@ test("normalizeUnits accepts a sane in-range value and rejects garbage", () => {
   assert.equal(garbage, null, "absurd value rejected by sanity range");
 });
 
+test("normalizeUnits matches units case-insensitively (lowercase g/l, mg/dl)", () => {
+  // The real bug: a lab/LLM writes "g/l" (lowercase L), the factor table had
+  // "g/L", the miss sent glycémie 0.83 down a wrong inference and got it
+  // rejected. These must convert, not reject.
+  const glyc = normalizeUnits("glycemie", 0.83, "g/l");
+  assert.ok(glyc, "glycémie 0.83 g/l accepted");
+  assert.equal(Math.round(glyc!.value), 83, "0.83 g/l → 83 mg/dL");
+
+  const chol = normalizeUnits("cholesterol-total", 1.98, "g/l");
+  assert.ok(chol, "cholestérol total 1.98 g/l accepted");
+  assert.equal(Math.round(chol!.value), 198, "1.98 g/l → 198 mg/dL");
+
+  const uree = normalizeUnits("uree", 5.8, "mmol/l");
+  assert.ok(uree, "urée 5.8 mmol/l accepted");
+  assert.ok(uree!.value > 0.2 && uree!.value < 0.5, "5.8 mmol/l → ~0.35 g/L");
+});
+
+test("lookupBiomarker resolves panel-wording + dotted abbreviations", () => {
+  assert.equal(lookupBiomarker("Clairance de la créatinine")?.name, "DFG (filtration glomérulaire)");
+  assert.equal(lookupBiomarker("V.G.M")?.name, "VGM", "dotted abbreviation matches via dot-stripping");
+  assert.equal(lookupBiomarker("T.C.M.H")?.name, lookupBiomarker("TCMH")?.name);
+  assert.equal(lookupBiomarker("Réserve alcaline")?.name, "Bicarbonates");
+  assert.equal(lookupBiomarker("Coefficient de saturation")?.name, "Saturation transferrine");
+});
+
 test("evaluate() flags the risk genotype regardless of allele order", () => {
   const entry: CatalogEntry = {
     rsid: "rsTEST", category: "longevity", trait: "t",

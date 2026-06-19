@@ -100,8 +100,21 @@ const TBL: Record<string, Conversion> = {
     factors: { "mg/l": 1, "mg/L": 1, "μmol/L": 1 / 88.4, "umol/L": 1 / 88.4, "mg/dL": 10 },
     sane: { min: 2, max: 50 },
   },
-  "urée": { canonical: "g/L", sane: { min: 0.1, max: 1.0 } },
-  "uree": { canonical: "g/L", sane: { min: 0.1, max: 1.0 } },
+  "urée": {
+    canonical: "g/L",
+    factors: { "g/l": 1, "g/L": 1, "mmol/l": 0.06, "mmol/L": 0.06 },
+    sane: { min: 0.1, max: 3.0 },
+    infer: (v) => v > 2 ? "mmol/L" : "g/L",
+  },
+  "uree": {
+    canonical: "g/L",
+    factors: { "g/l": 1, "g/L": 1, "mmol/l": 0.06, "mmol/L": 0.06 },
+    sane: { min: 0.1, max: 3.0 },
+    infer: (v) => v > 2 ? "mmol/L" : "g/L",
+  },
+  // DFG / clairance — keep as mL/min, reject sub-5 fragments (the old scrambled
+  // "DFG 2 / 30" garbage); a real value is 15-130+.
+  "dfg": { canonical: "mL/min", sane: { min: 5, max: 250 } },
   "ferritine": {
     canonical: "ng/mL",
     factors: { "ng/ml": 1, "μg/L": 1, "ug/L": 1 },
@@ -200,25 +213,36 @@ export function normalizeUnits(slug: string, value: number, unit: string | null)
   if (!conv) return { value, unit: unit ?? "" }; // unknown — pass through
 
   let resolvedUnit = unit ?? "";
-  // Normalise a few unit string forms
-  resolvedUnit = resolvedUnit.replace(/μ/g, "μ").replace(/µ/g, "μ").trim();
+  // Normalise unit string forms: unify the micro sign and strip spaces.
+  resolvedUnit = resolvedUnit.replace(/µ/g, "μ").replace(/\s+/g, "").trim();
 
-  // If unit captured and matches canonical or has a factor, use it
-  let convertedValue = value;
-  if (resolvedUnit && conv.factors && conv.factors[resolvedUnit] !== undefined) {
-    convertedValue = value * conv.factors[resolvedUnit];
-  } else if (resolvedUnit === conv.canonical) {
-    // already canonical
-  } else if (!resolvedUnit && conv.infer) {
-    const inferred = conv.infer(value);
-    if (inferred && conv.factors && conv.factors[inferred] !== undefined) convertedValue = value * conv.factors[inferred];
-    else if (inferred === conv.canonical) convertedValue = value;
-  } else if (resolvedUnit && conv.factors) {
-    // Unit doesn't match — try infer from value
-    if (conv.infer) {
-      const inferred = conv.infer(value);
-      if (inferred && conv.factors[inferred] !== undefined) convertedValue = value * conv.factors[inferred];
+  // Case-insensitive factor lookup: labs and the LLM write "g/l", "mg/dl",
+  // "mmol/l", "u/l" in any case, but the factor tables use mixed casing. A
+  // case-sensitive miss used to send a real value (e.g. glycémie 0.83 g/l)
+  // down the wrong inference path and get it rejected as garbage.
+  const factorOf = (u: string | null | undefined): number | undefined => {
+    if (!u || !conv.factors) return undefined;
+    if (conv.factors[u] !== undefined) return conv.factors[u];
+    const lc = u.replace(/\s+/g, "").toLowerCase();
+    for (const k of Object.keys(conv.factors)) {
+      if (k.replace(/\s+/g, "").toLowerCase() === lc) return conv.factors[k];
     }
+    return undefined;
+  };
+  const isCanonical = (u: string): boolean => u.toLowerCase() === conv.canonical.toLowerCase();
+
+  let convertedValue = value;
+  const direct = factorOf(resolvedUnit);
+  if (direct !== undefined) {
+    convertedValue = value * direct;
+  } else if (resolvedUnit && isCanonical(resolvedUnit)) {
+    // already canonical
+  } else if (conv.infer) {
+    // No usable unit string → infer the unit from the value's magnitude.
+    const inferred = conv.infer(value);
+    const fi = factorOf(inferred);
+    if (fi !== undefined) convertedValue = value * fi;
+    else if (inferred && isCanonical(inferred)) convertedValue = value;
   }
 
   // Sanity check
@@ -227,8 +251,9 @@ export function normalizeUnits(slug: string, value: number, unit: string | null)
       // Try the other inference
       if (conv.infer) {
         const alt = conv.infer(value);
-        if (alt && conv.factors && conv.factors[alt] !== undefined) {
-          const altVal = value * conv.factors[alt];
+        const fa = factorOf(alt);
+        if (fa !== undefined) {
+          const altVal = value * fa;
           if (altVal >= conv.sane.min && altVal <= conv.sane.max) {
             return { value: altVal, unit: conv.canonical };
           }

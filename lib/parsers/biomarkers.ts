@@ -312,6 +312,26 @@ const ALIASES: Record<string, { canonical: string; category: string; unit?: stri
   "rapport albumine creatinine urinaire": { canonical: "Ratio Albumine/Créatinine urinaire", category: "kidney", unit: "mg/g" },
   "pth": { canonical: "PTH (parathormone)", category: "minerals", unit: "ng/L" },
   "parathormone": { canonical: "PTH (parathormone)", category: "minerals", unit: "ng/L" },
+  // Wording variants the LLM emits that didn't match existing keys. Canonicals
+  // reuse the entries already defined above (DFG, Bicarbonates, Saturation
+  // transferrine, Créatinine) — do NOT introduce parallel canonical names.
+  "clairance de la creatinine": { canonical: "DFG (filtration glomérulaire)", category: "kidney", unit: "mL/min" },
+  "clairance creatinine": { canonical: "DFG (filtration glomérulaire)", category: "kidney", unit: "mL/min" },
+  "clairance de la creatine ckd epi": { canonical: "DFG (filtration glomérulaire)", category: "kidney", unit: "mL/min" },
+  "ckd epi": { canonical: "DFG (filtration glomérulaire)", category: "kidney", unit: "mL/min" },
+  "reserve alcaline": { canonical: "Bicarbonates", category: "minerals", unit: "mmol/L" },
+  "co2 total": { canonical: "Bicarbonates", category: "minerals", unit: "mmol/L" },
+  "coefficient de saturation": { canonical: "Saturation transferrine", category: "iron", unit: "%" },
+  "coefficient de saturation de la transferrine": { canonical: "Saturation transferrine", category: "iron", unit: "%" },
+  "capacite totale de fixation": { canonical: "Capacité totale de fixation (CTF)", category: "iron", unit: "μmol/L" },
+  "ctf": { canonical: "Capacité totale de fixation (CTF)", category: "iron", unit: "μmol/L" },
+  "cpk": { canonical: "CPK (Créatine kinase)", category: "muscle", unit: "UI/L" },
+  "creatine phosphokinase": { canonical: "CPK (Créatine kinase)", category: "muscle", unit: "UI/L" },
+  "creatine kinase": { canonical: "CPK (Créatine kinase)", category: "muscle", unit: "UI/L" },
+  "bilirubine libre": { canonical: "Bilirubine libre", category: "liver", unit: "mg/L" },
+  "bilirubine non conjuguee": { canonical: "Bilirubine libre", category: "liver", unit: "mg/L" },
+  "creatininurie": { canonical: "Créatininurie", category: "kidney", unit: "mmol/L" },
+  "creatinine urinaire": { canonical: "Créatininurie", category: "kidney", unit: "mmol/L" },
 };
 
 function normalize(s: string): string {
@@ -320,6 +340,8 @@ function normalize(s: string): string {
     // Treat hyphens, slashes and parens as spaces for alias matching
     .replace(/[\-\/]+/g, " ")
     .replace(/[\(\)\[\]]/g, "")
+    // Drop dots so abbreviations like "V.G.M" / "T.C.M.H" match "vgm" / "tcmh".
+    .replace(/\./g, "")
     .replace(/\s+/g, " ").trim();
 }
 
