@@ -6,6 +6,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
 import { sendEmail, welcomeTemplate, waitlistTemplate } from "@/lib/email";
 import { rateLimitByIp, extractIp } from "@/lib/lockout";
+import { betaStatus } from "@/lib/beta";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -75,9 +76,10 @@ export async function POST(req: Request) {
   const existing = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email) as { id: number } | undefined;
   if (existing) return NextResponse.json({ error: "Cet email est déjà utilisé" }, { status: 409 });
 
-  // Gating: either the beta is fully open, or the request carries a valid invite code.
-  // Anyone else lands on the waitlist.
-  const betaOpen = process.env.VITALS_BETA_OPEN === "true";
+  // Gating: the beta is open if there are still free capacity slots
+  // (betaUserCap in auth.json) or it's forced open via env, OR the request
+  // carries a valid invite code. Anyone else lands on the waitlist.
+  const betaOpen = betaStatus().open;
   const configuredInvite = getInviteCode();
   const validInvite = configuredInvite.length > 0 && inviteCode === configuredInvite;
   if (!betaOpen && !validInvite) {

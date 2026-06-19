@@ -14,6 +14,16 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState("");
   const [inviteStatus, setInviteStatus] = useState<"none" | "checking" | "valid" | "invalid">("none");
+  const [beta, setBeta] = useState<{ open: boolean; remaining: number | null } | null>(null);
+
+  // Beta capacity banner — tells visitors they can join without an invite while
+  // spots remain.
+  useEffect(() => {
+    fetch("/api/auth/beta-status")
+      .then((r) => r.json())
+      .then((d) => setBeta({ open: !!d.open, remaining: d.remaining ?? null }))
+      .catch(() => {});
+  }, []);
 
   // Read ?invite=XXX from URL on mount, then ping /api/auth/invite-check to
   // know whether to show the green "Invitation valide" badge or an amber
@@ -94,7 +104,16 @@ export default function SignupPage() {
               <span>Code d&apos;invitation invalide — vérifie le lien que tu as reçu. Tu peux quand même t&apos;inscrire, mais tu seras ajouté à la liste d&apos;attente.</span>
             </div>
           )}
-          {inviteStatus === "none" && <div className="mb-2" />}
+          {inviteStatus !== "valid" && beta?.open && (
+            <div className="mb-6 flex items-center gap-2 px-3 py-2 rounded-md border border-emerald/30 bg-emerald/10 text-emerald text-xs">
+              <Sparkles className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Bêta ouverte — inscription directe, sans invitation
+                {typeof beta.remaining === "number" && beta.remaining > 0 ? ` (${beta.remaining} place${beta.remaining > 1 ? "s" : ""} restante${beta.remaining > 1 ? "s" : ""})` : ""}.
+              </span>
+            </div>
+          )}
+          {inviteStatus === "none" && !beta?.open && <div className="mb-2" />}
 
           <form onSubmit={submit} className="space-y-4">
             <div>
