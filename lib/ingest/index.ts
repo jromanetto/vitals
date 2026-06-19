@@ -65,7 +65,7 @@ export async function ingestPdfFile(
   filePath: string,
   userId: number,
   category: string,
-  opts?: { useLlm?: boolean },
+  opts?: { useLlm?: boolean; force?: boolean },
 ): Promise<PdfIngestResult> {
   const sqlite = db().$client;
   const buf = await fsp.readFile(filePath);
@@ -74,7 +74,10 @@ export async function ingestPdfFile(
   const existing = sqlite
     .prepare(`SELECT id, hash FROM document WHERE path = ? AND user_id = ?`)
     .get(filePath, userId) as { id: number; hash: string } | undefined;
-  if (existing?.hash === h) return { added: 0, biomarkers: 0, skipped: true };
+  // `force` re-extracts even when content is unchanged (e.g. after an extractor
+  // fix), going through the existing-doc update path below (old biomarkers +
+  // rag chunks are cleared and rebuilt).
+  if (!opts?.force && existing?.hash === h) return { added: 0, biomarkers: 0, skipped: true };
 
   let parsed;
   try { parsed = await parsePdf(filePath); }

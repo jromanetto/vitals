@@ -26,6 +26,17 @@ Réponds UNIQUEMENT avec un tableau JSON, sans prose ni markdown:
 
 type RawBm = { name?: string; value?: number; unit?: string | null; refLow?: number | null; refHigh?: number | null };
 
+/** Recover individual biomarker objects when the JSON array is malformed or
+ * truncated (e.g. the model hit max_tokens mid-array). Each top-level {...} is
+ * parsed independently; unparseable fragments are skipped. */
+function salvageObjects(s: string): RawBm[] {
+  const out: RawBm[] = [];
+  for (const m of s.matchAll(/\{[^{}]*\}/g)) {
+    try { out.push(JSON.parse(m[0])); } catch { /* skip fragment */ }
+  }
+  return out;
+}
+
 /**
  * Extract biomarkers from lab text via Claude. Returns [] on any failure so the
  * caller can fall back to the regex parser. Never throws.
@@ -37,15 +48,24 @@ export async function extractBiomarkersLLM(text: string, apiKey: string): Promis
     const client = new Anthropic({ apiKey });
     const resp = await client.messages.create({
       model: MODEL,
-      max_tokens: 2000,
+      // A full lab panel (NFS + lipids + metabolic + renal + liver + vitamins)
+      // is 30-40 markers with ref ranges — easily >2k output tokens. Too small
+      // a cap truncated the JSON mid-array, the parse failed, and the caller
+      // fell back to the regex parser on OCR-scrambled text (garbage values).
+      max_tokens: 8000,
       system: SYSTEM,
-      messages: [{ role: "user", content: text.slice(0, 16000) }],
+      messages: [{ role: "user", content: text.slice(0, 24000) }],
     });
     const content = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n").trim();
     const match = content.match(/\[[\s\S]*\]/);
-    if (!match) return [];
-    parsedArray = JSON.parse(match[0]);
-    if (!Array.isArray(parsedArray)) return [];
+    try {
+      parsedArray = JSON.parse(match ? match[0] : content);
+      if (!Array.isArray(parsedArray)) parsedArray = salvageObjects(content);
+    } catch {
+      // Truncated / malformed array → salvage whatever complete objects exist.
+      parsedArray = salvageObjects(content);
+    }
+    if (!Array.isArray(parsedArray) || parsedArray.length === 0) return [];
   } catch {
     return [];
   }
