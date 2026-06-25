@@ -15,8 +15,10 @@ import { RecoveryWidget } from "@/components/recovery-widget";
 import { StreaksWidget } from "@/components/streaks-widget";
 import { RemindersWidget } from "@/components/reminders-widget";
 import { SectionHeader } from "@/components/section-header";
-import { Activity, Moon, BarChart3, Heart, Bell } from "lucide-react";
+import { Activity, Moon, BarChart3, Heart, Bell, Sun } from "lucide-react";
 import { OnboardingModal } from "@/components/onboarding-modal";
+import { computeEnvironment } from "@/lib/environment";
+import { EnvironmentCard } from "@/components/environment-card";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,7 @@ export default async function Home() {
   if (!userId) redirect("/login");
   const stats = await getStats(userId);
   const score = computeLongevityScore(userId);
+  const env = computeEnvironment(userId);
   const latestStr = stats.latestPanel
     ? new Date(stats.latestPanel).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" })
     : "—";
@@ -65,6 +68,17 @@ export default async function Home() {
           cta={{ href: "/action-plan", label: "Plan d'action" }}
         />
         <HomeScoreCard breakdown={score} />
+      </section>
+
+      {/* Environnement — lieu de vie × gènes */}
+      <section>
+        <SectionHeader
+          eyebrow="Lieu de vie"
+          title="Ton environnement"
+          description="Ton exposition au soleil et à la pollution, croisée avec tes gènes — pour des conseils adaptés à là où tu vis."
+          icon={<Sun className="h-4 w-4 text-emerald" />}
+        />
+        <EnvironmentCard env={env} />
       </section>
 
       {/* Biomarqueurs et tendances */}

@@ -26,6 +26,7 @@ let searchRag: (q: string, limit: number, userId: number) => Promise<Array<{ doc
 let computeLongevityScore: (userId: number) => { total: number; details: { biomarkersTotal: number } };
 let ingestDnaForUser: (userId: number, baseDir: string) => Promise<{ variants: number; insights: number }>;
 let rederiveDnaInsights: (userId: number) => { insights: number };
+let computeEnvironment: (userId: number) => { location: { label: string; lat: number } | null; sun: { lowUvMonths: number } | null };
 
 const U1 = 101;
 const U2 = 202;
@@ -37,6 +38,7 @@ before(async () => {
   ({ computeLongevityScore } = await import("../lib/scoring/longevity.ts"));
   ({ ingestDnaForUser } = await import("../lib/ingest/index.ts"));
   ({ rederiveDnaInsights } = await import("../lib/dna/rederive.ts"));
+  ({ computeEnvironment } = await import("../lib/environment.ts"));
   ensureSchema();
   sqlite = (db() as unknown as { $client: Sqlite }).$client;
   seed();
@@ -147,6 +149,19 @@ test("rederiveDnaInsights rebuilds insights from stored variants, user-scoped", 
   assert.equal(rB.insights, 0, "B has no stored variants → nothing derived");
   const bCount = sqlite.prepare(`SELECT COUNT(*) c FROM dna_insight WHERE user_id=?`).get(B) as { c: number };
   assert.equal(bCount.c, 0, "re-deriving A never touches another account");
+});
+
+test("computeEnvironment derives from the caller's own city only", () => {
+  // U1 lives in a high-latitude city; U2 has no profile → no environment.
+  sqlite.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, 1, ?)`)
+    .run(JSON.stringify({ currentLocation: { city: "Lille", countryCode: "FR" } }), U1);
+
+  const e1 = computeEnvironment(U1);
+  assert.equal(e1.location?.label, "Lille");
+  assert.ok((e1.sun?.lowUvMonths ?? 0) >= 5, "Lille (~51°) has a long low-UV season");
+
+  const e2 = computeEnvironment(U2);
+  assert.equal(e2.location, null, "U2 has no profile → no environment (no cross-user read)");
 });
 
 test("wearable_metric allows the same (date, source, kind) across users", () => {
