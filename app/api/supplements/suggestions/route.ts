@@ -4,15 +4,17 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { buildActiveIndex, findCoverage } from "@/lib/supplement-nutrients";
+import { computeEnvironment } from "@/lib/environment";
 
 export const runtime = "nodejs";
 
 type Suggestion = {
-  source: "biomarker" | "dna";
+  source: "biomarker" | "dna" | "environment";
   supplement: string;
   reason: string;
   biomarker?: string; biomarkerSlug?: string; value?: number; unit?: string;
   rsid?: string; trait?: string; genotype?: string;
+  context?: string;
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
   coveredBy?: { id: number; name: string; nutrient: string } | null;
@@ -303,6 +305,37 @@ export async function GET() {
       conflictsWith,
     });
   }
+
+  // Environment-based (city × genes): winter vitamin D and pollution antioxidants.
+  // Best-effort; skips when the same supplement is already suggested above.
+  try {
+    const env = computeEnvironment(userId);
+    if (env.location && env.sun
+        && (env.sun.lowUvMonths >= 6 || (env.sun.lowUvMonths >= 4 && (env.sun.geneNames.length > 0 || (env.sun.vitDLevel != null && env.sun.vitDLevel < 30))))
+        && !out.some((s) => /vitamine d/i.test(s.supplement))) {
+      out.push({
+        source: "environment", kind: "supplement", supplement: "Vitamine D3",
+        reason: `${env.location.label} : ~${env.sun.lowUvMonths} mois/an sans synthèse cutanée${env.sun.geneNames.length ? ` + variants ${env.sun.geneNames.join(", ")}` : ""}. Supplémentation hivernale conseillée.`,
+        context: env.location.label,
+        dose: env.sun.geneNames.length ? "3000–4000 UI/jour (oct.→mars)" : "2000 UI/jour (oct.→mars)",
+        timing: "matin, avec un repas gras",
+        priority: env.sun.insight.severity === "watch" ? "high" : "moderate",
+        coveredBy: findCoverage("Vitamine D3", activeIndex),
+      });
+    }
+    if (env.location && env.pollution && env.pollution.tone === "watch"
+        && !out.some((s) => /antioxyd|sulforaph|glutathion|\bnac\b|oméga|omega/i.test(s.supplement))) {
+      out.push({
+        source: "environment", kind: "supplement", supplement: "Antioxydants (oméga-3 + crucifères + vitamine C)",
+        reason: `${env.location.label} : PM2.5 ${env.pollution.pm25} µg/m³ (${env.pollution.tier}). Renforcer les défenses face à la charge oxydative urbaine.`,
+        context: env.location.label,
+        dose: "Oméga-3 1–2 g EPA/DHA + brocoli/sulforaphane + vitamine C 500 mg",
+        timing: "aux repas",
+        priority: "moderate",
+        coveredBy: findCoverage("oméga-3", activeIndex),
+      });
+    }
+  } catch { /* environment best-effort */ }
 
   // Sort: not-covered first, then by priority high → moderate → info
   const order = { high: 0, moderate: 1, info: 2 };

@@ -2,7 +2,7 @@
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle, Sun } from "lucide-react";
 import { InteractionsCard } from "@/components/interactions-card";
 import { SupplementCoverage } from "@/components/supplement-coverage";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,10 @@ type Supplement = {
 };
 
 type Suggestion = {
-  source: "biomarker" | "dna";
+  source: "biomarker" | "dna" | "environment";
   supplement: string; reason: string;
   biomarker?: string; biomarkerSlug?: string; value?: number; unit?: string;
-  rsid?: string; trait?: string; genotype?: string;
+  rsid?: string; trait?: string; genotype?: string; context?: string;
   dose: string; timing: string;
   priority: "high" | "moderate" | "info";
   coveredBy?: { id: number; name: string; nutrient: string } | null;
@@ -50,7 +50,7 @@ export function SupplementsTab() {
   const [inputMode, setInputMode] = useState<"url" | "manual">("url");
   const [editing, setEditing] = useState<Supplement | null>(null);
   const [form, setForm] = useState<any>({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "", duration: "continu" });
-  const [filter, setFilter] = useState<"all" | "biomarker" | "dna">("all");
+  const [filter, setFilter] = useState<"all" | "biomarker" | "dna" | "environment">("all");
   const [bloodHelp, setBloodHelp] = useState<{ biomarker: string; status: string; nutrient: string }[]>([]);
   const [showCovered, setShowCovered] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
@@ -117,6 +117,7 @@ export function SupplementsTab() {
 
   const bmCount = supplementSuggestions.filter((s) => s.source === "biomarker").length;
   const dnaCount = supplementSuggestions.filter((s) => s.source === "dna").length;
+  const envCount = supplementSuggestions.filter((s) => s.source === "environment").length;
 
   return (
     <div className="space-y-12">
@@ -136,10 +137,12 @@ export function SupplementsTab() {
               <h2 className="text-sm font-medium">Suggestions personnalisées ({supplementSuggestions.length})</h2>
             </div>
             <div className="flex items-center gap-1.5 text-xs flex-wrap">
-              {(["all", "biomarker", "dna"] as const).map((f) => (
+              {(["all", "biomarker", "dna", "environment"] as const)
+                .filter((f) => f !== "environment" || envCount > 0)
+                .map((f) => (
                 <button key={f} onClick={() => setFilter(f)}
                         className={`px-2.5 py-1 rounded-full border transition ${filter === f ? "bg-primary/15 border-primary/40 text-primary" : "bg-card border-border text-muted-foreground hover:text-foreground"}`}>
-                  {f === "all" ? `Tous (${supplementSuggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : `ADN (${dnaCount})`}
+                  {f === "all" ? `Tous (${supplementSuggestions.length})` : f === "biomarker" ? `Biomarkers (${bmCount})` : f === "dna" ? `ADN (${dnaCount})` : `Environnement (${envCount})`}
                 </button>
               ))}
               {coveredHiddenCount > 0 && !showCovered && (
@@ -162,7 +165,7 @@ export function SupplementsTab() {
                           className={`flex items-start justify-between gap-4 p-3 rounded-md border transition ${PRIORITY_STYLES[s.priority]} ${s.coveredBy ? "opacity-60" : ""}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    {s.source === "biomarker" ? <Activity className="h-3 w-3 text-emerald shrink-0" /> : <Dna className="h-3 w-3 text-emerald shrink-0" />}
+                    {s.source === "biomarker" ? <Activity className="h-3 w-3 text-emerald shrink-0" /> : s.source === "environment" ? <Sun className="h-3 w-3 text-emerald shrink-0" /> : <Dna className="h-3 w-3 text-emerald shrink-0" />}
                     <span className="font-medium text-sm">{s.supplement}</span>
                     {s.coveredBy && (
                       <span className="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald/15 border border-emerald/30 text-emerald shrink-0">

@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { formatProfileForLLM } from "@/lib/profile/format";
+import { computeEnvironment } from "@/lib/environment";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -73,7 +74,20 @@ function gatherContext(userId: number) {
     recentSymptoms = sqlite.prepare(`SELECT key, value as intensity, date FROM symptom_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all(userId) as Array<{ key: string; intensity: number; date: string }>;
   } catch {}
 
-  return { profile, age, bms, outOfRange, dnaRisks, dnaProtective, supplements, wearableAvg, recentSymptoms };
+  // Environment context (city × genes): feeds location-aware advice into the plan.
+  let environment = "non renseigné";
+  try {
+    const env = computeEnvironment(userId);
+    if (env.location) {
+      environment = [
+        `${env.location.label} (lat ~${Math.round(env.location.lat)}°, PM2.5 ${env.location.pm25} µg/m³)`,
+        env.sun ? `soleil: ~${env.sun.lowUvMonths} mois/an sans synthèse cutanée de vitamine D${env.sun.geneNames.length ? ` (variants ${env.sun.geneNames.join(", ")})` : ""}` : "",
+        env.pollution ? `air: ${env.pollution.tier}` : "",
+      ].filter(Boolean).join(" · ");
+    }
+  } catch { /* best-effort */ }
+
+  return { profile, age, bms, outOfRange, dnaRisks, dnaProtective, supplements, wearableAvg, recentSymptoms, environment };
 }
 
 export async function GET(req: Request) {
@@ -177,6 +191,8 @@ ${ctx.wearableAvg.map((w) => `- ${w.kind} = ${w.avg} (n=${w.n})`).join("\n") || 
 
 Symptômes récents (14j): ${ctx.recentSymptoms.length} entrées
 ${ctx.recentSymptoms.slice(0, 10).map((s) => `- ${s.key} intensité ${s.intensity} le ${s.date}`).join("\n")}
+
+Environnement (lieu de vie): ${ctx.environment}
 
 Génère le plan JSON.`;
 
