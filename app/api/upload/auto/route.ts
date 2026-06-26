@@ -3,7 +3,7 @@ import { getSession, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
-import { ingestPdfFile, ingestDnaForUser } from "@/lib/ingest";
+import { ingestPdfFile, ingestDnaForUser, ingestImageFile } from "@/lib/ingest";
 import path from "node:path";
 import { writeFile, mkdir } from "node:fs/promises";
 
@@ -298,6 +298,11 @@ export async function POST(req: Request) {
         if (detected === "pdf-document") {
           const res = await ingestPdfFile(dest, s.userId, targetFolder, { useLlm: true });
           extra = res.biomarkers > 0 ? ` · ${res.biomarkers} biomarqueurs extraits` : "";
+        } else if (detected === "image") {
+          // A photographed lab result → read it with Claude vision. If markers
+          // come back, treat it as a blood panel; otherwise it stays a plain image.
+          const res = await ingestImageFile(dest, s.userId, "analyses-sang");
+          if (res.biomarkers > 0) { extra = ` · ${res.biomarkers} biomarqueurs extraits de ta photo`; reason = "Image · analyse sanguine (photo)"; }
         } else if (detected === "dna-23andme") {
           const res = await ingestDnaForUser(s.userId, userDataRoot(s.userId));
           extra = ` · ${res.insights} insights ADN`;

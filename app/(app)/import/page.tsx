@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight, FolderUp } from "lucide-react";
+import { Upload, Check, AlertCircle, FileText, Image as ImageIcon, Activity, Dna, FileSpreadsheet, Sparkles, X, Loader2, ArrowRight, FolderUp, Camera } from "lucide-react";
 import Link from "next/link";
 import { WearableDashboardCard } from "@/components/wearable-dashboard-card";
 import { ImageExtractModal } from "@/components/image-extract-modal";
@@ -164,6 +164,12 @@ export default function ImportPage() {
           <input type="file" multiple onChange={onPick} className="hidden" />
         </label>
       </section>
+
+      {/* Mobile: snap a photo of a paper lab result → Claude vision extracts it */}
+      <label className="md:hidden flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-emerald/30 bg-emerald/5 text-emerald text-sm font-medium cursor-pointer hover:bg-emerald/10 transition">
+        <Camera className="h-4 w-4" /> Photographier un bilan
+        <input type="file" accept="image/*" capture="environment" onChange={onPick} className="hidden" />
+      </label>
 
       {queue.length > 0 && (
         <section className="rounded-xl border border-border bg-card p-5 space-y-3">

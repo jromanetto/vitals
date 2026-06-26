@@ -13,7 +13,7 @@ import { db } from "../db";
 import { parsePdf, extractDateFromPath, extractDateFromText } from "../parsers/pdf";
 import { type Biomarker, parseBiomarkersFromText } from "../parsers/biomarkers";
 import { extractBiomarkersLLM } from "../parsers/biomarkers-llm";
-import { extractBiomarkersVision } from "../parsers/biomarkers-vision";
+import { extractBiomarkersVision, extractBiomarkersVisionFromImage } from "../parsers/biomarkers-vision";
 import { normalizeUnits } from "../parsers/normalize-units";
 import { iterate23andMe } from "../parsers/dna23";
 import { CATALOG, evaluate } from "../dna/catalog";
@@ -161,6 +161,48 @@ export async function ingestPdfFile(
   }
 
   return { added: 1, biomarkers, skipped: false };
+}
+
+/**
+ * Ingest a photographed lab result (phone camera) for one user: read the image
+ * with Claude vision, canonicalise the markers, and store them. Idempotent per
+ * (path, userId) via content hash. Returns { biomarkers } so the caller can
+ * report "X markers extracted from your photo".
+ */
+export async function ingestImageFile(
+  imagePath: string,
+  userId: number,
+  category: string,
+  opts?: { force?: boolean },
+): Promise<{ biomarkers: number; skipped: boolean }> {
+  const sqlite = db().$client;
+  const buf = await fsp.readFile(imagePath);
+  const h = hashFile(buf);
+  const existing = sqlite.prepare(`SELECT id, hash FROM document WHERE path = ? AND user_id = ?`).get(imagePath, userId) as { id: number; hash: string } | undefined;
+  if (!opts?.force && existing?.hash === h) return { biomarkers: 0, skipped: true };
+
+  const apiKey = anthropicApiKey();
+  const bms = apiKey ? await extractBiomarkersVisionFromImage(imagePath, apiKey) : [];
+
+  const title = path.basename(imagePath, path.extname(imagePath));
+  let docId: number;
+  if (existing) {
+    sqlite.prepare(`UPDATE document SET category = ?, title = ?, hash = ? WHERE id = ?`).run(category, title, h, existing.id);
+    docId = existing.id;
+    sqlite.prepare(`DELETE FROM biomarker WHERE source = ? AND user_id = ?`).run(imagePath, userId);
+  } else {
+    const r = sqlite.prepare(`INSERT INTO document (path, category, title, date, pages, text_content, hash, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(imagePath, category, title, Date.now(), 1, "", h, userId);
+    docId = Number(r.lastInsertRowid);
+  }
+
+  let biomarkers = 0;
+  if (bms.length) {
+    const date = extractDateFromPath(imagePath) ?? Date.now();
+    const ins = sqlite.prepare(`INSERT INTO biomarker (name, slug, category, value, unit, ref_low, ref_high, date, source, raw_text, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    for (const b of bms) { ins.run(b.name, b.slug, b.category, b.value, b.unit ?? null, b.refLow, b.refHigh, date, imagePath, b.raw, userId); biomarkers++; }
+  }
+  return { biomarkers, skipped: false };
 }
 
 /**

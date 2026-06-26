@@ -34,6 +34,38 @@ async function renderPages(pdfPath: string): Promise<{ dir: string; files: strin
   return { dir, files };
 }
 
+const MEDIA: Record<string, "image/jpeg" | "image/png" | "image/webp" | "image/gif"> = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+};
+
+/** Vision extraction from a single photographed lab image (phone camera). */
+export async function extractBiomarkersVisionFromImage(imagePath: string, apiKey: string): Promise<Biomarker[]> {
+  try {
+    if (!fs.existsSync(imagePath)) return [];
+    const media = MEDIA[path.extname(imagePath).toLowerCase()];
+    if (!media) return []; // unsupported format (e.g. HEIC) — caller just stores the file
+    const data = (await fsp.readFile(imagePath)).toString("base64");
+    const client = new Anthropic({ apiKey });
+    const resp = await client.messages.create({
+      model: MODEL,
+      max_tokens: 8000,
+      system: BIOMARKER_EXTRACTION_SYSTEM,
+      messages: [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: media, data } },
+        { type: "text", text: "Extrais TOUS les résultats biologiques visibles sur cette photo, au format JSON demandé." },
+      ] }],
+    });
+    const content = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n").trim();
+    const match = content.match(/\[[\s\S]*\]/);
+    let arr: RawBm[];
+    try { arr = JSON.parse(match ? match[0] : content); if (!Array.isArray(arr)) arr = salvageObjects(content); }
+    catch { arr = salvageObjects(content); }
+    return canonicalizeRawBiomarkers(Array.isArray(arr) ? arr : [], "Photo");
+  } catch {
+    return [];
+  }
+}
+
 export async function extractBiomarkersVision(pdfPath: string, apiKey: string): Promise<Biomarker[]> {
   let dir: string | null = null;
   try {
