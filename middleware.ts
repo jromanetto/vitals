@@ -24,6 +24,11 @@ const PUBLIC_PATHS = new Set<string>([
   "/about",
   "/legal/privacy",
   "/legal/terms",
+  // PWA assets (no file extension → not exempted by the matcher, so list them
+  // explicitly; otherwise the home-screen / manifest icon redirects to /login).
+  "/icon",
+  "/apple-icon",
+  "/manifest.webmanifest",
 ]);
 
 // Path prefixes that are always public (api auth + health-check + cron).
