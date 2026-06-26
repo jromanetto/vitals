@@ -3,6 +3,7 @@ import { ensureSchema } from "@/lib/db/migrate";
 import { currentUserId } from "@/lib/auth";
 import { BiomarkerChart } from "@/components/biomarker-chart";
 import { BiomarkerCommentary } from "@/components/biomarker-commentary";
+import { MeasurementsEditor } from "@/components/measurements-editor";
 import { NotesWidget } from "@/components/notes-widget";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import Link from "next/link";
@@ -15,9 +16,9 @@ async function loadHistory(slug: string, userId: number) {
   ensureSchema();
   const d = db();
   const rows = d.$client.prepare(`
-    SELECT name, category, value, unit, ref_low as refLow, ref_high as refHigh, date, source
+    SELECT id, name, category, value, unit, ref_low as refLow, ref_high as refHigh, date, source
     FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC
-  `).all(slug, userId) as Array<{ name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
+  `).all(slug, userId) as Array<{ id: number; name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
   return rows;
 }
 
@@ -107,6 +108,12 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
             optimalLow={md?.optimalLow} optimalHigh={md?.optimalHigh}
             longevityLow={md?.longevityLow} longevityHigh={md?.longevityHigh}
             unit={meta.unit ?? md?.unit ?? ""}
+          />
+          <MeasurementsEditor
+            slug={slug}
+            name={meta.name}
+            defaultUnit={latest.unit ?? md?.unit ?? null}
+            rows={rows.map((r) => ({ id: r.id, value: r.value, unit: r.unit, refLow: r.refLow, refHigh: r.refHigh, date: r.date }))}
           />
           <NotesWidget targetType="biomarker" targetId={slug} label="Notes sur ce marqueur" />
         </>
