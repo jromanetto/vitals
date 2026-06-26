@@ -332,6 +332,31 @@ const ALIASES: Record<string, { canonical: string; category: string; unit?: stri
   "bilirubine non conjuguee": { canonical: "Bilirubine libre", category: "liver", unit: "mg/L" },
   "creatininurie": { canonical: "Créatininurie", category: "kidney", unit: "mmol/L" },
   "creatinine urinaire": { canonical: "Créatininurie", category: "kidney", unit: "mmol/L" },
+  // Extended panels (Lucis & longevity labs): fatty-acid / omega profile, plus
+  // a few common markers whose wording didn't match. Fuzzy-matched on the
+  // chemical name (the "C20:5 n-3" suffix is ignored). Unit % of total FA.
+  "acide eicosapentaenoique": { canonical: "EPA (oméga-3)", category: "fatty-acids", unit: "%" },
+  "acide docosahexaenoique": { canonical: "DHA (oméga-3)", category: "fatty-acids", unit: "%" },
+  "acide docosapentaenoique": { canonical: "DPA (oméga-3)", category: "fatty-acids", unit: "%" },
+  "acide alpha linolenique": { canonical: "ALA (oméga-3 végétal)", category: "fatty-acids", unit: "%" },
+  "acide arachidonique": { canonical: "Acide arachidonique (oméga-6)", category: "fatty-acids", unit: "%" },
+  "acide linoleique": { canonical: "Acide linoléique (oméga-6)", category: "fatty-acids", unit: "%" },
+  "acide gamma linolenique": { canonical: "GLA (oméga-6)", category: "fatty-acids", unit: "%" },
+  "acide dihomo gamma linolenique": { canonical: "DGLA (oméga-6)", category: "fatty-acids", unit: "%" },
+  "acide oleique": { canonical: "Acide oléique (oméga-9)", category: "fatty-acids", unit: "%" },
+  "acide palmitique": { canonical: "Acide palmitique", category: "fatty-acids", unit: "%" },
+  "acide stearique": { canonical: "Acide stéarique", category: "fatty-acids", unit: "%" },
+  "acide myristique": { canonical: "Acide myristique", category: "fatty-acids", unit: "%" },
+  "acide palmitoleique": { canonical: "Acide palmitoléique", category: "fatty-acids", unit: "%" },
+  "acides gras totaux": { canonical: "Acides gras totaux", category: "fatty-acids", unit: "mg/L" },
+  "rapport 6 3": { canonical: "Ratio oméga-6/oméga-3", category: "fatty-acids", unit: "" },
+  "aa epa": { canonical: "Ratio AA/EPA", category: "fatty-acids", unit: "" },
+  "ln dgla": { canonical: "Ratio LA/DGLA", category: "fatty-acids", unit: "" },
+  // Common markers, alternate wording.
+  "lipoproteine lp a": { canonical: "Lp(a)", category: "lipids", unit: "mg/dL" },
+  "sulfate de dehydroepiandrosterone": { canonical: "DHEA-S", category: "hormones", unit: "μg/dL" },
+  "cuivre": { canonical: "Cuivre", category: "minerals", unit: "μg/L" },
+  "quicki": { canonical: "QUICKI (sensibilité insuline)", category: "metabolic", unit: "" },
 };
 
 function normalize(s: string): string {
