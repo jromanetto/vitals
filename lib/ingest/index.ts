@@ -13,6 +13,7 @@ import { db } from "../db";
 import { parsePdf, extractDateFromPath, extractDateFromText } from "../parsers/pdf";
 import { type Biomarker, parseBiomarkersFromText } from "../parsers/biomarkers";
 import { extractBiomarkersLLM } from "../parsers/biomarkers-llm";
+import { extractBiomarkersVision } from "../parsers/biomarkers-vision";
 import { normalizeUnits } from "../parsers/normalize-units";
 import { iterate23andMe } from "../parsers/dna23";
 import { CATALOG, evaluate } from "../dna/catalog";
@@ -115,6 +116,17 @@ export async function ingestPdfFile(
     const apiKey = opts?.useLlm ? anthropicApiKey() : null;
     if (apiKey) {
       try { finalBms = await extractBiomarkersLLM(parsed.text, apiKey); } catch { finalBms = []; }
+    }
+    // Vision fallback for image-based / designed PDFs (Lucis, scans, photos):
+    // pdf-parse returns sparse text, so the text LLM misses most markers.
+    // Render pages → Claude vision, and merge in markers the text path lacked.
+    const lowTextDensity = parsed.numPages > 0 && (parsed.text.length / parsed.numPages) < 1500;
+    if (apiKey && (lowTextDensity || finalBms.length < parsed.numPages * 3)) {
+      try {
+        const vis = await extractBiomarkersVision(filePath, apiKey);
+        const haveSlugs = new Set(finalBms.map((b) => b.slug));
+        for (const v of vis) { if (!haveSlugs.has(v.slug)) { finalBms.push(v); haveSlugs.add(v.slug); } }
+      } catch { /* vision best-effort */ }
     }
     if (finalBms.length === 0) {
       for (const bm of parseBiomarkersFromText(parsed.text)) {

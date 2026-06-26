@@ -24,15 +24,46 @@ Règles:
 Réponds UNIQUEMENT avec un tableau JSON, sans prose ni markdown:
 [{"name": "Testostérone totale", "value": 602, "unit": "ng/dL", "refLow": 250, "refHigh": 840}, ...]`;
 
-type RawBm = { name?: string; value?: number; unit?: string | null; refLow?: number | null; refHigh?: number | null };
+export type RawBm = { name?: string; value?: number; unit?: string | null; refLow?: number | null; refHigh?: number | null };
+
+export const BIOMARKER_EXTRACTION_SYSTEM = SYSTEM;
 
 /** Recover individual biomarker objects when the JSON array is malformed or
  * truncated (e.g. the model hit max_tokens mid-array). Each top-level {...} is
  * parsed independently; unparseable fragments are skipped. */
-function salvageObjects(s: string): RawBm[] {
+export function salvageObjects(s: string): RawBm[] {
   const out: RawBm[] = [];
   for (const m of s.matchAll(/\{[^{}]*\}/g)) {
     try { out.push(JSON.parse(m[0])); } catch { /* skip fragment */ }
+  }
+  return out;
+}
+
+/** Canonicalise raw {name,value,unit,refLow,refHigh} objects (from text or
+ * vision extraction) through the SAME alias + unit-sanity pipeline as the regex
+ * path. Drops anything not in the catalog or failing the sanity range — so the
+ * model can't inject unknown markers or garbage. Dedups by slug:value. */
+export function canonicalizeRawBiomarkers(parsedArray: RawBm[], tag = "LLM"): Biomarker[] {
+  const out: Biomarker[] = [];
+  const seen = new Set<string>();
+  for (const raw of parsedArray) {
+    if (!raw || typeof raw.name !== "string" || typeof raw.value !== "number" || !Number.isFinite(raw.value)) continue;
+    const alias = lookupBiomarker(raw.name);
+    if (!alias) continue;
+    const norm = normalizeUnits(alias.slug, raw.value, raw.unit ?? alias.unit ?? null);
+    if (!norm) continue;
+    let refLow = typeof raw.refLow === "number" ? raw.refLow : null;
+    let refHigh = typeof raw.refHigh === "number" ? raw.refHigh : null;
+    if (refLow != null) { const r = normalizeUnits(alias.slug, refLow, raw.unit ?? null); if (r) refLow = r.value; }
+    if (refHigh != null) { const r = normalizeUnits(alias.slug, refHigh, raw.unit ?? null); if (r) refHigh = r.value; }
+    const key = alias.slug + ":" + norm.value;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name: alias.name, slug: alias.slug, category: alias.category,
+      value: norm.value, unit: norm.unit ?? null, refLow, refHigh,
+      raw: `${tag}: ${raw.name} = ${raw.value} ${raw.unit ?? ""}`.trim(),
+    });
   }
   return out;
 }
@@ -70,31 +101,5 @@ export async function extractBiomarkersLLM(text: string, apiKey: string): Promis
     return [];
   }
 
-  const out: Biomarker[] = [];
-  const seen = new Set<string>();
-  for (const raw of parsedArray) {
-    if (!raw || typeof raw.name !== "string" || typeof raw.value !== "number" || !Number.isFinite(raw.value)) continue;
-    const alias = lookupBiomarker(raw.name);
-    if (!alias) continue; // not a catalogued biomarker → drop (no hallucinated markers)
-    const norm = normalizeUnits(alias.slug, raw.value, raw.unit ?? alias.unit ?? null);
-    if (!norm) continue; // rejected by sanity range
-    let refLow = typeof raw.refLow === "number" ? raw.refLow : null;
-    let refHigh = typeof raw.refHigh === "number" ? raw.refHigh : null;
-    if (refLow != null) { const r = normalizeUnits(alias.slug, refLow, raw.unit ?? null); if (r) refLow = r.value; }
-    if (refHigh != null) { const r = normalizeUnits(alias.slug, refHigh, raw.unit ?? null); if (r) refHigh = r.value; }
-    const key = alias.slug + ":" + norm.value;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      name: alias.name,
-      slug: alias.slug,
-      category: alias.category,
-      value: norm.value,
-      unit: norm.unit ?? null,
-      refLow,
-      refHigh,
-      raw: `LLM: ${raw.name} = ${raw.value} ${raw.unit ?? ""}`.trim(),
-    });
-  }
-  return out;
+  return canonicalizeRawBiomarkers(parsedArray, "LLM");
 }
