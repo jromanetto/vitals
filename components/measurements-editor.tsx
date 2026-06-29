@@ -12,7 +12,7 @@ function fmtDate(ms: number): string {
   return new Date(ms).toLocaleDateString("fr-FR", { year: "numeric", month: "short", day: "numeric" });
 }
 
-export function MeasurementsEditor({ slug, name, defaultUnit, rows }: { slug: string; name: string; defaultUnit: string | null; rows: Row[] }) {
+export function MeasurementsEditor({ slug, name, defaultUnit, rows, readOnly = false }: { slug: string; name: string; defaultUnit: string | null; rows: Row[]; readOnly?: boolean }) {
   const router = useRouter();
   const [editing, setEditing] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -67,7 +67,7 @@ export function MeasurementsEditor({ slug, name, defaultUnit, rows }: { slug: st
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs uppercase tracking-wider text-muted-foreground">Mesures ({rows.length})</div>
-        {!adding && (
+        {!readOnly && !adding && (
           <button onClick={() => { setAdding(true); setError(null); }} className="inline-flex items-center gap-1 text-xs font-medium text-emerald hover:gap-1.5 transition-all">
             <Plus className="h-3.5 w-3.5" /> Ajouter une mesure
           </button>
@@ -91,7 +91,7 @@ export function MeasurementsEditor({ slug, name, defaultUnit, rows }: { slug: st
       <div className="space-y-1">
         {sorted.map((r) => (
           <div key={r.id} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary/30 transition text-sm group">
-            {editing === r.id ? (
+            {!readOnly && editing === r.id ? (
               <>
                 <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="bg-card border border-border rounded-md px-2 py-1 text-sm" />
                 <input inputMode="decimal" value={editVal} onChange={(e) => setEditVal(e.target.value)} className="w-24 bg-card border border-border rounded-md px-2 py-1 text-sm" />
@@ -103,10 +103,12 @@ export function MeasurementsEditor({ slug, name, defaultUnit, rows }: { slug: st
               <>
                 <span className="text-muted-foreground w-28 shrink-0">{fmtDate(r.date)}</span>
                 <span className="font-mono text-foreground">{r.value} <span className="text-muted-foreground">{r.unit}</span></span>
+                {!readOnly && (
                 <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                   <button onClick={() => startEdit(r)} className="p-1.5 text-muted-foreground hover:text-emerald rounded" aria-label="Corriger"><Pencil className="h-3.5 w-3.5" /></button>
                   <button onClick={() => del(r.id)} disabled={busy} className="p-1.5 text-muted-foreground hover:text-red-400 rounded disabled:opacity-50" aria-label="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
+                )}
               </>
             )}
           </div>

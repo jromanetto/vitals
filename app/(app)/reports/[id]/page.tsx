@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import Link from "next/link";
 import { renderMarkdown } from "@/lib/markdown";
 import { ReportBodyPoller } from "@/components/report-body-poller";
@@ -22,7 +22,7 @@ export default async function ReportPage({
 }) {
   const { id } = await params;
   const { print } = await searchParams;
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return <div className="text-muted-foreground">Rapport introuvable.</div>;
   const r = await load(+id, userId);
   if (!r) return <div className="text-muted-foreground">Rapport introuvable.</div>;

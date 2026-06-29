@@ -149,6 +149,61 @@ export async function currentUserId(): Promise<number | null> {
   return s?.userId ?? null;
 }
 
+const VIEW_COOKIE = "vitals_view";
+
+/** True iff `viewerId` has an active, consented link to read `subjectId`. */
+export function hasActiveLink(viewerId: number, subjectId: number): boolean {
+  try {
+    const sqlite = db().$client;
+    return !!sqlite.prepare(`SELECT 1 FROM household_link WHERE viewer_user_id = ? AND subject_user_id = ? AND status = 'active'`).get(viewerId, subjectId);
+  } catch { return false; }
+}
+
+/**
+ * The user whose data should be READ: the authenticated account, or a household
+ * member they're actively viewing — validated against an active, consented link
+ * on EVERY call (a spoofed cookie with no active link falls back to self).
+ * WRITES must keep using currentUserId() so "viewing" is read-only by design.
+ */
+export async function effectiveUserId(): Promise<number | null> {
+  const s = await getSession();
+  if (!s) return null;
+  const c = await cookies();
+  const raw = c.get(VIEW_COOKIE)?.value;
+  const subjectId = raw ? parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(subjectId) || subjectId === s.userId) return s.userId;
+  return hasActiveLink(s.userId, subjectId) ? subjectId : s.userId; // fail-closed to self
+}
+
+export async function setViewUser(subjectId: number) {
+  const c = await cookies();
+  c.set(VIEW_COOKIE, String(subjectId), { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: TTL });
+}
+
+export async function clearViewUser() {
+  const c = await cookies();
+  c.delete(VIEW_COOKIE);
+}
+
+/** Switcher context for the UI: self, who's being viewed, and viewable members. */
+export async function getViewContext(): Promise<{
+  selfId: number; selfEmail: string; viewingId: number; viewingSelf: boolean;
+  canView: Array<{ id: number; label: string; email: string }>;
+} | null> {
+  const s = await getSession();
+  if (!s) return null;
+  const viewingId = (await effectiveUserId()) ?? s.userId;
+  let canView: Array<{ id: number; label: string; email: string }> = [];
+  try {
+    canView = db().$client.prepare(`
+      SELECT h.subject_user_id AS id, COALESCE(h.label, u.email) AS label, u.email AS email
+      FROM household_link h JOIN user u ON u.id = h.subject_user_id
+      WHERE h.viewer_user_id = ? AND h.status = 'active' ORDER BY label
+    `).all(s.userId) as Array<{ id: number; label: string; email: string }>;
+  } catch { /* table may not exist yet */ }
+  return { selfId: s.userId, selfEmail: s.email, viewingId, viewingSelf: viewingId === s.userId, canView };
+}
+
 
 /**
  * Helper: check whether a userId is the seeded demo user (Marie Dupont).

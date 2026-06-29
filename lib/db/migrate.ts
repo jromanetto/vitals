@@ -193,6 +193,23 @@ export function ensureSchema() {
     role TEXT DEFAULT 'beta',
     created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`));
+  // Household: a directional, consent-based link letting `viewer_user_id` read
+  // `subject_user_id`'s data once status='active'. The viewer creates it
+  // (pending); the subject approves it from their own account. Read-only by
+  // design — writes always scope to the authenticated account, never the viewed one.
+  d.run(sql.raw(`CREATE TABLE IF NOT EXISTS household_link (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    viewer_user_id INTEGER NOT NULL,
+    subject_user_id INTEGER NOT NULL,
+    label TEXT,
+    relationship TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    responded_at INTEGER,
+    UNIQUE(viewer_user_id, subject_user_id)
+  )`));
+  try { d.run(sql.raw(`CREATE INDEX IF NOT EXISTS household_viewer_idx ON household_link(viewer_user_id)`)); } catch {}
+  try { d.run(sql.raw(`CREATE INDEX IF NOT EXISTS household_subject_idx ON household_link(subject_user_id)`)); } catch {}
   for (const t of [
     "biomarker", "document", "dna_variant", "dna_insight", "note", "rag_chunk",
     "rag_keyword", "ingest_log", "report", "profile", "symptom_log", "habit_log",

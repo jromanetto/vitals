@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { DnaCategoryCard } from "@/components/dna-category-card";
@@ -63,7 +63,7 @@ async function counts(userId: number) {
 }
 
 export default async function DnaPage() {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) redirect("/login");
   const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts(userId);
   return (

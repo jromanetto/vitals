@@ -1,7 +1,7 @@
 import { ensureSchema } from "@/lib/db/migrate";
 import { db, schema } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { StatCard } from "@/components/stat-card";
 import { HomeHero } from "@/components/home-hero";
@@ -43,7 +43,7 @@ async function getStats(userId: number) {
 }
 
 export default async function Home() {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) redirect("/login");
   const stats = await getStats(userId);
   const score = computeLongevityScore(userId);

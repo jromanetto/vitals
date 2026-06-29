@@ -4,8 +4,9 @@ import { LogOut, Search, Command } from "lucide-react";
 import { CommandPalette } from "@/components/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { MobileDrawer } from "@/components/mobile-drawer";
+import { ProfileSwitcher, type ViewContext } from "@/components/profile-switcher";
 
-export function TopBar({ email }: { email: string }) {
+export function TopBar({ email, viewContext }: { email: string; viewContext: ViewContext | null }) {
   const router = useRouter();
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -28,6 +29,7 @@ export function TopBar({ email }: { email: string }) {
           </span>
         </button>
         <div className="flex items-center gap-2">
+          {viewContext && (viewContext.canView.length > 0 || !viewContext.viewingSelf) && <ProfileSwitcher ctx={viewContext} />}
           <ThemeToggle />
           <span className="text-xs text-muted-foreground hidden lg:inline">{email}</span>
           <button onClick={logout} className="p-2 rounded-md hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition" aria-label="Logout">

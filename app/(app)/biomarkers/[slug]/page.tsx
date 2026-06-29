@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { currentUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { BiomarkerChart } from "@/components/biomarker-chart";
 import { BiomarkerCommentary } from "@/components/biomarker-commentary";
 import { MeasurementsEditor } from "@/components/measurements-editor";
@@ -24,7 +24,9 @@ async function loadHistory(slug: string, userId: number) {
 
 export default async function BiomarkerDetail({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
+  const authId = await currentUserId();
+  const viewingOther = !!userId && !!authId && userId !== authId;
   const rows = userId ? await loadHistory(slug, userId) : [];
   const meta = rows[0];
   const md = META_BY_SLUG[slug];
@@ -114,8 +116,9 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
             name={meta.name}
             defaultUnit={latest.unit ?? md?.unit ?? null}
             rows={rows.map((r) => ({ id: r.id, value: r.value, unit: r.unit, refLow: r.refLow, refHigh: r.refHigh, date: r.date }))}
+            readOnly={viewingOther}
           />
-          <NotesWidget targetType="biomarker" targetId={slug} label="Notes sur ce marqueur" />
+          {!viewingOther && <NotesWidget targetType="biomarker" targetId={slug} label="Notes sur ce marqueur" />}
         </>
       )}
     </div>

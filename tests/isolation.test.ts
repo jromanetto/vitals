@@ -13,11 +13,19 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 
 // Point the app at a throwaway DB *before* any app module loads it.
 const TMP = path.join(os.tmpdir(), `vitals-isolation-${process.pid}.db`);
 process.env.VITALS_DB_PATH = TMP;
 for (const ext of ["", "-wal", "-shm"]) { try { fs.unlinkSync(TMP + ext); } catch {} }
+
+// Self-contained field-encryption key so the suite passes on any machine, even
+// one without a real data/auth.json (decryptProfile would otherwise throw on a
+// missing creds file). Must be set before any app module reads getFieldKey().
+const TMP_CREDS = path.join(os.tmpdir(), `vitals-isolation-creds-${process.pid}.json`);
+fs.writeFileSync(TMP_CREDS, JSON.stringify({ fieldEncryptionKey: crypto.randomBytes(32).toString("base64") }));
+process.env.VITALS_CREDS_PATH = TMP_CREDS;
 
 // Dynamic imports so the env var above is set when lib/db initialises.
 type Sqlite = { prepare: (q: string) => { run: (...a: unknown[]) => unknown; get: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown[] } };
@@ -27,6 +35,8 @@ let computeLongevityScore: (userId: number) => { total: number; details: { bioma
 let ingestDnaForUser: (userId: number, baseDir: string) => Promise<{ variants: number; insights: number }>;
 let rederiveDnaInsights: (userId: number) => { insights: number };
 let computeEnvironment: (userId: number) => { location: { label: string; lat: number } | null; sun: { lowUvMonths: number } | null };
+let hasActiveLink: (viewerId: number, subjectId: number) => boolean;
+let listHousehold: (userId: number) => { canView: Array<{ otherId: number }>; pendingOutgoing: unknown[]; pendingIncoming: unknown[] };
 
 const U1 = 101;
 const U2 = 202;
@@ -39,6 +49,8 @@ before(async () => {
   ({ ingestDnaForUser } = await import("../lib/ingest/index.ts"));
   ({ rederiveDnaInsights } = await import("../lib/dna/rederive.ts"));
   ({ computeEnvironment } = await import("../lib/environment.ts"));
+  ({ hasActiveLink } = await import("../lib/auth.ts"));
+  ({ listHousehold } = await import("../lib/household.ts"));
   ensureSchema();
   sqlite = (db() as unknown as { $client: Sqlite }).$client;
   seed();
@@ -46,6 +58,7 @@ before(async () => {
 
 after(() => {
   for (const ext of ["", "-wal", "-shm"]) { try { fs.unlinkSync(TMP + ext); } catch {} }
+  try { fs.unlinkSync(TMP_CREDS); } catch {}
 });
 
 function seedDocWithKeyword(userId: number, docPath: string, term: string) {
@@ -168,4 +181,28 @@ test("wearable_metric allows the same (date, source, kind) across users", () => 
   const rows = sqlite.prepare(`SELECT user_id, value FROM wearable_metric WHERE date='2026-01-01' AND source='whoop' AND kind='recovery' ORDER BY user_id`).all() as Array<{ user_id: number; value: number }>;
   assert.equal(rows.length, 2, "both users keep their own same-day metric (no cross-user clobber)");
   assert.deepEqual(rows.map((r) => r.user_id), [U1, U2]);
+});
+
+test("household: viewing data requires an ACTIVE (consented) link — pending grants nothing", () => {
+  const V = 501, S = 502; // V wants to view S's data
+  for (const [id, email] of [[V, "viewer@x.test"], [S, "subject@x.test"]] as const) {
+    sqlite.prepare(`INSERT OR IGNORE INTO user (id, email, hash, secret) VALUES (?, ?, 'h', ?)`).run(id, email, "x".repeat(40));
+  }
+  // V requests to view S — pending, awaiting S's consent.
+  sqlite.prepare(`INSERT INTO household_link (viewer_user_id, subject_user_id, status) VALUES (?, ?, 'pending')`).run(V, S);
+  assert.equal(hasActiveLink(V, S), false, "a PENDING link must not grant read access (consent gate)");
+
+  // The request shows up in S's consent inbox, and grants V nothing yet.
+  assert.equal(listHousehold(S).pendingIncoming.length, 1, "S sees the pending request to approve");
+  assert.equal(listHousehold(V).canView.length, 0, "V cannot view anyone until approved");
+
+  // S approves.
+  sqlite.prepare(`UPDATE household_link SET status='active' WHERE viewer_user_id=? AND subject_user_id=?`).run(V, S);
+  assert.equal(hasActiveLink(V, S), true, "an ACTIVE link grants read access");
+  assert.equal(hasActiveLink(S, V), false, "links are directional: consent to be viewed ≠ right to view back");
+
+  const v = listHousehold(V);
+  assert.equal(v.canView.length, 1, "V can now view exactly one member");
+  assert.equal(v.canView[0].otherId, S, "…and it's S");
+  assert.equal(listHousehold(S).pendingIncoming.length, 0, "approved request leaves S's inbox");
 });

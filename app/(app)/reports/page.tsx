@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { FileText, Printer } from "lucide-react";
@@ -49,7 +49,7 @@ async function getAll(userId: number): Promise<ReportRow[]> {
 }
 
 export default async function ReportsPage() {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) redirect("/login");
   const rows = await getAll(userId);
   return (

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import Link from "next/link";
 import { NotesWidget } from "@/components/notes-widget";
 import { HelpPill } from "@/components/help-pill";
@@ -18,7 +18,7 @@ async function load(category: string, userId: number) {
 
 export default async function DnaCat({ params }: { params: Promise<{ category: string }> }) {
   const { category } = await params;
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   const rows = userId ? await load(category, userId) : [];
   return (
     <div className="space-y-10">
