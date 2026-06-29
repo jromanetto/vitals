@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId } from "@/lib/auth";
+import { getSession, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 type Point = { date: string; value: number };
 
 export async function GET(req: Request) {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const url = new URL(req.url);

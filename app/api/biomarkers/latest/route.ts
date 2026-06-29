@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId } from "@/lib/auth";
+import { getSession, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { sql } from "drizzle-orm";
@@ -9,7 +9,7 @@ import { convertValue } from "@/lib/parsers/normalize-units";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const d = db();

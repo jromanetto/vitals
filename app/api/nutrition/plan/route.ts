@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { currentUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { anthropicApiKey } from "@/lib/secrets";
@@ -51,8 +51,10 @@ function summarizeProfile(p: Record<string, unknown>): string {
 }
 
 export async function GET(req: Request) {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
+  const authId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const viewingOther = userId !== authId; // viewing a household member → never persist
   ensureSchema();
 
   const url = new URL(req.url);
@@ -112,10 +114,11 @@ export async function GET(req: Request) {
     }
   }
 
-  // Persist as a cacheable report row scoped to this user.
+  // Persist as a cacheable report row scoped to this user — but never write to a
+  // household member's account while merely viewing it.
   const generatedAt = Date.now();
   const persistedPlan: NutritionPlan = { ...plan, cached: false, generatedAt };
-  sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run(
+  if (!viewingOther) sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run(
     REPORT_KIND,
     `Plan nutrition — ${plan.dietPattern.label}`,
     JSON.stringify(persistedPlan),

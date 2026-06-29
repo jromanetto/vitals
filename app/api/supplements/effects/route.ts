@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 
@@ -22,7 +22,7 @@ type Effect = {
 const LOWER_BETTER = new Set(["ldl", "non-hdl", "triglycerides", "cholesterol-total", "hba1c", "glycemie", "homa-ir", "insuline", "homocysteine", "crp", "crp-ultrasensible-hscrp", "fibrinogene", "ggt", "alat-gpt", "asat-got", "ferritine"]);
 
 export async function GET() {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const sqlite = db().$client;

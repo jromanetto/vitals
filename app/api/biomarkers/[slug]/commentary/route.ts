@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import Anthropic from "@anthropic-ai/sdk";
@@ -12,7 +12,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
+  const authId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const { slug } = await params;
@@ -57,6 +58,10 @@ Donne ton analyse en 3-5 paragraphes courts, factuels.`;
   const body = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");
 
   // Cache it (scoped to this user).
-  sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run("biomarker_insight", `${meta.name} — analyse`, body, JSON.stringify({ slug }), Date.now(), userId);
+  // Only persist the generated insight when looking at your OWN data — never
+  // write to a household member's account while merely viewing it.
+  if (userId === authId) {
+    sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run("biomarker_insight", `${meta.name} — analyse`, body, JSON.stringify({ slug }), Date.now(), userId);
+  }
   return NextResponse.json({ body, cached: false });
 }

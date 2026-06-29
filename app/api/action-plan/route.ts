@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { readFileSync } from "node:fs";
@@ -91,8 +91,10 @@ function gatherContext(userId: number) {
 }
 
 export async function GET(req: Request) {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
+  const authId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const viewingOther = userId !== authId; // viewing a household member → never persist
   ensureSchema();
 
   const url = new URL(req.url);
@@ -114,7 +116,7 @@ export async function GET(req: Request) {
   if (!apiKey) {
     // Fallback: heuristic plan (no Claude)
     const fallback = buildHeuristicPlan(ctx);
-    sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(fallback), Date.now(), userId);
+    if (!viewingOther) sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(fallback), Date.now(), userId);
     return NextResponse.json({ ...fallback, cached: false });
   }
 
@@ -208,7 +210,7 @@ Génère le plan JSON.`;
     if (!m) throw new Error("no JSON in response");
     const plan: Plan = JSON.parse(m[0]);
     plan.generatedAt = Date.now();
-    sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(plan), Date.now(), userId);
+    if (!viewingOther) sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(plan), Date.now(), userId);
     return NextResponse.json({ ...plan, cached: false });
   } catch (e) {
     const fallback = buildHeuristicPlan(ctx);

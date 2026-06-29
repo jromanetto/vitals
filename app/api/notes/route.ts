@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId, isDemoUser } from "@/lib/auth";
+import { getSession, currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { encryptField, decryptField, isEncrypted } from "@/lib/crypto-fields";
@@ -29,7 +29,7 @@ function maskNote(row: NoteRow, unlock: boolean): NoteRow & { encrypted: boolean
 }
 
 export async function GET(req: Request) {
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const url = new URL(req.url);

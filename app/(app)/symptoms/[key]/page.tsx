@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { SymptomDetailClient } from "@/components/symptom-detail-client";
 import Link from "next/link";
 
@@ -22,7 +22,7 @@ async function load(key: string, userId: number) {
 
 export default async function SymptomDetail({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   const { logs, bms } = userId ? await load(key, userId) : { logs: [], bms: [] };
   const label = LABELS[key] ?? key;
 

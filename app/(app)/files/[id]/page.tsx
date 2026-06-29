@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { currentUserId } from "@/lib/auth";
+import { effectiveUserId } from "@/lib/auth";
 import { NotesWidget } from "@/components/notes-widget";
 import Link from "next/link";
 
@@ -17,7 +17,7 @@ async function load(id: number, userId: number) {
 
 export default async function FilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const userId = await currentUserId();
+  const userId = await effectiveUserId();
   if (!userId) return <div className="text-muted-foreground">Document introuvable.</div>;
   const data = await load(+id, userId);
   if (!data) return <div className="text-muted-foreground">Document introuvable.</div>;
