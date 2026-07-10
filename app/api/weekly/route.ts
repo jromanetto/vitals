@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { currentUserId , effectiveUserId} from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { getRoutinesOrDefault } from "@/lib/weekly/routines";
 
@@ -47,81 +47,48 @@ function isoWeekMonday(weekIso: string): Date {
   return result;
 }
 
-type CheckinRow = {
-  id: number;
-  weekIso: string;
-  weekStart: number;
-  notes: string | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
 export async function GET(req: Request) {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const url = new URL(req.url);
   const weekIso = url.searchParams.get("week") || isoWeekString(new Date());
 
-  const checkin = sqlite
-    .prepare(
-      `SELECT id, week_iso AS weekIso, week_start AS weekStart, notes,
-              created_at AS createdAt, updated_at AS updatedAt
-       FROM weekly_checkin
-       WHERE user_id = ? AND week_iso = ?`,
-    )
-    .get(userId, weekIso) as CheckinRow | undefined;
-
-  const symptoms: Record<string, number> = {};
-  const habits: Record<string, number> = {};
-  if (checkin) {
-    const symRows = sqlite
-      .prepare(`SELECT key, avg_value AS value FROM weekly_symptom WHERE checkin_id = ?`)
-      .all(checkin.id) as { key: string; value: number }[];
-    for (const r of symRows) symptoms[r.key] = r.value;
-    const habRows = sqlite
-      .prepare(`SELECT key, count_out_of_7 AS count FROM weekly_habit WHERE checkin_id = ?`)
-      .all(checkin.id) as { key: string; count: number }[];
-    for (const r of habRows) habits[r.key] = r.count;
-  }
-
-  // Last 12 weeks for the trend chart
-  const trend = sqlite
-    .prepare(
-      `SELECT wc.id, wc.week_iso AS weekIso, wc.week_start AS weekStart,
-              (SELECT AVG(avg_value) FROM weekly_symptom WHERE checkin_id = wc.id) AS avgSymptom,
-              (SELECT AVG(count_out_of_7) FROM weekly_habit WHERE checkin_id = wc.id) AS avgHabit
-       FROM weekly_checkin wc
-       WHERE wc.user_id = ?
-       ORDER BY wc.week_start DESC LIMIT 12`,
-    )
-    .all(userId) as Array<{ id: number; weekIso: string; weekStart: number; avgSymptom: number | null; avgHabit: number | null }>;
+  const res = await convexServer().query(api.weekly.get, {
+    secret: bridgeSecret(),
+    authUserId,
+    viewUserId: viewUserId ?? authUserId,
+    weekIso,
+  });
 
   // Personalise routines from the user's declared profile (activityLevel,
   // meditation, intermittentFasting, sleep target, water target, sauna /
   // cold / stretching / breathwork / morning light frequencies). Fallback
-  // to a sensible default list if the profile is empty.
-  const profileRow = sqlite
-    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(userId) as { data: string | object } | undefined;
+  // to a sensible default list if the profile is empty. The profile blob is
+  // stored field-encrypted; decrypt it here (the route holds the field key).
   let profile: Record<string, unknown> = {};
-  if (profileRow) {
+  if (res.profileData) {
     try {
-      const raw = typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data;
+      const raw = JSON.parse(res.profileData);
       profile = decryptProfile(raw) ?? {};
     } catch { profile = {}; }
   }
   const { routines, fromProfile } = getRoutinesOrDefault(profile);
 
-  return NextResponse.json({ weekIso, checkin: checkin ?? null, symptoms, habits, trend, routines, routinesFromProfile: fromProfile });
+  return NextResponse.json({
+    weekIso,
+    checkin: res.checkin,
+    symptoms: res.symptoms,
+    habits: res.habits,
+    trend: res.trend,
+    routines,
+    routinesFromProfile: fromProfile,
+  });
 }
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
   const body = (await req.json().catch(() => ({}))) as {
     weekIso?: string;
     symptoms?: Record<string, number>;
@@ -136,44 +103,19 @@ export async function POST(req: Request) {
   const weekStart = monday.getTime();
   const symptoms = body.symptoms ?? {};
   const habits = body.habits ?? {};
+  // notes stored VERBATIM (never encrypted/decrypted by this route); the 4000
+  // char cap is the same input guard the legacy route applied.
   const notes = body.notes ? String(body.notes).slice(0, 4000) : null;
-  const now = Date.now();
 
-  const tx = sqlite.transaction(() => {
-    sqlite
-      .prepare(
-        `INSERT INTO weekly_checkin (user_id, week_iso, week_start, notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(user_id, week_iso) DO UPDATE SET
-           notes = excluded.notes,
-           updated_at = excluded.updated_at`,
-      )
-      .run(userId, weekIso, weekStart, notes, now, now);
-    const row = sqlite
-      .prepare(`SELECT id FROM weekly_checkin WHERE user_id = ? AND week_iso = ?`)
-      .get(userId, weekIso) as { id: number };
-    const checkinId = row.id;
-
-    sqlite.prepare(`DELETE FROM weekly_symptom WHERE checkin_id = ?`).run(checkinId);
-    const symStmt = sqlite.prepare(
-      `INSERT INTO weekly_symptom (checkin_id, key, avg_value) VALUES (?, ?, ?)`,
-    );
-    for (const [k, v] of Object.entries(symptoms)) {
-      if (typeof v !== "number" || !Number.isFinite(v)) continue;
-      const clamped = Math.max(0, Math.min(10, v));
-      symStmt.run(checkinId, String(k).slice(0, 60), clamped);
-    }
-
-    sqlite.prepare(`DELETE FROM weekly_habit WHERE checkin_id = ?`).run(checkinId);
-    const habStmt = sqlite.prepare(
-      `INSERT INTO weekly_habit (checkin_id, key, count_out_of_7) VALUES (?, ?, ?)`,
-    );
-    for (const [k, v] of Object.entries(habits)) {
-      const c = Math.max(0, Math.min(7, Math.round(Number(v) || 0)));
-      habStmt.run(checkinId, String(k).slice(0, 60), c);
-    }
+  const res = await convexServer().mutation(api.weekly.upsert, {
+    secret: bridgeSecret(),
+    authUserId: userId,
+    weekIso,
+    weekStart,
+    notes,
+    symptoms,
+    habits,
   });
-  tx();
 
-  return NextResponse.json({ ok: true, weekIso });
+  return NextResponse.json(res);
 }

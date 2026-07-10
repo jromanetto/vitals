@@ -9,9 +9,12 @@
  */
 
 import type * as etl from "../etl.js";
+import type * as habits from "../habits.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as notes from "../notes.js";
 import type * as supplements from "../supplements.js";
+import type * as symptoms from "../symptoms.js";
+import type * as weekly from "../weekly.js";
 
 import type {
   ApiFromModules,
@@ -21,9 +24,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   etl: typeof etl;
+  habits: typeof habits;
   "lib/auth": typeof lib_auth;
   notes: typeof notes;
   supplements: typeof supplements;
+  symptoms: typeof symptoms;
+  weekly: typeof weekly;
 }>;
 
 /**

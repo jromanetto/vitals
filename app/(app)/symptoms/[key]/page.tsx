@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { SymptomDetailClient } from "@/components/symptom-detail-client";
 import Link from "next/link";
 
@@ -11,19 +13,32 @@ const LABELS: Record<string, string> = {
   gut: "Digestion", skin: "Peau", anxiety: "Anxiété", libido: "Libido", hrv: "HRV",
 };
 
-async function load(key: string, userId: number) {
+type SymptomLog = { date: string; value: number; notes: string | null };
+
+// Symptom logs now come from Convex (symptoms domain). The available-biomarkers
+// list is a separate domain still on SQLite; left untouched here.
+async function loadBiomarkers(userId: number) {
   ensureSchema();
   const sqlite = db().$client;
-  const logs = sqlite.prepare(`SELECT date, value, notes FROM symptom_log WHERE key = ? AND user_id = ? ORDER BY date ASC`).all(key, userId) as Array<{ date: string; value: number; notes: string | null }>;
-  // available biomarkers
-  const bms = sqlite.prepare(`SELECT DISTINCT slug, name FROM biomarker WHERE user_id = ? ORDER BY name`).all(userId) as Array<{ slug: string; name: string }>;
-  return { logs, bms };
+  return sqlite.prepare(`SELECT DISTINCT slug, name FROM biomarker WHERE user_id = ? ORDER BY name`).all(userId) as Array<{ slug: string; name: string }>;
 }
 
 export default async function SymptomDetail({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  const userId = await effectiveUserId();
-  const { logs, bms } = userId ? await load(key, userId) : { logs: [], bms: [] };
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  let logs: SymptomLog[] = [];
+  let bms: Array<{ slug: string; name: string }> = [];
+  if (authUserId && viewUserId) {
+    const res = await convexServer().query(api.symptoms.byKey, {
+      secret: bridgeSecret(),
+      authUserId,
+      viewUserId,
+      key,
+    });
+    logs = res.rows as SymptomLog[];
+    bms = await loadBiomarkers(viewUserId);
+  }
   const label = LABELS[key] ?? key;
 
   return (
