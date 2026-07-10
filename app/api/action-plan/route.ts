@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { readFileSync } from "node:fs";
@@ -37,47 +39,73 @@ function readApiKey(): string | null {
   } catch { return null; }
 }
 
-function gatherContext(userId: number) {
+async function gatherContext(authUserId: number, viewUserId: number) {
   const sqlite = db().$client;
 
-  // Profile
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? JSON.parse(profileRow.data) : {};
+  // Profile (Convex). action-plan reads the raw JSON without field decryption —
+  // preserving prior behavior. Convex returns the stored blob verbatim.
+  const prof = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const profile = prof.data ? JSON.parse(prof.data) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate).getTime()) / (365.25 * 86400000)) : null;
 
-  // Latest biomarkers
-  const bms = sqlite.prepare(`
-    SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
-    FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
-    WHERE b.user_id = ?
-    ORDER BY b.name
-  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+  // Latest biomarker per slug (Convex returns raw rows; group by slug keeping max date).
+  const bioRes = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const latestBySlug = new Map<string, (typeof bioRes.rows)[number]>();
+  for (const r of bioRes.rows) {
+    const cur = latestBySlug.get(r.slug);
+    if (!cur || r.date > cur.date) latestBySlug.set(r.slug, r);
+  }
+  const bms = [...latestBySlug.values()]
+    .map((b) => ({ slug: b.slug, name: b.name, value: b.value, unit: b.unit, refLow: b.refLow, refHigh: b.refHigh, date: b.date }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   // Out-of-range biomarkers (status low/high)
   const outOfRange = bms.filter((b) => (b.refLow != null && b.value < b.refLow) || (b.refHigh != null && b.value > b.refHigh));
 
-  // DNA risks + protectives
-  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_id = ? AND has_risk = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 15`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
-  const dnaProtective = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_id = ? AND is_protective = 1 ORDER BY COALESCE(magnitude,0) DESC LIMIT 10`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string | null }>;
+  // DNA risks + protectives (Convex). Sorted by magnitude desc like the legacy SQL.
+  const dnaRes = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const dnaRisks = dnaRes.rows
+    .filter((d) => !!d.hasRisk)
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 15)
+    .map((d) => ({ rsid: d.rsid, trait: d.trait, user_genotype: d.userGenotype }));
+  const dnaProtective = dnaRes.rows
+    .filter((d) => !!d.isProtective)
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 10)
+    .map((d) => ({ rsid: d.rsid, trait: d.trait, user_genotype: d.userGenotype }));
 
-  // Active supplements
-  const supplements = sqlite.prepare(`SELECT name, dose, unit, timing, frequency, brand FROM supplement WHERE user_id = ? AND ended_at IS NULL ORDER BY name`).all(userId) as Array<{ name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; brand: string | null }>;
+  // Active supplements — no Convex fn in scope; stays on SQLite.
+  const supplements = sqlite.prepare(`SELECT name, dose, unit, timing, frequency, brand FROM supplement WHERE user_id = ? AND ended_at IS NULL ORDER BY name`).all(viewUserId) as Array<{ name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; brand: string | null }>;
 
-  // Recent wearable averages (last 14 days)
-  const since = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-  const wearableAvg = sqlite.prepare(`SELECT kind, ROUND(AVG(value), 1) as avg, COUNT(*) as n FROM wearable_metric WHERE user_id = ? AND date >= ? GROUP BY kind`).all(userId, since) as Array<{ kind: string; avg: number; n: number }>;
+  // Recent wearable averages (last 14 days) via Convex overview, aggregated by kind.
+  const wear = await convexServer().query(api.wearables.overview, {
+    secret: bridgeSecret(), authUserId, viewUserId, days: 14,
+  });
+  const wearMap = new Map<string, { sum: number; n: number }>();
+  for (const r of wear.rows) {
+    const m = wearMap.get(r.kind) ?? { sum: 0, n: 0 };
+    m.sum += r.value; m.n += 1;
+    wearMap.set(r.kind, m);
+  }
+  const wearableAvg = [...wearMap.entries()].map(([kind, m]) => ({ kind, avg: Math.round((m.sum / m.n) * 10) / 10, n: m.n }));
 
-  // Recent symptoms (table is symptom_log; legacy column "intensity" doesn't exist — use value).
+  // Recent symptoms — no Convex fn in scope; stays on SQLite.
   let recentSymptoms: Array<{ key: string; intensity: number; date: string }> = [];
   try {
-    recentSymptoms = sqlite.prepare(`SELECT key, value as intensity, date FROM symptom_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all(userId) as Array<{ key: string; intensity: number; date: string }>;
+    recentSymptoms = sqlite.prepare(`SELECT key, value as intensity, date FROM symptom_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all(viewUserId) as Array<{ key: string; intensity: number; date: string }>;
   } catch {}
 
   // Environment context (city × genes): feeds location-aware advice into the plan.
   let environment = "non renseigné";
   try {
-    const env = computeEnvironment(userId);
+    const env = computeEnvironment(viewUserId);
     if (env.location) {
       environment = [
         `${env.location.label} (lat ~${Math.round(env.location.lat)}°, PM2.5 ${env.location.pm25} µg/m³)`,
@@ -93,30 +121,32 @@ function gatherContext(userId: number) {
 export async function GET(req: Request) {
   const userId = await effectiveUserId();
   const authId = await currentUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const viewingOther = userId !== authId; // viewing a household member → never persist
+  const readViewUserId = userId; // effectiveUserId (truthy here)
   ensureSchema();
 
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
 
-  // Cache plan for 24h in DB. Each user gets their own cached plan row.
-  const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS action_plan (id INTEGER PRIMARY KEY, plan TEXT NOT NULL, created_at INTEGER NOT NULL, user_id INTEGER)`);
-  try { sqlite.exec(`ALTER TABLE action_plan ADD COLUMN user_id INTEGER`); } catch {}
+  // Cache plan for 24h (Convex action_plan, scoped per user via read-user resolution).
   if (!force) {
-    const cached = sqlite.prepare(`SELECT plan, created_at FROM action_plan WHERE user_id = ? ORDER BY id DESC LIMIT 1`).get(userId) as { plan: string; created_at: number } | undefined;
-    if (cached && Date.now() - cached.created_at < 24 * 3600 * 1000) {
-      return NextResponse.json({ ...JSON.parse(cached.plan), cached: true, generatedAt: cached.created_at });
+    const { row } = await convexServer().query(api.reports.latestActionPlan, {
+      secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId,
+    });
+    if (row && Date.now() - row.createdAt < 24 * 3600 * 1000) {
+      return NextResponse.json({ ...JSON.parse(row.plan), cached: true, generatedAt: row.createdAt });
     }
   }
 
-  const ctx = gatherContext(userId);
+  const ctx = await gatherContext(authId, readViewUserId);
   const apiKey = readApiKey();
   if (!apiKey) {
     // Fallback: heuristic plan (no Claude)
     const fallback = buildHeuristicPlan(ctx);
-    if (!viewingOther) sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(fallback), Date.now(), userId);
+    if (!viewingOther) await convexServer().mutation(api.reports.insertActionPlan, {
+      secret: bridgeSecret(), authUserId: authId, plan: JSON.stringify(fallback),
+    });
     return NextResponse.json({ ...fallback, cached: false });
   }
 
@@ -210,7 +240,9 @@ Génère le plan JSON.`;
     if (!m) throw new Error("no JSON in response");
     const plan: Plan = JSON.parse(m[0]);
     plan.generatedAt = Date.now();
-    if (!viewingOther) sqlite.prepare(`INSERT INTO action_plan (plan, created_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(plan), Date.now(), userId);
+    if (!viewingOther) await convexServer().mutation(api.reports.insertActionPlan, {
+      secret: bridgeSecret(), authUserId: authId, plan: JSON.stringify(plan),
+    });
     return NextResponse.json({ ...plan, cached: false });
   } catch (e) {
     const fallback = buildHeuristicPlan(ctx);
@@ -219,7 +251,7 @@ Génère le plan JSON.`;
   }
 }
 
-function buildHeuristicPlan(ctx: ReturnType<typeof gatherContext>): Plan {
+function buildHeuristicPlan(ctx: Awaited<ReturnType<typeof gatherContext>>): Plan {
   const outBM = ctx.outOfRange;
   const wearable = Object.fromEntries(ctx.wearableAvg.map((w) => [w.kind, w.avg]));
   const hrv = wearable.hrv ?? null;

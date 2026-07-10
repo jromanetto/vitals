@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -8,29 +10,41 @@ import { computeTodo, type BiomarkerLatest, type DnaInsight, type SupplementSugg
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const readViewUserId = viewUserId ?? authUserId;
+
+  // Biomarkers + DNA insights come from Convex (isolation resolved server-side).
+  // Only the profile read stays on SQLite (no Convex fn yet).
+  const [bio, dnaRes] = await Promise.all([
+    convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+    convexServer().query(api.dna.insights, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+  ]);
+
   ensureSchema();
   const sqlite = db().$client;
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
+  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(readViewUserId) as { data: string } | undefined;
   const profile = profileRow ? decryptProfile(typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data) : {};
 
-  // Latest biomarker per slug.
-  const biomarkers = sqlite
-    .prepare(
-      `SELECT b.slug, b.name, b.value, b.ref_low as refLow, b.ref_high as refHigh
-       FROM biomarker b
-       JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x
-         ON x.slug = b.slug AND x.md = b.date
-       WHERE b.user_id = ?
-       ORDER BY b.name`,
-    )
-    .all(userId, userId) as BiomarkerLatest[];
+  // Latest biomarker per slug. Convex rows are sorted date asc, so last write wins.
+  const latest = new Map<string, BiomarkerLatest>();
+  for (const r of bio.rows) {
+    latest.set(r.slug, { slug: r.slug, name: r.name, value: r.value, refLow: r.refLow, refHigh: r.refHigh });
+  }
+  const biomarkers = [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
 
-  const dna = sqlite
-    .prepare(`SELECT rsid, category, has_risk as hasRisk, is_protective as isProtective FROM dna_insight WHERE user_id = ?`)
-    .all(userId) as DnaInsight[];
+  const dna: DnaInsight[] = dnaRes.rows.map((r) => ({
+    rsid: r.rsid,
+    category: r.category,
+    hasRisk: !!r.hasRisk,
+    isProtective: !!r.isProtective,
+  }));
 
   // Pull supplement suggestions in-process to avoid an extra HTTP roundtrip.
   let supplements: SupplementSuggestion[] = [];
@@ -46,7 +60,7 @@ export async function GET() {
   } catch {}
 
   const items = computeTodo({ profile, biomarkers, dna, supplements });
-  return NextResponse.json({ items, demo: isDemoUser(userId) });
+  return NextResponse.json({ items, demo: isDemoUser(readViewUserId) });
 }
 
 export async function POST(req: Request) {

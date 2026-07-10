@@ -1,7 +1,9 @@
 import { ensureSchema } from "@/lib/db/migrate";
 import { db, schema } from "@/lib/db";
 import { sql } from "drizzle-orm";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { redirect } from "next/navigation";
 import { StatCard } from "@/components/stat-card";
 import { HomeHero } from "@/components/home-hero";
@@ -22,32 +24,40 @@ import { EnvironmentCard } from "@/components/environment-card";
 
 export const dynamic = "force-dynamic";
 
-async function getStats(userId: number) {
+async function getStats(authUserId: number, viewUserId: number) {
   ensureSchema();
   const d = db();
-  const scope = sql`user_id = ${userId}`;
-  const [bmUnique] = await d.select({ c: sql<number>`count(distinct slug)` }).from(schema.biomarker).where(scope);
-  const [bmTotal] = await d.select({ c: sql<number>`count(*)` }).from(schema.biomarker).where(scope);
+  const scope = sql`user_id = ${viewUserId}`;
+  // document + dna_variant have no Convex fn yet (raw SNPs stay on SQLite) — keep here.
   const [docs] = await d.select({ c: sql<number>`count(*)` }).from(schema.document).where(scope);
   const [variants] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaVariant).where(scope);
-  const [insights] = await d.select({ c: sql<number>`count(*)` }).from(schema.dnaInsight).where(scope);
-  const [latest] = await d.select({ d: schema.biomarker.date }).from(schema.biomarker).where(scope).orderBy(sql`${schema.biomarker.date} desc`).limit(1);
+
+  // biomarker + dna_insight now come from Convex (Foyer isolation resolved server-side).
+  const [bio, dna] = await Promise.all([
+    convexServer().query(api.biomarkers.all, { secret: bridgeSecret(), authUserId, viewUserId }),
+    convexServer().query(api.dna.insights, { secret: bridgeSecret(), authUserId, viewUserId }),
+  ]);
+  const biomarkersUnique = new Set(bio.rows.map((r) => r.slug)).size;
+  const biomarkersTotal = bio.rows.length;
+  const latestPanel = bio.rows.length ? Math.max(...bio.rows.map((r) => r.date)) : null;
+
   return {
-    biomarkersUnique: bmUnique?.c ?? 0,
-    biomarkersTotal: bmTotal?.c ?? 0,
+    biomarkersUnique,
+    biomarkersTotal,
     documents: docs?.c ?? 0,
     dnaVariants: variants?.c ?? 0,
-    dnaInsights: insights?.c ?? 0,
-    latestPanel: latest?.d ?? null,
+    dnaInsights: dna.rows.length,
+    latestPanel,
   };
 }
 
 export default async function Home() {
-  const userId = await effectiveUserId();
-  if (!userId) redirect("/login");
-  const stats = await getStats(userId);
-  const score = computeLongevityScore(userId);
-  const env = computeEnvironment(userId);
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId || !viewUserId) redirect("/login");
+  const stats = await getStats(authUserId, viewUserId);
+  const score = computeLongevityScore(viewUserId);
+  const env = computeEnvironment(viewUserId);
   const latestStr = stats.latestPanel
     ? new Date(stats.latestPanel).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" })
     : "—";
