@@ -9,6 +9,8 @@
  */
 
 import type * as etl from "../etl.js";
+import type * as lib_auth from "../lib/auth.js";
+import type * as supplements from "../supplements.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +20,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   etl: typeof etl;
+  "lib/auth": typeof lib_auth;
+  supplements: typeof supplements;
 }>;
 
 /**

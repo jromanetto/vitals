@@ -1,38 +1,37 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { supplementId, date, taken } = await req.json() as { supplementId: number; date?: string; taken: boolean };
-  const d = date ?? new Date().toISOString().slice(0, 10);
-  const sqlite = db().$client;
-  if (taken) {
-    sqlite.prepare(`INSERT OR REPLACE INTO supplement_log (supplement_id, date, taken, user_id) VALUES (?, ?, 1, ?)`).run(supplementId, d, s.userId);
-  } else {
-    sqlite.prepare(`DELETE FROM supplement_log WHERE supplement_id = ? AND date = ? AND user_id = ?`).run(supplementId, d, s.userId);
-  }
+  await convexServer().mutation(api.supplements.setLog, {
+    secret: bridgeSecret(),
+    authUserId: userId,
+    supplementId,
+    date: date ?? undefined,
+    taken,
+  });
   return NextResponse.json({ ok: true });
 }
 
 export async function GET(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const url = new URL(req.url);
-  const supplementId = Number(url.searchParams.get("supplementId"));
-  const days = Math.min(365, Number(url.searchParams.get("days") ?? "90"));
-  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const sqlite = db().$client;
-  if (supplementId) {
-    const rows = sqlite.prepare(`SELECT date, taken FROM supplement_log WHERE supplement_id = ? AND date >= ? AND user_id = ? ORDER BY date DESC`).all(supplementId, since, s.userId);
-    return NextResponse.json({ rows });
-  }
-  const rows = sqlite.prepare(`SELECT supplement_id as supplementId, date FROM supplement_log WHERE taken = 1 AND date >= ? AND user_id = ?`).all(since, s.userId);
-  return NextResponse.json({ rows });
+  const supplementId = Number(url.searchParams.get("supplementId")) || undefined;
+  const days = Number(url.searchParams.get("days") ?? "90");
+  const res = await convexServer().query(api.supplements.logHistory, {
+    secret: bridgeSecret(),
+    authUserId,
+    viewUserId: viewUserId ?? authUserId,
+    supplementId,
+    days,
+  });
+  return NextResponse.json(res);
 }
