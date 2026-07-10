@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
@@ -22,20 +22,43 @@ type Effect = {
 const LOWER_BETTER = new Set(["ldl", "non-hdl", "triglycerides", "cholesterol-total", "hba1c", "glycemie", "homa-ir", "insuline", "homocysteine", "crp", "crp-ultrasensible-hscrp", "fibrinogene", "ggt", "alat-gpt", "asat-got", "ferritine"]);
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const readViewUserId = viewUserId ?? authUserId;
 
-  // Each supplement with a targetBiomarker
-  const sups = sqlite.prepare(`SELECT id, name, started_at as startedAt, target_biomarker as targetBiomarker FROM supplement WHERE target_biomarker IS NOT NULL AND target_biomarker != '' AND user_id = ?`).all(userId) as Array<{ id: number; name: string; startedAt: number | null; targetBiomarker: string }>;
+  const [supRes, bioRes] = await Promise.all([
+    convexServer().query(api.supplements.list, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+    convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+  ]);
+
+  // Each supplement with a targetBiomarker (legacy: target_biomarker not null / not '').
+  const sups = supRes.rows
+    .map((r) => ({
+      id: r.id as number,
+      name: (r.name as string) ?? "",
+      startedAt: (r.startedAt as number | null) ?? null,
+      targetBiomarker: (r.targetBiomarker as string | null) ?? "",
+    }))
+    .filter((s) => s.targetBiomarker !== "");
+
+  // biomarker rows come back sorted by date ascending (api.biomarkers.all).
+  const bioRows = bioRes.rows;
 
   const out: Effect[] = [];
   for (const sup of sups) {
     if (!sup.startedAt) continue;
     const startedAt = sup.startedAt;
-    const before = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND user_id = ? AND date < ? ORDER BY date DESC LIMIT 1`).get(sup.targetBiomarker, userId, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
-    const after = sqlite.prepare(`SELECT name, value, unit, date FROM biomarker WHERE slug = ? AND user_id = ? AND date >= ? ORDER BY date ASC LIMIT 1`).get(sup.targetBiomarker, userId, startedAt) as { name: string; value: number; unit: string | null; date: number } | undefined;
+    const forSlug = bioRows.filter((b) => b.slug === sup.targetBiomarker);
+    // before: latest measurement strictly before startedAt (date < startedAt, DESC LIMIT 1)
+    const beforeCandidates = forSlug.filter((b) => b.date < startedAt);
+    const before = beforeCandidates.length ? beforeCandidates[beforeCandidates.length - 1] : undefined;
+    // after: earliest measurement on/after startedAt (date >= startedAt, ASC LIMIT 1)
+    const after = forSlug.find((b) => b.date >= startedAt);
 
     let changeAbs: number | null = null, changePct: number | null = null;
     let direction: Effect["direction"] = "unknown";

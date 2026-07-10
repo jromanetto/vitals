@@ -105,7 +105,7 @@ async function gatherContext(authUserId: number, viewUserId: number) {
   // Environment context (city × genes): feeds location-aware advice into the plan.
   let environment = "non renseigné";
   try {
-    const env = computeEnvironment(viewUserId);
+    const env = await computeEnvironment(viewUserId);
     if (env.location) {
       environment = [
         `${env.location.label} (lat ~${Math.round(env.location.lat)}°, PM2.5 ${env.location.pm25} µg/m³)`,

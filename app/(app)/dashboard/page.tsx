@@ -56,8 +56,8 @@ export default async function Home() {
   const viewUserId = await effectiveUserId();
   if (!authUserId || !viewUserId) redirect("/login");
   const stats = await getStats(authUserId, viewUserId);
-  const score = computeLongevityScore(viewUserId);
-  const env = computeEnvironment(viewUserId);
+  const score = await computeLongevityScore(viewUserId);
+  const env = await computeEnvironment(viewUserId);
   const latestStr = stats.latestPanel
     ? new Date(stats.latestPanel).toLocaleDateString("fr-FR", { year: "numeric", month: "long", day: "numeric" })
     : "—";

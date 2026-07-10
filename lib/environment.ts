@@ -10,7 +10,8 @@
  * Data is indicative: PM2.5 are approximate annual means (WHO ambient database),
  * latitude is the city centroid. Honest by design — no precision it can't back.
  */
-import { db } from "./db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "./crypto-fields";
 
 export type EnvInsight = { title: string; detail: string; severity: "good" | "info" | "watch"; action?: string };
@@ -83,15 +84,22 @@ const DETOX_GENES: Record<string, string> = {
   rs762551: "CYP1A2 (foie)",
 };
 
-export function computeEnvironment(userId: number): Environment {
-  const sqlite = db().$client;
+// `userId` is the already-resolved (effective) user; reads go to Convex scoped
+// to it. Server-side only — the bridge secret gates the call.
+export async function computeEnvironment(userId: number): Promise<Environment> {
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  const [prof, dnaRes, vitDRes] = await Promise.all([
+    convex.query(api.profile.get, { secret, authUserId: userId }),
+    convex.query(api.dna.insights, { secret, authUserId: userId }),
+    convex.query(api.biomarkers.all, { secret, authUserId: userId, slugs: ["vitamine-d-25-oh"] }),
+  ]);
 
   // Location from the latest profile.
   let currentLocation: { city?: string; countryCode?: string; region?: string } | undefined;
   try {
-    const row = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-    if (row) {
-      const p = decryptProfile(JSON.parse(row.data)) as Record<string, unknown>;
+    if (prof.data) {
+      const p = decryptProfile(JSON.parse(prof.data)) as Record<string, unknown>;
       const cl = p.currentLocation;
       if (cl && typeof cl === "object") currentLocation = cl as typeof currentLocation;
     }
@@ -114,18 +122,15 @@ export function computeEnvironment(userId: number): Environment {
   if (!resolved) return { location: null, sun: null, pollution: null };
 
   // Genes (vit-D + detox) the user is flagged on.
-  const geneRows = sqlite.prepare(
-    `SELECT rsid, has_risk FROM dna_insight WHERE user_id = ? AND rsid IN ('rs2282679','rs7041','rs10741657','rs2228570','rs662','rs762551')`,
-  ).all(userId) as Array<{ rsid: string; has_risk: number | null }>;
-  const vitDGeneNames = geneRows.filter((g) => g.has_risk === 1 && VITD_GENES[g.rsid]).map((g) => VITD_GENES[g.rsid]);
-  const detoxGeneNames = geneRows.filter((g) => g.has_risk === 1 && DETOX_GENES[g.rsid]).map((g) => DETOX_GENES[g.rsid]);
+  const RSIDS = new Set(["rs2282679", "rs7041", "rs10741657", "rs2228570", "rs662", "rs762551"]);
+  const geneRows = (dnaRes.rows as Array<{ rsid: string; hasRisk: number | null }>).filter((g) => RSIDS.has(g.rsid));
+  const vitDGeneNames = geneRows.filter((g) => g.hasRisk === 1 && VITD_GENES[g.rsid]).map((g) => VITD_GENES[g.rsid]);
+  const detoxGeneNames = geneRows.filter((g) => g.hasRisk === 1 && DETOX_GENES[g.rsid]).map((g) => DETOX_GENES[g.rsid]);
 
   // Latest vitamin D level if measured.
-  let vitDLevel: number | null = null;
-  try {
-    const v = sqlite.prepare(`SELECT value FROM biomarker WHERE user_id = ? AND slug = 'vitamine-d-25-oh' ORDER BY date DESC LIMIT 1`).get(userId) as { value: number } | undefined;
-    vitDLevel = v?.value ?? null;
-  } catch { /* none */ }
+  const vitDRows = vitDRes.rows as Array<{ value: number; date: number }>;
+  const latestVitD = vitDRows.length ? vitDRows.reduce((a, b) => (b.date > a.date ? b : a)) : null;
+  const vitDLevel: number | null = latestVitD ? latestVitD.value : null;
 
   // ---- Sun / vitamin D ----
   const months = lowUvMonths(resolved.lat);

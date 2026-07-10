@@ -309,7 +309,7 @@ export async function GET() {
   // Environment-based (city × genes): winter vitamin D and pollution antioxidants.
   // Best-effort; skips when the same supplement is already suggested above.
   try {
-    const env = computeEnvironment(userId);
+    const env = await computeEnvironment(userId);
     if (env.location && env.sun
         && (env.sun.lowUvMonths >= 6 || (env.sun.lowUvMonths >= 4 && (env.sun.geneNames.length > 0 || (env.sun.vitDLevel != null && env.sun.vitDLevel < 30))))
         && !out.some((s) => /vitamine d/i.test(s.supplement))) {
