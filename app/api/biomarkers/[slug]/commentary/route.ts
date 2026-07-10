@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
@@ -14,7 +16,7 @@ export const maxDuration = 60;
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const userId = await effectiveUserId();
   const authId = await currentUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   ensureSchema();
   const { slug } = await params;
   const sqlite = db().$client;
@@ -25,7 +27,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     return NextResponse.json({ body: cached.body, cached: true });
   }
 
-  const rows = sqlite.prepare(`SELECT name, value, unit, ref_low as refLow, ref_high as refHigh, date FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(slug, userId) as Array<{ name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+  // Biomarker rows via Convex (resolves read user through active consent, fail-closed).
+  const { rows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId, slugs: [slug],
+  });
   if (rows.length === 0) return NextResponse.json({ error: "no data" }, { status: 404 });
   const meta = rows[0];
   const md = META_BY_SLUG[slug];

@@ -9,6 +9,7 @@
  */
 
 import type * as biomarkers from "../biomarkers.js";
+import type * as dna from "../dna.js";
 import type * as etl from "../etl.js";
 import type * as habits from "../habits.js";
 import type * as lib_auth from "../lib/auth.js";
@@ -25,6 +26,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   biomarkers: typeof biomarkers;
+  dna: typeof dna;
   etl: typeof etl;
   habits: typeof habits;
   "lib/auth": typeof lib_auth;
