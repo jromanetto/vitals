@@ -124,7 +124,15 @@ function mapRow(table, spec, row) {
     else if (col === "user_id") key = "userId";
     else if (FK_RENAME[col]) key = FK_RENAME[col];
     else key = toCamel(col);
-    out[key] = encSet.has(key) ? encrypt(val) : val;
+    // Verbatim mirror of the source: values already-encrypted in SQLite (e.g.
+    // private notes, encrypted profile blobs) stay encrypted; plaintext stays
+    // plaintext. Migrated routes reuse their existing decrypt/encrypt logic
+    // unchanged. Extending encryption-at-rest to more fields (Blocker #2) is a
+    // SEPARATE hardening phase that updates routes in lockstep — never baked in
+    // here, where it would break every read path. `encrypt`/encSet kept only as
+    // documentation of the Blocker-#2 candidate fields.
+    void encSet;
+    out[key] = val;
   }
   // Coerce messy INTEGER-affinity columns that hold date strings -> epoch ms.
   for (const col of spec.coerceNum || []) {
