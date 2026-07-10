@@ -14,8 +14,11 @@ import type * as etl from "../etl.js";
 import type * as habits from "../habits.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as notes from "../notes.js";
+import type * as push from "../push.js";
+import type * as reminders from "../reminders.js";
 import type * as supplements from "../supplements.js";
 import type * as symptoms from "../symptoms.js";
+import type * as wearables from "../wearables.js";
 import type * as weekly from "../weekly.js";
 
 import type {
@@ -31,8 +34,11 @@ declare const fullApi: ApiFromModules<{
   habits: typeof habits;
   "lib/auth": typeof lib_auth;
   notes: typeof notes;
+  push: typeof push;
+  reminders: typeof reminders;
   supplements: typeof supplements;
   symptoms: typeof symptoms;
+  wearables: typeof wearables;
   weekly: typeof weekly;
 }>;
 

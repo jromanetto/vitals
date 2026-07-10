@@ -1,33 +1,32 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId, isDemoUser } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, isDemoUser } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
-type ReminderRow = {
+type RawReminder = {
   id: number;
   title: string;
   description: string | null;
-  due_at: number;
+  dueAt: number;
   category: string | null;
   done: number;
-  created_at: number;
+  createdAt: number;
 };
 
-function enrich(row: ReminderRow) {
+function enrich(row: RawReminder) {
   const now = Date.now();
-  const diffMs = row.due_at - now;
-  const daysUntil = Math.round(diffMs / 86400000);
-  const overdue = !row.done && row.due_at < now;
+  const daysUntil = Math.round((row.dueAt - now) / 86400000);
+  const overdue = !row.done && row.dueAt < now;
   return {
     id: row.id,
     title: row.title,
     description: row.description,
-    dueAt: row.due_at,
+    dueAt: row.dueAt,
     category: row.category,
     done: !!row.done,
-    createdAt: row.created_at,
+    createdAt: row.createdAt,
     overdue,
     daysUntil,
   };
@@ -36,64 +35,47 @@ function enrich(row: ReminderRow) {
 export async function GET() {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const rows = db().$client.prepare(
-    `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE user_id = ? ORDER BY due_at ASC`
-  ).all(userId) as ReminderRow[];
-  return NextResponse.json({ rows: rows.map(enrich) });
+  const { rows } = await convexServer().query(api.reminders.list, { secret: bridgeSecret(), authUserId: userId });
+  return NextResponse.json({ rows: (rows as RawReminder[]).map(enrich) });
 }
 
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
-  ensureSchema();
-  const body = await req.json() as {
-    title?: string;
-    description?: string | null;
-    dueAt?: number;
-    category?: string | null;
-  };
+  const body = await req.json() as { title?: string; description?: string | null; dueAt?: number; category?: string | null };
   const title = (body.title ?? "").trim();
   const dueAt = Number(body.dueAt);
   if (!title) return NextResponse.json({ error: "title required" }, { status: 400 });
   if (!Number.isFinite(dueAt) || dueAt <= 0) return NextResponse.json({ error: "dueAt required" }, { status: 400 });
   const description = body.description?.toString().trim() || null;
   const category = body.category?.toString().trim() || null;
-  const info = db().$client.prepare(
-    `INSERT INTO reminder (title, description, due_at, category, user_id) VALUES (?, ?, ?, ?, ?)`
-  ).run(title, description, dueAt, category);
-  const row = db().$client.prepare(
-    `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE id = ?`
-  ).get(Number(info.lastInsertRowid)) as ReminderRow;
-  return NextResponse.json({ row: enrich(row) });
+  const { row } = await convexServer().mutation(api.reminders.create, {
+    secret: bridgeSecret(), authUserId: userId, title, description, dueAt, category,
+  });
+  return NextResponse.json({ row: enrich(row as RawReminder) });
 }
 
 export async function PATCH(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
-  ensureSchema();
   const body = await req.json() as { id?: number; done?: boolean };
   const id = Number(body.id);
   if (!Number.isFinite(id) || id <= 0) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const done = body.done ? 1 : 0;
-  db().$client.prepare(`UPDATE reminder SET done = ? WHERE id = ? AND user_id = ?`).run(done, id);
-  const row = db().$client.prepare(
-    `SELECT id, title, description, due_at, category, done, created_at FROM reminder WHERE id = ?`
-  ).get(id) as ReminderRow | undefined;
-  if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
-  return NextResponse.json({ row: enrich(row) });
+  const res = await convexServer().mutation(api.reminders.setDone, {
+    secret: bridgeSecret(), authUserId: userId, id, done: !!body.done,
+  });
+  if (!res.row) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return NextResponse.json({ row: enrich(res.row as RawReminder) });
 }
 
 export async function DELETE(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
-  ensureSchema();
-  const url = new URL(req.url);
-  const id = Number(url.searchParams.get("id"));
+  const id = Number(new URL(req.url).searchParams.get("id"));
   if (!Number.isFinite(id) || id <= 0) return NextResponse.json({ error: "id required" }, { status: 400 });
-  db().$client.prepare(`DELETE FROM reminder WHERE id = ? AND user_id = ?`).run(id, userId);
+  await convexServer().mutation(api.reminders.remove, { secret: bridgeSecret(), authUserId: userId, id });
   return NextResponse.json({ ok: true });
 }
