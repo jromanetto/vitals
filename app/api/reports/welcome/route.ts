@@ -29,31 +29,26 @@ export async function POST(_req: Request) {
     return NextResponse.json({ error: "Mode démo — pas de génération de report personnalisé" }, { status: 403 });
   }
   ensureSchema();
-  const sqlite = db().$client;
 
-  // Insert the pending report row.
-  const result = sqlite
-    .prepare(
-      `INSERT INTO report (kind, title, body, meta, created_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      "welcome",
-      "Bienvenue sur Vitals — ton analyse",
-      "",
-      JSON.stringify({ status: "pending", progress: 0, step: "Préparation" }),
-      Date.now(),
-      userId,
-    );
-  const reportId = Number(result.lastInsertRowid);
+  // Insert the pending report row (in Convex — the reports UI + status poller
+  // read from Convex).
+  const { id: reportId } = await convexServer().mutation(api.reports.insert, {
+    secret: bridgeSecret(),
+    authUserId: userId,
+    kind: "welcome",
+    title: "Bienvenue sur Vitals — ton analyse",
+    body: "",
+    meta: JSON.stringify({ status: "pending", progress: 0, step: "Préparation" }),
+  });
 
   // Fire-and-forget: kicks off the generation in the background.
-  processWelcomeReport(reportId, userId).catch((e) => {
+  processWelcomeReport(reportId, userId).catch(async (e) => {
     console.error("[welcome-report] processing failed", reportId, e);
     try {
-      sqlite
-        .prepare(`UPDATE report SET meta = ? WHERE id = ?`)
-        .run(JSON.stringify({ status: "error", message: (e as Error).message }), reportId);
+      await convexServer().mutation(api.reports.updateReport, {
+        secret: bridgeSecret(), id: reportId,
+        meta: JSON.stringify({ status: "error", message: (e as Error).message }),
+      });
     } catch {}
   });
 
@@ -68,14 +63,20 @@ export async function POST(_req: Request) {
 async function processWelcomeReport(reportId: number, userId: number) {
   const sqlite = db().$client;
 
-  const updateMeta = (patch: Record<string, unknown>) => {
-    const row = sqlite.prepare(`SELECT meta FROM report WHERE id = ?`).get(reportId) as { meta: string } | undefined;
-    const cur = row ? (typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta) : {};
-    sqlite.prepare(`UPDATE report SET meta = ? WHERE id = ?`).run(JSON.stringify({ ...cur, ...patch }), reportId);
+  // Report meta ticker — read/merge/write via Convex (report row lives there).
+  const updateMeta = async (patch: Record<string, unknown>) => {
+    const { row } = await convexServer().query(api.reports.get, {
+      secret: bridgeSecret(), authUserId: userId, viewUserId: userId, id: reportId,
+    });
+    let cur: Record<string, unknown> = {};
+    try { cur = row?.meta ? JSON.parse(row.meta) : {}; } catch {}
+    await convexServer().mutation(api.reports.updateReport, {
+      secret: bridgeSecret(), id: reportId, meta: JSON.stringify({ ...cur, ...patch }),
+    });
   };
 
   // Step 1 — pull data.
-  updateMeta({ progress: 15, step: "Extraction des biomarqueurs" });
+  await updateMeta({ progress: 15, step: "Extraction des biomarqueurs" });
 
   const { data: profileData } = await convexServer().query(api.profile.get, {
     secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
@@ -91,7 +92,7 @@ async function processWelcomeReport(reportId: number, userId: number) {
     .all(userId) as BiomarkerRow[];
 
   // DNA insights — up to 200.
-  updateMeta({ progress: 30, step: "Analyse génétique" });
+  await updateMeta({ progress: 30, step: "Analyse génétique" });
   const dna = sqlite
     .prepare(
       `SELECT rsid, category, trait, effect, magnitude, risk_allele as riskAllele,
@@ -101,37 +102,34 @@ async function processWelcomeReport(reportId: number, userId: number) {
     .all(userId) as DnaInsightRow[];
 
   // Step 2 — deterministic signal selection.
-  updateMeta({ progress: 45, step: "Sélection des signaux" });
+  await updateMeta({ progress: 45, step: "Sélection des signaux" });
   const signals = selectSignals({ profile, biomarkers, dna });
 
   // Step 3 — LLM generation.
-  updateMeta({ progress: 60, step: "Génération de l'analyse" });
+  await updateMeta({ progress: 60, step: "Génération de l'analyse" });
   const { cards, redFlagAlert, bodyMarkdown } = await generateWelcomeReport(signals);
 
-  // Step 4 — persist.
-  updateMeta({ progress: 90, step: "Finalisation" });
-  sqlite
-    .prepare(
-      `UPDATE report SET title = ?, body = ?, meta = ? WHERE id = ?`,
-    )
-    .run(
-      "Bienvenue sur Vitals — ton analyse",
-      bodyMarkdown,
-      JSON.stringify({
-        status: "ready",
-        progress: 100,
-        step: "Prêt",
-        cards,
-        redFlagAlert,
-        signalsSnapshot: {
-          card1Kind: signals.card1?.kind,
-          card2Kind: signals.card2?.kind,
-          card3Kind: signals.card3?.kind,
-          biomarkerCount: biomarkers.length,
-          dnaCount: dna.length,
-          redFlagCount: signals.redFlagAlert?.symptomIds.length ?? 0,
-        },
-      }),
-      reportId,
-    );
+  // Step 4 — persist (title + body + final meta) via Convex.
+  await updateMeta({ progress: 90, step: "Finalisation" });
+  await convexServer().mutation(api.reports.updateReport, {
+    secret: bridgeSecret(),
+    id: reportId,
+    title: "Bienvenue sur Vitals — ton analyse",
+    body: bodyMarkdown,
+    meta: JSON.stringify({
+      status: "ready",
+      progress: 100,
+      step: "Prêt",
+      cards,
+      redFlagAlert,
+      signalsSnapshot: {
+        card1Kind: signals.card1?.kind,
+        card2Kind: signals.card2?.kind,
+        card3Kind: signals.card3?.kind,
+        biomarkerCount: biomarkers.length,
+        dnaCount: dna.length,
+        redFlagCount: signals.redFlagAlert?.symptomIds.length ?? 0,
+      },
+    }),
+  });
 }

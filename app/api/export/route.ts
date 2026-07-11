@@ -29,7 +29,10 @@ export async function GET(req: Request) {
   const habitLogs = sqlite.prepare(`SELECT date, key FROM habit_log WHERE user_id = ? ORDER BY date DESC LIMIT 1000`).all(userId);
   const wearables = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE user_id = ? ORDER BY date DESC LIMIT 5000`).all(userId);
   const notes = sqlite.prepare(`SELECT target_type, target_id, body, tags, created_at FROM note WHERE user_id = ? ORDER BY created_at DESC`).all(userId);
-  const reports = sqlite.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE user_id = ? ORDER BY created_at DESC`).all(userId);
+  const { rows: reportRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const reports = reportRows.map((r) => ({ id: r.id, kind: r.kind, title: r.title, body: r.body, created_at: r.createdAt }));
 
   const exportObj = {
     exportedAt: new Date().toISOString(),

@@ -125,10 +125,13 @@ export async function POST(req: Request) {
     LIMIT 200
   `).all(userId) as Array<Record<string, unknown>>;
 
-  // 6. recent reports
-  const reports = sqlite
-    .prepare(`SELECT kind, title, body, created_at as createdAt FROM report WHERE user_id = ? ORDER BY created_at DESC LIMIT 8`)
-    .all(userId) as Array<{ kind: string; title: string; body: string; createdAt: number }>;
+  // 6. recent reports — via Convex (self scope), latest 8.
+  const { rows: reportRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const reports = reportRows
+    .slice(0, 8)
+    .map((r) => ({ kind: r.kind, title: r.title, body: r.body, createdAt: r.createdAt }));
 
   // Build mega-context with budget
   const parts: string[] = [];

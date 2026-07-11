@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import Anthropic from "@anthropic-ai/sdk";
@@ -17,13 +15,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const userId = await effectiveUserId();
   const authId = await currentUserId();
   if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
   const { slug } = await params;
-  const sqlite = db().$client;
+  const metaKey = JSON.stringify({ slug });
 
-  // Cached? Scope by user_id so each user has their own cached commentary.
-  const cached = sqlite.prepare(`SELECT body, created_at FROM report WHERE kind = 'biomarker_insight' AND meta = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`).get(JSON.stringify({ slug }), userId) as { body: string; created_at: number } | undefined;
-  if (cached && Date.now() - cached.created_at < 30 * 24 * 3600 * 1000) {
+  // Cached? Convex has no meta-column filter, so list biomarker_insight reports
+  // (scoped to the effective/view user) and find the one keyed by this slug's
+  // meta. Rows come back created_at DESC, so find() yields the latest.
+  const { rows: insightRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId, kind: "biomarker_insight",
+  });
+  const cached = insightRows.find((r) => r.meta === metaKey);
+  if (cached && Date.now() - cached.createdAt < 30 * 24 * 3600 * 1000) {
     return NextResponse.json({ body: cached.body, cached: true });
   }
 
@@ -68,7 +70,10 @@ Donne ton analyse en 3-5 paragraphes courts, factuels.`;
   // Only persist the generated insight when looking at your OWN data — never
   // write to a household member's account while merely viewing it.
   if (userId === authId) {
-    sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run("biomarker_insight", `${meta.name} — analyse`, body, JSON.stringify({ slug }), Date.now(), userId);
+    await convexServer().mutation(api.reports.insert, {
+      secret: bridgeSecret(), authUserId: authId, kind: "biomarker_insight",
+      title: `${meta.name} — analyse`, body, meta: metaKey,
+    });
   }
   return NextResponse.json({ body, cached: false });
 }

@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
  * Standalone report generator. Called as detached child process from the API route.
- * Args: <reportId> <kind>
- * Reads data from data/vitals.db, calls Anthropic, writes body back to DB.
- * Anonymizes PII before sending to LLM if anonymizeLLM toggle is on.
+ * Args: <reportId> <kind> <userId>
+ * Reads data from Convex (scoped to the owner), calls Anthropic, writes the body
+ * back to Convex via reports.updateReport. Anonymizes PII before the LLM call.
+ *
+ * Env: NEXT_PUBLIC_CONVEX_URL + SERVER_BRIDGE_SECRET (from process.env, .env.local,
+ * or data/auth.json {convexUrl, serverBridgeSecret}). Anthropic key from data/auth.json.
  */
-import Database from "better-sqlite3";
 import Anthropic from "@anthropic-ai/sdk";
 import fs from "node:fs";
 import path from "node:path";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
 
 const KIND_PROMPTS = {
   "overview": { title: "Vue d'ensemble santé", sys: "Tu es médecin de santé fonctionnelle. Markdown, factuel, personnalisé.", sections: "1. Synthèse exécutive\n2. Points forts\n3. Points à surveiller\n4. Corrélations\n5. 5 actions priorisées" },
@@ -26,24 +30,29 @@ const KIND_PROMPTS = {
 
 const reportId = parseInt(process.argv[2], 10);
 const kind = process.argv[3] || "overview";
+const userId = parseInt(process.argv[4], 10) || 1;
 const meta = KIND_PROMPTS[kind] || KIND_PROMPTS.overview;
 
-const auth = JSON.parse(fs.readFileSync(path.join(process.cwd(), "data", "auth.json"), "utf8"));
+const ROOT = process.cwd();
+function loadEnvLocal() {
+  const p = path.join(ROOT, ".env.local");
+  if (!fs.existsSync(p)) return;
+  for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  }
+}
+loadEnvLocal();
+
+const auth = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "auth.json"), "utf8"));
 const apiKey = auth.anthropicApiKey;
 const anonymizeEnabled = auth.anonymizeLLM === undefined ? true : !!auth.anonymizeLLM;
-
-const db = new Database(path.join(process.cwd(), "data", "vitals.db"));
-// Scope every read to the report's owner so a beta user never gets the owner's data.
-const ownerRow = db.prepare(`SELECT user_id FROM report WHERE id = ?`).get(reportId);
-const userId = ownerRow?.user_id ?? 1;
-const profile = db.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId);
-const profileObj = profile ? JSON.parse(profile.data) : {};
-const bms = db.prepare(`SELECT b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date WHERE b.user_id = ?`).all(userId, userId);
-const dna = db.prepare(`SELECT trait, user_genotype as ug, has_risk as hasRisk, summary FROM dna_insight WHERE user_id = ? ORDER BY (has_risk * COALESCE(magnitude,1)) DESC`).all(userId);
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || auth.convexUrl;
+const secret = process.env.SERVER_BRIDGE_SECRET || auth.serverBridgeSecret;
 
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
-function anonymize(text) {
+function anonymize(text, profileObj) {
   if (!anonymizeEnabled || !text) return text;
   let out = text;
   const names = [];
@@ -93,13 +102,29 @@ function anonymizeProfile(p) {
 }
 
 (async () => {
+  if (!convexUrl || !secret) throw new Error("NEXT_PUBLIC_CONVEX_URL / SERVER_BRIDGE_SECRET missing");
+  const convex = new ConvexHttpClient(convexUrl);
+
+  // Read owner data from Convex.
+  const profRes = await convex.query(api.profile.get, { secret, authUserId: userId });
+  const profileObj = profRes.data ? JSON.parse(profRes.data) : {};
+  const bioAll = (await convex.query(api.biomarkers.all, { secret, authUserId: userId })).rows;
+  // latest-per-slug
+  const maxDate = new Map();
+  for (const r of bioAll) { const m = maxDate.get(r.slug); if (m == null || r.date > m) maxDate.set(r.slug, r.date); }
+  const bms = bioAll.filter((r) => r.date === maxDate.get(r.slug));
+  const dnaRows = (await convex.query(api.dna.insights, { secret, authUserId: userId })).rows;
+  const dna = dnaRows
+    .map((i) => ({ trait: i.trait, ug: i.userGenotype, hasRisk: i.hasRisk, summary: i.summary, magnitude: i.magnitude }))
+    .sort((a, b) => (b.hasRisk ? 1 : 0) * (b.magnitude ?? 1) - (a.hasRisk ? 1 : 0) * (a.magnitude ?? 1));
+
   let body;
   try {
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY missing");
     const client = new Anthropic({ apiKey });
     const safeProfile = anonymizeProfile(profileObj);
     let prompt = `Génère un rapport "${meta.title}" pour ce profil.\n\nPROFIL:\n\`\`\`json\n${JSON.stringify(safeProfile)}\n\`\`\`\n\nBIOMARQUEURS (${bms.length}):\n${bms.map((b) => `- ${b.name}: ${b.value} ${b.unit ?? ""} (ref ${b.refLow ?? "?"}–${b.refHigh ?? "?"}) — ${new Date(b.date).toISOString().slice(0,10)}`).join("\n")}\n\nADN (${dna.length}):\n${dna.map((i) => `- ${i.trait} = ${i.ug}${i.hasRisk ? " ⚠" : ""}: ${i.summary}`).join("\n")}\n\nSections:\n${meta.sections}\n\nMarkdown. Concret, chiffré, pas de disclaimer.`;
-    prompt = anonymize(prompt);
+    prompt = anonymize(prompt, profileObj);
     const resp = await client.messages.create({
       model: "claude-sonnet-4-5-20250929", max_tokens: 4000,
       system: meta.sys, messages: [{ role: "user", content: prompt }],
@@ -108,12 +133,11 @@ function anonymizeProfile(p) {
   } catch (e) {
     body = `# Erreur\n\n${e.message}`;
   }
-  db.prepare(`UPDATE report SET title = ?, body = ? WHERE id = ?`).run(`${meta.title} — ${new Date().toLocaleDateString("fr-FR")}`, body, reportId);
-  // Audit log
-  try {
-    db.prepare(`CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, target TEXT, ip TEXT, user_agent TEXT, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000))`).run();
-    db.prepare(`INSERT INTO audit (action, target) VALUES (?, ?)`).run("report_generated", `id=${reportId} kind=${kind} blen=${body.length}`);
-  } catch {}
+
+  await convex.mutation(api.reports.updateReport, {
+    secret, id: reportId,
+    title: `${meta.title} — ${new Date().toLocaleDateString("fr-FR")}`,
+    body, status: "ready", meta: JSON.stringify({ status: "ready" }),
+  });
   console.log(`[gen-report] id=${reportId} kind=${kind} blen=${body.length} anon=${anonymizeEnabled}`);
-  db.close();
 })();

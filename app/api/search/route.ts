@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
@@ -49,6 +51,7 @@ const ACTIONS: Hit[] = [
 export async function GET(req: Request) {
   const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const authId = (await currentUserId()) ?? userId;
   ensureSchema();
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").toLowerCase().trim();
@@ -75,7 +78,14 @@ export async function GET(req: Request) {
   const dna = sqlite.prepare(`SELECT DISTINCT rsid, category, trait FROM dna_insight WHERE user_id = ? AND (LOWER(trait) LIKE ? OR LOWER(category) LIKE ? OR LOWER(rsid) LIKE ?) LIMIT 6`).all(userId, `%${q}%`, `%${q}%`, `%${q}%`) as Array<{ rsid: string; category: string; trait: string }>;
   for (const d of dna) hits.push({ kind: "dna", title: d.trait, subtitle: `${d.category} · ${d.rsid}`, href: `/dna/${d.category}` });
 
-  const reports = sqlite.prepare(`SELECT id, title, kind FROM report WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(kind) LIKE ?) ORDER BY created_at DESC LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; title: string; kind: string }>;
+  // Reports via Convex (read scoped to auth user + active Foyer view). `q` is
+  // already lowercased; replicate the LOWER(...) LIKE match + created_at DESC LIMIT 5.
+  const { rows: reportRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const reports = reportRows
+    .filter((r) => r.title.toLowerCase().includes(q) || r.kind.toLowerCase().includes(q))
+    .slice(0, 5);
   for (const r of reports) hits.push({ kind: "report", title: r.title, subtitle: r.kind, href: `/reports/${r.id}` });
 
   const docs = sqlite.prepare(`SELECT id, path, title, category FROM document WHERE user_id = ? AND (LOWER(path) LIKE ? OR LOWER(title) LIKE ?) LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; path: string; title: string | null; category: string }>;

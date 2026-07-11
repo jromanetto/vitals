@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { FileText, Printer } from "lucide-react";
 import { ReportKindPicker } from "@/components/report-kind-picker";
 import { ReportsGrid, type ReportRow } from "@/components/reports-grid";
@@ -25,33 +25,30 @@ const KINDS = [
   { id: "next-bloodwork-prep", label: "Prochaine prise de sang", desc: "Marqueurs à demander" },
 ];
 
-async function getAll(userId: number): Promise<ReportRow[]> {
-  ensureSchema();
-  const d = db();
+async function getAll(authUserId: number, viewUserId: number): Promise<ReportRow[]> {
+  const { rows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
   // Nutrition reports (both legacy `nutrition` and the new `nutrition-plan`
   // cache key) store a structured JSON blob consumed by /stack?tab=nutrition —
   // they would render as raw JSON here. Exclude both, they have their
-  // dedicated home in Stack.
-  const rows = d.$client
-    .prepare(
-      `SELECT id, kind, title, body, created_at, meta FROM report
-       WHERE user_id = ? AND kind NOT IN ('nutrition-plan', 'nutrition')
-       ORDER BY created_at DESC`,
-    )
-    .all(userId) as Array<{ id: number; kind: string; title: string; body: string; created_at: number; meta: string | null }>;
-  return rows.map((r) => {
-    let parsed: ReportRow["meta"] = null;
-    if (r.meta) {
-      try { parsed = JSON.parse(r.meta); } catch { parsed = null; }
-    }
-    return { id: r.id, kind: r.kind, title: r.title, body: r.body, created_at: r.created_at, meta: parsed };
-  });
+  // dedicated home in Stack. Rows come back sorted created_at DESC already.
+  return rows
+    .filter((r) => r.kind !== "nutrition-plan" && r.kind !== "nutrition")
+    .map((r) => {
+      let parsed: ReportRow["meta"] = null;
+      if (r.meta) {
+        try { parsed = JSON.parse(r.meta); } catch { parsed = null; }
+      }
+      return { id: r.id, kind: r.kind, title: r.title, body: r.body, created_at: r.createdAt, meta: parsed };
+    });
 }
 
 export default async function ReportsPage() {
-  const userId = await effectiveUserId();
-  if (!userId) redirect("/login");
-  const rows = await getAll(userId);
+  const authUserId = await currentUserId();
+  if (!authUserId) redirect("/login");
+  const viewUserId = await effectiveUserId();
+  const rows = await getAll(authUserId, viewUserId ?? authUserId);
   return (
     <div className="space-y-10">
       <PageHeader

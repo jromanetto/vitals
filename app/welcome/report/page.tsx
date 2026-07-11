@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { WelcomeReportClient } from "@/components/welcome-report/welcome-report-client";
 import { isWelcomeReportEnabled } from "@/lib/welcome-report/enabled";
 
@@ -20,14 +22,11 @@ export default async function WelcomeReportPage() {
   ensureSchema();
   const sqlite = db().$client;
 
-  // Look for a recent welcome report (last hour) for this user.
-  const recent = sqlite
-    .prepare(
-      `SELECT id, meta FROM report
-       WHERE kind = 'welcome' AND user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(userId) as { id: number; meta: string } | undefined;
+  // Look for the latest welcome report for this user (report read via Convex;
+  // scoped to self — matches the legacy currentUserId-scoped SELECT).
+  const { row: recent } = await convexServer().query(api.reports.latestByKind, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId, kind: "welcome",
+  });
 
   let reportId: number;
   let initialMeta: Record<string, unknown> = { status: "pending", progress: 0 };
@@ -35,7 +34,7 @@ export default async function WelcomeReportPage() {
   if (recent) {
     let parsedMeta: Record<string, unknown> = {};
     try {
-      parsedMeta = typeof recent.meta === "string" ? JSON.parse(recent.meta) : recent.meta;
+      parsedMeta = recent.meta ? (typeof recent.meta === "string" ? JSON.parse(recent.meta) : recent.meta) : {};
     } catch {}
 
     // Smart regen: if the existing report is empty-state-only (user signed up
