@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -90,13 +92,11 @@ export async function POST(req: Request) {
 
   const sqlite = db().$client;
 
-  // 1. existing profile (this user only)
-  const profileRow = sqlite
-    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(userId) as { data: string | Record<string, unknown> } | undefined;
-  const profileData = profileRow
-    ? (typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data)
-    : {};
+  // 1. existing profile (this user only) — via Convex
+  const { data: profileStored } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const profileData = profileStored ? JSON.parse(profileStored) : {};
   // Anonymized for LLM context — the actual values from profile are not what we
   // need here (we're extracting NEW facts from documents into profile).
   const existing = anonymizeProfile(decryptProfile(profileData as Record<string, unknown>));

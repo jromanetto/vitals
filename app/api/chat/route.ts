@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { ensureSchema } from "@/lib/db/migrate";
 import { searchRag } from "@/lib/rag/search";
 import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { anthropicApiKey } from "@/lib/secrets";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
 import { formatProfileForLLM } from "@/lib/profile/format";
@@ -261,9 +263,11 @@ type Hit = Awaited<ReturnType<typeof searchRag>>[number];
 async function buildContext(userQuery: string, activeSession: number, userId: number): Promise<{ context: string; sources: Hit[] }> {
   const sqlite = db().$client;
 
-  // 1. Profile
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profileData = profileRow ? JSON.parse(profileRow.data) : {};
+  // 1. Profile (via Convex — resolves through the fn's isolation; chat scopes to self)
+  const { data: profileEnc } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const profileData = profileEnc ? JSON.parse(profileEnc) : {};
 
   // 2. Latest 90 biomarkers (one per slug, latest)
   const bmRows = sqlite

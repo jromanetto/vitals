@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { selectSignals, type BiomarkerRow, type DnaInsightRow } from "@/lib/welcome-report/select-signals";
 import { generateWelcomeReport } from "@/lib/welcome-report/generate";
@@ -75,10 +77,10 @@ async function processWelcomeReport(reportId: number, userId: number) {
   // Step 1 — pull data.
   updateMeta({ progress: 15, step: "Extraction des biomarqueurs" });
 
-  const profileRow = sqlite
-    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(userId) as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data) : {};
+  const { data: profileData } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const profile = profileData ? decryptProfile(JSON.parse(profileData)) : {};
 
   // Biomarkers — latest 200 for this user.
   const biomarkers = sqlite

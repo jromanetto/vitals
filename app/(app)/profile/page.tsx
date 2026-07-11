@@ -2,25 +2,25 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { UserCog, Lock, HeartPulse, Bell, FileText, ArrowRight } from "lucide-react";
-import { getSession, currentUserId, isDemoUser, hasTotpEnabled } from "@/lib/auth";
+import { getSession, currentUserId, effectiveUserId, isDemoUser, hasTotpEnabled } from "@/lib/auth";
 import { AccountContact } from "@/components/profile/account-contact";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const dynamic = "force-dynamic";
 
-async function loadPhone(userId: number): Promise<string> {
+async function loadPhone(authUserId: number, viewUserId: number | null): Promise<string> {
   try {
-    ensureSchema();
-    const sqlite = db().$client;
-    const row = sqlite
-      .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-      .get(userId) as { data: string } | undefined;
-    if (!row) return "";
-    const raw = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
-    const data = decryptProfile(raw);
-    return typeof data.phone === "string" ? data.phone : "";
+    const { data } = await convexServer().query(api.profile.get, {
+      secret: bridgeSecret(),
+      authUserId,
+      viewUserId: viewUserId ?? authUserId,
+    });
+    if (!data) return "";
+    const raw = typeof data === "string" ? JSON.parse(data) : data;
+    const profile = decryptProfile(raw);
+    return typeof profile.phone === "string" ? profile.phone : "";
   } catch {
     return "";
   }
@@ -45,7 +45,8 @@ export default async function AccountPage({
   const demo = userId !== null && userId !== undefined && isDemoUser(userId);
   const totp = hasTotpEnabled();
   const email = (session as { email?: string } | null)?.email ?? "—";
-  const phone = userId ? await loadPhone(userId) : "";
+  const viewUserId = await effectiveUserId();
+  const phone = userId ? await loadPhone(userId, viewUserId) : "";
 
   return (
     <div className="space-y-8 max-w-3xl">

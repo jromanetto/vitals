@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { anonymizeProfile } from "@/lib/anonymize";
 
@@ -87,10 +85,10 @@ export async function GET() {
     .filter((r) => !!r.hasRisk)
     .map((r) => ({ rsid: r.rsid, trait: r.trait, has_risk: 1 as const }));
 
-  ensureSchema();
-  const sqlite = db().$client;
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(readViewUserId) as { data: string } | undefined;
-  const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
+  const { data } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+  });
+  const profile = data ? anonymizeProfile(decryptProfile(JSON.parse(data))) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate as string).getTime()) / (365.25 * 86400000)) : null;
 
   // Build map: slug → triggers + priority

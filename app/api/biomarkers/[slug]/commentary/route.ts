@@ -38,8 +38,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const apiKey = anthropicApiKey();
   if (!apiKey) return NextResponse.json({ body: "Clé Anthropic manquante." });
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
+  const { data: profileData } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const profile = profileData ? anonymizeProfile(decryptProfile(JSON.parse(profileData))) : {};
 
   const client = new Anthropic({ apiKey });
   const sys = "Tu es médecin de santé fonctionnelle. Tu commentes UN biomarqueur en français, en markdown court (3-5 paragraphes max). Tu cites les chiffres réels du patient et la cible optimale. Tu termines par 2-3 actions concrètes personnalisées.";

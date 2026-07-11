@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { computeTodo, type BiomarkerLatest, type DnaInsight, type SupplementSuggestion } from "@/lib/recommendations/engine";
 
@@ -15,22 +13,20 @@ export async function GET() {
   if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const readViewUserId = viewUserId ?? authUserId;
 
-  // Biomarkers + DNA insights come from Convex (isolation resolved server-side).
-  // Only the profile read stays on SQLite (no Convex fn yet).
-  const [bio, dnaRes] = await Promise.all([
+  // Biomarkers + DNA insights + profile all come from Convex (isolation resolved server-side).
+  const [bio, dnaRes, profileRes] = await Promise.all([
     convexServer().query(api.biomarkers.all, {
       secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
     }),
     convexServer().query(api.dna.insights, {
       secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
     }),
+    convexServer().query(api.profile.get, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
   ]);
 
-  ensureSchema();
-  const sqlite = db().$client;
-
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(readViewUserId) as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data) : {};
+  const profile = profileRes.data ? decryptProfile(JSON.parse(profileRes.data)) : {};
 
   // Latest biomarker per slug. Convex rows are sorted date asc, so last write wins.
   const latest = new Map<string, BiomarkerLatest>();
@@ -67,14 +63,14 @@ export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule." }, { status: 403 });
-  ensureSchema();
-  const sqlite = db().$client;
 
   const body = await req.json().catch(() => null) as { id?: string; status?: "done" | "snoozed" | "dismissed"; days?: number } | null;
   if (!body?.id || !body.status) return NextResponse.json({ error: "missing id/status" }, { status: 400 });
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const raw = profileRow ? (typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data) : {};
+  const { data } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const raw = data ? JSON.parse(data) : {};
   const profile = decryptProfile(raw);
 
   const todoState = (profile.todoState as Record<string, { status: string; until?: number }> | undefined) ?? {};
@@ -82,7 +78,9 @@ export async function POST(req: Request) {
   todoState[body.id] = { status: body.status, ...(until ? { until } : {}) };
   profile.todoState = todoState;
 
-  sqlite.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(profile), Date.now(), userId);
+  await convexServer().mutation(api.profile.upsert, {
+    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(profile),
+  });
   return NextResponse.json({ ok: true });
 }
 

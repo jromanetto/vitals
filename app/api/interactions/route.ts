@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { findInteractions } from "@/lib/parsers/interactions";
 import { decryptProfile } from "@/lib/crypto-fields";
 
@@ -23,11 +21,11 @@ export async function GET() {
     .filter((r) => (r.endedAt as number | null) == null)
     .map((r) => ({ name: (r.name as string) ?? "" }));
 
-  // profile has no Convex fn yet — stays on SQLite (matches recommendations route).
-  ensureSchema();
-  const sqlite = db().$client;
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(readViewUserId) as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
+  // Profile read via Convex (resolves the view user through active consent, fail-closed).
+  const { data } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+  });
+  const profile = data ? decryptProfile(JSON.parse(data)) : {};
   const meds = String(profile.medications ?? "").split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean);
   const interactions = findInteractions(supplements, meds);
   return NextResponse.json({ interactions, supplementCount: supplements.length, medicationCount: meds.length });

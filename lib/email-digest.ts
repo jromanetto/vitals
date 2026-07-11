@@ -14,6 +14,8 @@
  */
 import { db } from "@/lib/db";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -137,14 +139,14 @@ type LooseProfile = Record<string, unknown> & {
   screeningHistory?: unknown;
 };
 
-function loadProfile(userId: number): LooseProfile | null {
-  const row = safeGet(
-    `SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT 1`,
-    userId,
-  ) as { data?: string } | undefined;
-  if (!row?.data) return null;
+async function loadProfile(userId: number): Promise<LooseProfile | null> {
   try {
-    const parsed = JSON.parse(row.data);
+    const { data } = await convexServer().query(api.profile.get, {
+      secret: bridgeSecret(),
+      authUserId: userId,
+    });
+    if (!data) return null;
+    const parsed = JSON.parse(data);
     return decryptProfile(parsed) as LooseProfile;
   } catch {
     return null;
@@ -258,12 +260,12 @@ function approxLongevityScore(userId: number, asOf: number): number | null {
 /* Main: computeWeeklyDeltas                                           */
 /* ------------------------------------------------------------------ */
 
-export function computeWeeklyDeltas(userId: number): WeeklyDeltas {
+export async function computeWeeklyDeltas(userId: number): Promise<WeeklyDeltas> {
   const now = Date.now();
   const weekAgo = now - SEVEN_DAYS_MS;
   const weekAgoIso = new Date(weekAgo).toISOString().slice(0, 10);
 
-  const profile = loadProfile(userId);
+  const profile = await loadProfile(userId);
   const firstName = firstNameFromProfile(profile);
 
   // ---- newBiomarkers (last 7d) ----

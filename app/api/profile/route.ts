@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { getSession, currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
-import { db, schema } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { logAudit } from "@/lib/audit";
-import { sql } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs/promises";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
-  const row = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const data = row ? (typeof row.data === "string" ? JSON.parse(row.data) : row.data) : {};
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const { data: stored } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId,
+  });
+  const data = stored ? JSON.parse(stored) : {};
   return NextResponse.json({ data });
 }
 
@@ -23,11 +23,11 @@ export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
-  ensureSchema();
   const body = await req.json();
   const data = body?.data ?? body;
-  const sqlite = db().$client;
-  sqlite.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(data), Date.now(), userId);
+  await convexServer().mutation(api.profile.upsert, {
+    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(data),
+  });
 
   // also write a profile.md mirror for easy backup / offline reading — per-user
   // so one account's profile never overwrites another's on disk.

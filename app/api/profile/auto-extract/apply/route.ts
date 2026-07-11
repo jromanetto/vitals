@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { db, schema } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
-import { desc, sql } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -20,8 +21,10 @@ export async function POST(req: Request) {
   const memories = Array.isArray(body.memories) ? body.memories.filter((x) => typeof x === "string") : [];
 
   const d = db();
-  const rows = await d.select().from(schema.profile).where(sql`user_id = ${s.userId}`).orderBy(desc(schema.profile.updatedAt)).limit(1);
-  const existing = decryptProfile((rows[0]?.data as Record<string, unknown>) ?? {});
+  const { data: profileStored } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: s.userId, viewUserId: s.userId,
+  });
+  const existing = decryptProfile(profileStored ? JSON.parse(profileStored) : {});
 
   const merged: Record<string, unknown> = { ...existing };
   for (const [k, v] of Object.entries(fields)) {
@@ -31,7 +34,9 @@ export async function POST(req: Request) {
   }
 
   // Match /api/profile POST behaviour: store plaintext (legacy), scoped to the user.
-  d.$client.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(merged), Date.now(), s.userId);
+  await convexServer().mutation(api.profile.upsert, {
+    secret: bridgeSecret(), authUserId: s.userId, data: JSON.stringify(merged),
+  });
 
   // Mirror profile.md — per-user so accounts don't overwrite each other on disk.
   try {
