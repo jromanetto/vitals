@@ -107,6 +107,7 @@ export const insertMany = mutation({
         refHigh: v.union(v.number(), v.null()),
         date: v.number(),
         source: v.string(),
+        rawText: v.optional(v.union(v.string(), v.null())),
       })
     ),
   },
@@ -126,9 +127,26 @@ export const insertMany = mutation({
         refHigh: r.refHigh ?? undefined,
         date: r.date,
         source: r.source,
+        rawText: r.rawText ?? undefined,
       });
       inserted++;
     }
     return { inserted };
+  },
+});
+
+// Delete all measurements from a given source file (used on re-ingest to clear
+// old rows before reinserting). Scoped to self.
+export const deleteBySource = mutation({
+  args: { secret: v.string(), authUserId: v.number(), source: v.string() },
+  handler: async (ctx, { secret, authUserId, source }) => {
+    requireServer(secret);
+    const docs = await ctx.db
+      .query("biomarker")
+      .withIndex("by_user", (q) => q.eq("userId", authUserId))
+      .filter((q) => q.eq(q.field("source"), source))
+      .collect();
+    for (const d of docs) await ctx.db.delete(d._id);
+    return { deleted: docs.length };
   },
 });

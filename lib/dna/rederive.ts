@@ -10,9 +10,13 @@
  * Scoped wipe + rebuild, fully user_id-isolated.
  */
 import { db } from "../db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { CATALOG, evaluate } from "./catalog";
 
-export function rederiveDnaInsights(userId: number): { insights: number } {
+// dna_variant is read from SQLite (deferred, stays); dna_insight is wiped +
+// rebuilt in Convex. Scoped to the given user.
+export async function rederiveDnaInsights(userId: number): Promise<{ insights: number }> {
   const sqlite = db().$client;
   const rsids = [...new Set(CATALOG.map((c) => c.rsid))];
   const placeholders = rsids.map(() => "?").join(",");
@@ -23,24 +27,23 @@ export function rederiveDnaInsights(userId: number): { insights: number } {
   // No genome stored for this user → nothing to derive; leave existing rows untouched.
   if (geno.size === 0) return { insights: 0 };
 
-  const run = sqlite.transaction(() => {
-    sqlite.prepare(`DELETE FROM dna_insight WHERE user_id = ?`).run(userId);
-    const ins = sqlite.prepare(
-      `INSERT INTO dna_insight (rsid, category, trait, effect, magnitude, risk_allele, user_genotype, has_risk, is_protective, summary, source, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    let n = 0;
-    for (const cat of CATALOG) {
-      const ug = geno.get(cat.rsid);
-      if (!ug) continue;
-      const ev = evaluate(cat, ug);
-      ins.run(
-        cat.rsid, cat.category, cat.trait, cat.effect ?? null, cat.magnitude ?? null,
-        cat.riskGenotypes.join(",") || null, ug, ev.hasRisk ? 1 : 0, ev.isProtective ? 1 : 0,
-        cat.summary, cat.source, userId,
-      );
-      n++;
-    }
-    return n;
-  });
-  return { insights: run() };
+  const insightRows: Array<{ rsid: string; category: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number; isProtective: number; summary: string | null; source: string | null }> = [];
+  for (const cat of CATALOG) {
+    const ug = geno.get(cat.rsid);
+    if (!ug) continue;
+    const ev = evaluate(cat, ug);
+    insightRows.push({
+      rsid: cat.rsid, category: cat.category, trait: cat.trait, effect: cat.effect ?? null,
+      magnitude: cat.magnitude ?? null, riskAllele: cat.riskGenotypes.join(",") || null,
+      userGenotype: ug, hasRisk: ev.hasRisk ? 1 : 0, isProtective: ev.isProtective ? 1 : 0,
+      summary: cat.summary ?? null, source: cat.source ?? null,
+    });
+  }
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  await convex.mutation(api.dna.wipeInsights, { secret, authUserId: userId });
+  if (insightRows.length) {
+    await convex.mutation(api.dna.insertInsights, { secret, authUserId: userId, rows: insightRows });
+  }
+  return { insights: insightRows.length };
 }

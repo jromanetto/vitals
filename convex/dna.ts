@@ -8,7 +8,7 @@
 //
 // userGenotype is stored as-is (ENCRYPTED-candidate per schema); this read does
 // no decryption — it returns whatever ETL wrote, exactly like the SQLite SELECT.
-import { query } from "./_generated/server";
+import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireServer, resolveReadUser } from "./lib/auth";
 
@@ -60,5 +60,61 @@ export const insights = query({
       return b.magnitude - a.magnitude;
     });
     return { rows };
+  },
+});
+
+// --- writes (ingestion / rederive). Scope to self. ---
+export const wipeInsights = mutation({
+  args: { secret: v.string(), authUserId: v.number() },
+  handler: async (ctx, { secret, authUserId }) => {
+    requireServer(secret);
+    const rows = await ctx.db.query("dna_insight").withIndex("by_user", (q) => q.eq("userId", authUserId)).collect();
+    for (const r of rows) await ctx.db.delete(r._id);
+    return { deleted: rows.length };
+  },
+});
+
+export const insertInsights = mutation({
+  args: {
+    secret: v.string(),
+    authUserId: v.number(),
+    rows: v.array(
+      v.object({
+        rsid: v.string(),
+        category: v.string(),
+        trait: v.string(),
+        effect: v.union(v.string(), v.null()),
+        magnitude: v.union(v.number(), v.null()),
+        riskAllele: v.union(v.string(), v.null()),
+        userGenotype: v.union(v.string(), v.null()),
+        hasRisk: v.number(),
+        isProtective: v.number(),
+        summary: v.union(v.string(), v.null()),
+        source: v.union(v.string(), v.null()),
+      })
+    ),
+  },
+  handler: async (ctx, { secret, authUserId, rows }) => {
+    requireServer(secret);
+    let i = 0;
+    for (const r of rows) {
+      await ctx.db.insert("dna_insight", {
+        legacyId: Date.now() + i,
+        userId: authUserId,
+        rsid: r.rsid,
+        category: r.category,
+        trait: r.trait,
+        effect: r.effect ?? undefined,
+        magnitude: r.magnitude ?? undefined,
+        riskAllele: r.riskAllele ?? undefined,
+        userGenotype: r.userGenotype ?? undefined,
+        hasRisk: r.hasRisk,
+        isProtective: r.isProtective,
+        summary: r.summary ?? undefined,
+        source: r.source ?? undefined,
+      });
+      i++;
+    }
+    return { inserted: rows.length };
   },
 });

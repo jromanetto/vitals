@@ -10,6 +10,8 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { db } from "../db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { parsePdf, extractDateFromPath, extractDateFromText } from "../parsers/pdf";
 import { type Biomarker, parseBiomarkersFromText } from "../parsers/biomarkers";
 import { extractBiomarkersLLM } from "../parsers/biomarkers-llm";
@@ -95,7 +97,8 @@ export async function ingestPdfFile(
       .run(category, title, dateVal, parsed.numPages, parsed.text, h, existing.id);
     docId = existing.id;
     sqlite.prepare(`DELETE FROM rag_chunk WHERE doc_id = ?`).run(docId);
-    sqlite.prepare(`DELETE FROM biomarker WHERE source = ? AND user_id = ?`).run(filePath, userId);
+    // biomarker lives in Convex now — clear old rows from this source there.
+    await convexServer().mutation(api.biomarkers.deleteBySource, { secret: bridgeSecret(), authUserId: userId, source: filePath });
   } else {
     const r = sqlite
       .prepare(`INSERT INTO document (path, category, title, date, pages, text_content, hash, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -139,12 +142,17 @@ export async function ingestPdfFile(
         finalBms.push({ ...bm, value: norm.value, unit: norm.unit ?? null, refLow: nLow, refHigh: nHigh });
       }
     }
-    const ins = sqlite.prepare(
-      `INSERT INTO biomarker (name, slug, category, value, unit, ref_low, ref_high, date, source, raw_text, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    );
-    for (const bm of finalBms) {
-      ins.run(bm.name, bm.slug, bm.category, bm.value, bm.unit ?? null, bm.refLow, bm.refHigh, bmDate, filePath, bm.raw, userId);
-      biomarkers++;
+    if (finalBms.length) {
+      await convexServer().mutation(api.biomarkers.insertMany, {
+        secret: bridgeSecret(),
+        authUserId: userId,
+        rows: finalBms.map((bm) => ({
+          name: bm.name, slug: bm.slug, category: bm.category ?? null, value: bm.value,
+          unit: bm.unit ?? null, refLow: bm.refLow ?? null, refHigh: bm.refHigh ?? null,
+          date: bmDate, source: filePath, rawText: bm.raw ?? null,
+        })),
+      });
+      biomarkers = finalBms.length;
     }
   }
 
@@ -189,7 +197,7 @@ export async function ingestImageFile(
   if (existing) {
     sqlite.prepare(`UPDATE document SET category = ?, title = ?, hash = ? WHERE id = ?`).run(category, title, h, existing.id);
     docId = existing.id;
-    sqlite.prepare(`DELETE FROM biomarker WHERE source = ? AND user_id = ?`).run(imagePath, userId);
+    await convexServer().mutation(api.biomarkers.deleteBySource, { secret: bridgeSecret(), authUserId: userId, source: imagePath });
   } else {
     const r = sqlite.prepare(`INSERT INTO document (path, category, title, date, pages, text_content, hash, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(imagePath, category, title, Date.now(), 1, "", h, userId);
@@ -199,8 +207,16 @@ export async function ingestImageFile(
   let biomarkers = 0;
   if (bms.length) {
     const date = extractDateFromPath(imagePath) ?? Date.now();
-    const ins = sqlite.prepare(`INSERT INTO biomarker (name, slug, category, value, unit, ref_low, ref_high, date, source, raw_text, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-    for (const b of bms) { ins.run(b.name, b.slug, b.category, b.value, b.unit ?? null, b.refLow, b.refHigh, date, imagePath, b.raw, userId); biomarkers++; }
+    await convexServer().mutation(api.biomarkers.insertMany, {
+      secret: bridgeSecret(),
+      authUserId: userId,
+      rows: bms.map((b) => ({
+        name: b.name, slug: b.slug, category: b.category ?? null, value: b.value,
+        unit: b.unit ?? null, refLow: b.refLow ?? null, refHigh: b.refHigh ?? null,
+        date, source: imagePath, rawText: b.raw ?? null,
+      })),
+    });
+    biomarkers = bms.length;
   }
   return { biomarkers, skipped: false };
 }
@@ -218,9 +234,10 @@ export async function ingestDnaForUser(userId: number, baseDir: string): Promise
   const fp = path.join(dnaDir, target);
 
   const sqlite = db().$client;
-  // Scoped wipe — only THIS user's DNA, never everyone's.
+  // Scoped wipe — only THIS user's DNA, never everyone's. dna_variant stays on
+  // SQLite (1.8M raw SNPs, deferred); dna_insight lives in Convex now.
   sqlite.prepare(`DELETE FROM dna_variant WHERE user_id = ?`).run(userId);
-  sqlite.prepare(`DELETE FROM dna_insight WHERE user_id = ?`).run(userId);
+  await convexServer().mutation(api.dna.wipeInsights, { secret: bridgeSecret(), authUserId: userId });
 
   let total = 0;
   const wantedRsids = new Set(CATALOG.map((c) => c.rsid));
@@ -240,19 +257,20 @@ export async function ingestDnaForUser(userId: number, baseDir: string): Promise
   }
   if (batch.length) insertMany(batch);
 
-  let insights = 0;
-  const insIns = sqlite.prepare(
-    `INSERT INTO dna_insight (rsid, category, trait, effect, magnitude, risk_allele, user_genotype, has_risk, is_protective, summary, source, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
+  const insightRows: Array<{ rsid: string; category: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number; isProtective: number; summary: string | null; source: string | null }> = [];
   for (const cat of CATALOG) {
     const ug = userGenotypes.get(cat.rsid);
     if (!ug) continue;
     const ev = evaluate(cat, ug);
-    insIns.run(
-      cat.rsid, cat.category, cat.trait, cat.effect ?? null, cat.magnitude ?? null,
-      cat.riskGenotypes.join(",") || null, ug, ev.hasRisk ? 1 : 0, ev.isProtective ? 1 : 0, cat.summary, cat.source, userId,
-    );
-    insights++;
+    insightRows.push({
+      rsid: cat.rsid, category: cat.category, trait: cat.trait, effect: cat.effect ?? null,
+      magnitude: cat.magnitude ?? null, riskAllele: cat.riskGenotypes.join(",") || null,
+      userGenotype: ug, hasRisk: ev.hasRisk ? 1 : 0, isProtective: ev.isProtective ? 1 : 0,
+      summary: cat.summary ?? null, source: cat.source ?? null,
+    });
   }
-  return { variants: total, insights };
+  if (insightRows.length) {
+    await convexServer().mutation(api.dna.insertInsights, { secret: bridgeSecret(), authUserId: userId, rows: insightRows });
+  }
+  return { variants: total, insights: insightRows.length };
 }
