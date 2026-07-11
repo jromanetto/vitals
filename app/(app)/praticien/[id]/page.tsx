@@ -2,8 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { currentUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { ReportBodyPoller } from "@/components/report-body-poller";
@@ -25,10 +23,11 @@ type ReportRow = {
 };
 
 async function loadReport(id: number, userId: number): Promise<ReportRow | undefined> {
-  ensureSchema();
-  return db()
-    .$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ? AND user_id = ?`)
-    .get(id, userId) as ReportRow | undefined;
+  const { row } = await convexServer().query(api.reports.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId, id,
+  });
+  if (!row) return undefined;
+  return { id: row.id, kind: row.kind, title: row.title, body: row.body, created_at: row.createdAt };
 }
 
 async function loadPatientLabel(userId: number): Promise<string> {

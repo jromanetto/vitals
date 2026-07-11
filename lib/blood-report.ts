@@ -3,8 +3,8 @@
  * Extracted from the API route so it can be invoked server-side for any user
  * (e.g. a CLI regeneration after an extraction fix) without an HTTP session.
  */
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -75,30 +75,31 @@ export async function generateBloodReport(
   userId: number,
   opts?: { force?: boolean; date?: number },
 ): Promise<{ status: number; json: Record<string, unknown> }> {
-  ensureSchema();
-  const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS blood_report (id INTEGER PRIMARY KEY AUTOINCREMENT, panel_date INTEGER NOT NULL UNIQUE, body TEXT NOT NULL, generated_at INTEGER NOT NULL)`);
-  try { sqlite.exec(`ALTER TABLE blood_report ADD COLUMN user_id INTEGER`); } catch {}
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  // All measurements for the owner (owner-scoped); we derive panel dates / rows in JS.
+  const all = (await convex.query(api.biomarkers.all, { secret, authUserId: userId })).rows as Row[];
 
   let targetDate: number | null = opts?.date ?? null;
   if (!targetDate) {
-    const r = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker WHERE user_id = ?`).get(userId) as { d: number | null };
-    targetDate = r?.d ?? null;
+    targetDate = all.length ? Math.max(...all.map((r) => r.date)) : null;
   }
   if (!targetDate) return { status: 404, json: { error: "no panel found" } };
+  const panelDate: number = targetDate;
 
   if (!opts?.force) {
-    const cached = sqlite.prepare(`SELECT body, generated_at FROM blood_report WHERE panel_date = ? AND user_id = ?`).get(targetDate, userId) as { body: string; generated_at: number } | undefined;
-    if (cached && Date.now() - cached.generated_at < 7 * 86400 * 1000) {
-      return { status: 200, json: { ...JSON.parse(cached.body), panelDate: targetDate, cached: true, generatedAt: cached.generated_at } };
+    const cached = (await convex.query(api.reports.bloodReports, { secret, authUserId: userId })).rows.find((r) => r.panelDate === panelDate);
+    if (cached && Date.now() - cached.generatedAt < 7 * 86400 * 1000) {
+      return { status: 200, json: { ...JSON.parse(cached.body), panelDate: panelDate, cached: true, generatedAt: cached.generatedAt } };
     }
   }
 
-  const rows = sqlite.prepare(`SELECT slug, name, value, unit, ref_low as refLow, ref_high as refHigh, date, source FROM biomarker WHERE date = ? AND user_id = ? ORDER BY name`).all(targetDate, userId) as Row[];
+  const rows = all.filter((r) => r.date === panelDate).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   if (rows.length === 0) return { status: 404, json: { error: "no biomarkers for this date" } };
 
-  const prev = sqlite.prepare(`SELECT MAX(date) as d FROM biomarker WHERE date < ? AND user_id = ?`).get(targetDate, userId) as { d: number | null };
-  const prevRows = prev?.d ? sqlite.prepare(`SELECT slug, value FROM biomarker WHERE date = ? AND user_id = ?`).all(prev.d, userId) as Array<{ slug: string; value: number }> : [];
+  const prevDates = all.filter((r) => r.date < panelDate).map((r) => r.date);
+  const prevDate: number | null = prevDates.length ? Math.max(...prevDates) : null;
+  const prevRows = prevDate != null ? all.filter((r) => r.date === prevDate) : [];
   const prevBySlug = Object.fromEntries(prevRows.map((r) => [r.slug, r.value]));
 
   const enriched = rows.map((r) => {
@@ -116,7 +117,7 @@ export async function generateBloodReport(
   const apiKey = readApiKey();
   if (!apiKey) return { status: 500, json: { error: "anthropic api key missing" } };
 
-  const userMsg = `Prise de sang du ${new Date(targetDate).toLocaleDateString("fr-FR", { dateStyle: "long" })}:
+  const userMsg = `Prise de sang du ${new Date(panelDate).toLocaleDateString("fr-FR", { dateStyle: "long" })}:
 
 ${enriched.map((r) => {
     const refStr = r.refLow != null && r.refHigh != null ? ` (réf labo ${r.refLow}–${r.refHigh})` : "";
@@ -125,7 +126,7 @@ ${enriched.map((r) => {
     return `- ${r.name}: ${r.value} ${r.unit ?? ""}${refStr}${longStr}${deltaStr} → statut: ${r.status}`;
   }).join("\n")}
 
-${prev?.d ? `Prise précédente: ${new Date(prev.d).toLocaleDateString("fr-FR", { dateStyle: "long" })}` : "Première prise enregistrée."}
+${prevDate != null ? `Prise précédente: ${new Date(prevDate).toLocaleDateString("fr-FR", { dateStyle: "long" })}` : "Première prise enregistrée."}
 
 Génère le compte-rendu JSON.`;
 
@@ -145,16 +146,12 @@ Génère le compte-rendu JSON.`;
     report.outOfRangeCount = enriched.filter((r) => r.status === "slightly-off" || r.status === "attention").length;
     report.optimalCount = enriched.filter((r) => r.status === "optimal").length;
 
-    const existingId = sqlite.prepare(`SELECT id FROM blood_report WHERE panel_date = ? AND user_id = ?`).get(targetDate, userId) as { id: number } | undefined;
-    if (existingId) {
-      sqlite.prepare(`UPDATE blood_report SET body = ?, generated_at = ? WHERE id = ? AND user_id = ?`).run(JSON.stringify(report), Date.now(), existingId.id, userId);
-    } else {
-      try {
-        sqlite.prepare(`INSERT INTO blood_report (panel_date, body, generated_at, user_id) VALUES (?, ?, ?, ?)`).run(targetDate, JSON.stringify(report), Date.now(), userId);
-      } catch { /* legacy row owns this panel_date; don't poison cross-tenant reads */ }
-    }
-    return { status: 200, json: { ...report, panelDate: targetDate, cached: false, generatedAt: Date.now(), prevPanelDate: prev?.d ?? null } };
+    const generatedAt = Date.now();
+    await convex.mutation(api.reports.upsertBloodReport, {
+      secret, authUserId: userId, panelDate, body: JSON.stringify(report), generatedAt,
+    });
+    return { status: 200, json: { ...report, panelDate: panelDate, cached: false, generatedAt, prevPanelDate: prevDate ?? null } };
   } catch (e) {
-    return { status: 500, json: { error: (e as Error).message, panelDate: targetDate } };
+    return { status: 500, json: { error: (e as Error).message, panelDate: panelDate } };
   }
 }
