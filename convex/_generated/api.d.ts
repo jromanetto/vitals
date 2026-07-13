@@ -24,6 +24,7 @@ import type * as supplements from "../supplements.js";
 import type * as symptoms from "../symptoms.js";
 import type * as wearables from "../wearables.js";
 import type * as weekly from "../weekly.js";
+import type * as whoami from "../whoami.js";
 
 import type {
   ApiFromModules,
@@ -48,6 +49,7 @@ declare const fullApi: ApiFromModules<{
   symptoms: typeof symptoms;
   wearables: typeof wearables;
   weekly: typeof weekly;
+  whoami: typeof whoami;
 }>;
 
 /**
