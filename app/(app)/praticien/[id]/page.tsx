@@ -4,6 +4,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { currentUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { ReportBodyPoller } from "@/components/report-body-poller";
 import { PrintTrigger } from "@/components/print-trigger";
 import { DoctorPackCover } from "@/components/praticien/doctor-pack-cover";
@@ -38,7 +39,7 @@ async function loadPatientLabel(userId: number): Promise<string> {
       viewUserId: userId,
     });
     if (!data) return "Patient";
-    const obj = JSON.parse(data) as { firstName?: string; lastName?: string };
+    const obj = decryptProfile(JSON.parse(data)) as { firstName?: string; lastName?: string };
     const first = (obj.firstName || "").trim();
     const last = (obj.lastName || "").trim();
     if (first) return first;

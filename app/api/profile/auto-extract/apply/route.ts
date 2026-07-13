@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { decryptProfile } from "@/lib/crypto-fields";
+import { encryptProfile, decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -29,9 +29,9 @@ export async function POST(req: Request) {
     merged[k] = v;
   }
 
-  // Match /api/profile POST behaviour: store plaintext (legacy), scoped to the user.
+  // Match /api/profile POST behaviour: encrypt sensitive fields at rest, scoped to the user.
   await convexServer().mutation(api.profile.upsert, {
-    secret: bridgeSecret(), authUserId: s.userId, data: JSON.stringify(merged),
+    secret: bridgeSecret(), authUserId: s.userId, data: JSON.stringify(encryptProfile(merged)),
   });
 
   // Mirror profile.md — per-user so accounts don't overwrite each other on disk.

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { decryptProfile } from "@/lib/crypto-fields";
+import { encryptProfile, decryptProfile } from "@/lib/crypto-fields";
 import { computeTodo, type BiomarkerLatest, type DnaInsight, type SupplementSuggestion } from "@/lib/recommendations/engine";
 
 export const runtime = "nodejs";
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   profile.todoState = todoState;
 
   await convexServer().mutation(api.profile.upsert, {
-    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(profile),
+    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(encryptProfile(profile)),
   });
   return NextResponse.json({ ok: true });
 }

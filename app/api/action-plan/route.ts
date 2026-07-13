@@ -5,6 +5,7 @@ import { api } from "@/convex/_generated/api";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { formatProfileForLLM } from "@/lib/profile/format";
 import { computeEnvironment } from "@/lib/environment";
 
@@ -38,13 +39,12 @@ function readApiKey(): string | null {
 }
 
 async function gatherContext(authUserId: number, viewUserId: number) {
-  // Profile (Convex). action-plan reads the raw JSON without field decryption —
-  // preserving prior behavior. Convex returns the stored blob verbatim.
+  // Profile (Convex). Decrypt sensitive fields so the LLM sees real values, not ciphertext.
   const prof = await convexServer().query(api.profile.get, {
     secret: bridgeSecret(), authUserId, viewUserId,
   });
-  const profile = prof.data ? JSON.parse(prof.data) : {};
-  const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate).getTime()) / (365.25 * 86400000)) : null;
+  const profile = decryptProfile(prof.data ? JSON.parse(prof.data) : {});
+  const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate as string).getTime()) / (365.25 * 86400000)) : null;
 
   // Latest biomarker per slug (Convex returns raw rows; group by slug keeping max date).
   const bioRes = await convexServer().query(api.biomarkers.all, {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -75,7 +76,7 @@ export async function GET(req: Request) {
   const exportObj = {
     exportedAt: new Date().toISOString(),
     appVersion: "vitals-1.0",
-    profile: profileData ? JSON.parse(profileData) : {},
+    profile: decryptProfile(profileData ? JSON.parse(profileData) : {}),
     biomarkers, dnaInsights, supplements,
     symptomLogs, habitLogs, wearables, notes, reports,
     counts: {

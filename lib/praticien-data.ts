@@ -1,5 +1,6 @@
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 
 export type ProfileData = {
@@ -90,7 +91,7 @@ export async function loadPraticienData(userId: number): Promise<PraticienData> 
   ]);
 
   let profile: ProfileData = {};
-  if (profRes.data) { try { profile = JSON.parse(profRes.data); } catch { profile = {}; } }
+  if (profRes.data) { try { profile = decryptProfile(JSON.parse(profRes.data)) as ProfileData; } catch { profile = {}; } }
 
   const bioRows = bioRes.rows as BiomarkerRow[];
   const panelDate = bioRows.length ? Math.max(...bioRows.map((b) => b.date)) : null;

@@ -18,10 +18,31 @@
  * or data/auth.json {convexUrl, serverBridgeSecret}). Anthropic key from data/auth.json.
  */
 import Anthropic from "@anthropic-ai/sdk";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api.js";
+
+// Inline field decryption (mirrors lib/crypto-fields; worker runs via plain node).
+function decryptProfileDeep(obj, keyB64) {
+  if (!keyB64) return obj;
+  const key = Buffer.from(keyB64, "base64");
+  const dec = (v) => {
+    if (typeof v === "string" && v.startsWith("enc:")) {
+      try {
+        const [iv, tag, ct] = v.slice(4).split(":");
+        const d = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64"));
+        d.setAuthTag(Buffer.from(tag, "base64"));
+        return Buffer.concat([d.update(Buffer.from(ct, "base64")), d.final()]).toString("utf8");
+      } catch { return v; }
+    }
+    if (Array.isArray(v)) return v.map(dec);
+    if (v && typeof v === "object") { const o = {}; for (const [k, x] of Object.entries(v)) o[k] = dec(x); return o; }
+    return v;
+  };
+  return dec(obj);
+}
 
 const reportId = parseInt(process.argv[2], 10);
 const userId = parseInt(process.argv[3], 10) || 1;
@@ -52,7 +73,7 @@ const secret = process.env.SERVER_BRIDGE_SECRET || auth.serverBridgeSecret;
 
     // Profile (owner-scoped).
     const profRes = await convex.query(api.profile.get, { secret, authUserId: userId });
-    const profileObj = profRes.data ? JSON.parse(profRes.data) : {};
+    const profileObj = decryptProfileDeep(profRes.data ? JSON.parse(profRes.data) : {}, auth.fieldEncryptionKey);
 
     // Biomarkers (owner-scoped). Group latest-per-slug + build per-slug trend series.
     const bioAll = (await convex.query(api.biomarkers.all, { secret, authUserId: userId })).rows;

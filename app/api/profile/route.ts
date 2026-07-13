@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession, currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
+import { encryptProfile, decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -15,7 +16,7 @@ export async function GET() {
   const { data: stored } = await convexServer().query(api.profile.get, {
     secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId,
   });
-  const data = stored ? JSON.parse(stored) : {};
+  const data = decryptProfile(stored ? JSON.parse(stored) : {});
   return NextResponse.json({ data });
 }
 
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   const body = await req.json();
   const data = body?.data ?? body;
   await convexServer().mutation(api.profile.upsert, {
-    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(data),
+    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(encryptProfile(data)),
   });
 
   // also write a profile.md mirror for easy backup / offline reading — per-user

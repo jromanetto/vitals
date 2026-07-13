@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { decryptProfile } from "@/lib/crypto-fields";
+import { encryptProfile, decryptProfile } from "@/lib/crypto-fields";
 import { computePrefill } from "@/lib/profile/prefill";
 
 export const runtime = "nodejs";
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     }
   }
   await convexServer().mutation(api.profile.upsert, {
-    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(next),
+    secret: bridgeSecret(), authUserId: userId, data: JSON.stringify(encryptProfile(next)),
   });
   return NextResponse.json({ ok: true, applied });
 }

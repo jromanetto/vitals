@@ -5,6 +5,7 @@ import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { anthropicApiKey } from "@/lib/secrets";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { formatProfileForLLM } from "@/lib/profile/format";
 
 export const runtime = "nodejs";
@@ -324,7 +325,7 @@ async function buildContext(userQuery: string, activeSession: number, userId: nu
   const { data: profileEnc } = await convexServer().query(api.profile.get, {
     secret: bridgeSecret(), authUserId: userId,
   });
-  const profileData = profileEnc ? JSON.parse(profileEnc) : {};
+  const profileData = decryptProfile(profileEnc ? JSON.parse(profileEnc) : {});
 
   // 2. Latest 90 biomarkers (one per slug, latest). Convex returns date ASC, so the
   // last row seen per slug is that slug's latest; then order slugs by date DESC, cap 90.
