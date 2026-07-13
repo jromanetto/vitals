@@ -82,7 +82,7 @@ async function runDigest(req: Request): Promise<Response> {
 
   for (const u of users) {
     try {
-      if (!userHasRecentActivity(u.id)) {
+      if (!(await userHasRecentActivity(u.id))) {
         results.push({ userId: u.id, email: u.email, status: "skipped", reason: "no recent activity" });
         skipped++;
         continue;

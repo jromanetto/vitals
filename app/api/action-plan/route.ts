@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -40,8 +38,6 @@ function readApiKey(): string | null {
 }
 
 async function gatherContext(authUserId: number, viewUserId: number) {
-  const sqlite = db().$client;
-
   // Profile (Convex). action-plan reads the raw JSON without field decryption —
   // preserving prior behavior. Convex returns the stored blob verbatim.
   const prof = await convexServer().query(api.profile.get, {
@@ -81,8 +77,21 @@ async function gatherContext(authUserId: number, viewUserId: number) {
     .slice(0, 10)
     .map((d) => ({ rsid: d.rsid, trait: d.trait, user_genotype: d.userGenotype }));
 
-  // Active supplements — no Convex fn in scope; stays on SQLite.
-  const supplements = sqlite.prepare(`SELECT name, dose, unit, timing, frequency, brand FROM supplement WHERE user_id = ? AND ended_at IS NULL ORDER BY name`).all(viewUserId) as Array<{ name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; brand: string | null }>;
+  // Active supplements (Convex; view/effective user). Filter to active
+  // (endedAt null) and keep the legacy field subset, name-sorted.
+  const suppRes = await convexServer().query(api.supplements.list, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const supplements = suppRes.rows
+    .filter((s) => s.endedAt == null)
+    .map((s) => ({
+      name: s.name as string,
+      dose: s.dose as string | null,
+      unit: s.unit as string | null,
+      timing: s.timing as string | null,
+      frequency: s.frequency as string | null,
+      brand: s.brand as string | null,
+    }));
 
   // Recent wearable averages (last 14 days) via Convex overview, aggregated by kind.
   const wear = await convexServer().query(api.wearables.overview, {
@@ -96,10 +105,14 @@ async function gatherContext(authUserId: number, viewUserId: number) {
   }
   const wearableAvg = [...wearMap.entries()].map(([kind, m]) => ({ kind, avg: Math.round((m.sum / m.n) * 10) / 10, n: m.n }));
 
-  // Recent symptoms — no Convex fn in scope; stays on SQLite.
+  // Recent symptoms (Convex; view/effective user). Last 14 days, date DESC,
+  // capped at 30; map value -> intensity to preserve the legacy shape.
   let recentSymptoms: Array<{ key: string; intensity: number; date: string }> = [];
   try {
-    recentSymptoms = sqlite.prepare(`SELECT key, value as intensity, date FROM symptom_log WHERE user_id = ? AND date >= date('now','-14 days') ORDER BY date DESC LIMIT 30`).all(viewUserId) as Array<{ key: string; intensity: number; date: string }>;
+    const symRes = await convexServer().query(api.symptoms.list, {
+      secret: bridgeSecret(), authUserId, viewUserId, days: 14,
+    });
+    recentSymptoms = symRes.rows.slice(0, 30).map((s) => ({ key: s.key, intensity: s.value, date: s.date }));
   } catch {}
 
   // Environment context (city × genes): feeds location-aware advice into the plan.
@@ -124,7 +137,6 @@ export async function GET(req: Request) {
   if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const viewingOther = userId !== authId; // viewing a household member → never persist
   const readViewUserId = userId; // effectiveUserId (truthy here)
-  ensureSchema();
 
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";

@@ -4,15 +4,15 @@
  * Phase: email digests (Sprint — weekly summary cron).
  * Touched by: app/api/cron/weekly-digest/route.ts.
  *
- * `computeWeeklyDeltas(userId)` is a pure-ish read function: it only SELECTs from
- * SQLite (no writes) and returns the structured deltas object. `weeklyDigestTemplate`
- * turns that object into the `{subject, html, text}` payload `sendEmail` expects.
+ * `computeWeeklyDeltas(userId)` is a read function: it reads the migrated health
+ * tables (biomarker, symptom_log, supplement, supplement_log, dna_insight) from
+ * Convex — no writes — and returns the structured deltas object.
+ * `weeklyDigestTemplate` turns that object into the `{subject, html, text}`
+ * payload `sendEmail` expects.
  *
- * Uses raw `db().$client.prepare(...)` because the Drizzle schema in
- * `lib/db/migrate.ts` is partially out of date with the actual columns at runtime
- * (in particular, `user_id` columns added by per-route migrations).
+ * All reads are self-scoped (authUserId only, no viewUserId): the digest never
+ * looks at another member's data.
  */
-import { db } from "@/lib/db";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
@@ -101,25 +101,48 @@ const SEVEN_DAYS_MS = 7 * ONE_DAY_MS;
 const YEAR_MS = 365 * ONE_DAY_MS;
 
 /* ------------------------------------------------------------------ */
-/* SQL helpers                                                         */
+/* Convex read helpers                                                 */
 /* ------------------------------------------------------------------ */
 
-type AnyRow = Record<string, unknown>;
+/** Raw biomarker row shape returned by api.biomarkers.all. */
+type BmRow = {
+  id: number;
+  slug: string;
+  name: string;
+  category: string | null;
+  value: number;
+  unit: string | null;
+  refLow: number | null;
+  refHigh: number | null;
+  date: number;
+  source: string | null;
+};
 
-function safeAll(sql: string, ...params: unknown[]): AnyRow[] {
+/** Fetch all biomarker rows for the user (self-scoped). Best-effort → [] on error. */
+async function fetchBiomarkers(userId: number): Promise<BmRow[]> {
   try {
-    return db().$client.prepare(sql).all(...params) as AnyRow[];
+    const { rows } = await convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(),
+      authUserId: userId,
+    });
+    return rows as BmRow[];
   } catch {
     return [];
   }
 }
 
-function safeGet(sql: string, ...params: unknown[]): AnyRow | undefined {
-  try {
-    return db().$client.prepare(sql).get(...params) as AnyRow | undefined;
-  } catch {
-    return undefined;
+/**
+ * Latest row per slug over `rows`. If `asOf` is given, only rows with date <= asOf
+ * are considered (mirrors the legacy `MAX(date) ... WHERE date <= ?` grouping).
+ */
+function latestPerSlug(rows: BmRow[], asOf?: number): BmRow[] {
+  const map = new Map<string, BmRow>();
+  for (const r of rows) {
+    if (asOf != null && r.date > asOf) continue;
+    const cur = map.get(r.slug);
+    if (!cur || r.date > cur.date) map.set(r.slug, r);
   }
+  return [...map.values()];
 }
 
 /** Parse ISO YYYY-MM-DD or YYYY-MM-DDTHH:mm to a timestamp (ms). null on bad input. */
@@ -189,31 +212,41 @@ function overdueScreenings(profile: LooseProfile | null): string[] {
 /**
  * Returns true if the user has logged anything (biomarker / symptom / supplement)
  * in the last `windowMs` window. Used by the cron to skip dormant accounts.
+ *
+ * NOTE: now async (reads Convex). Callers MUST await it.
  */
-export function userHasRecentActivity(userId: number, windowMs = 30 * ONE_DAY_MS): boolean {
+export async function userHasRecentActivity(
+  userId: number,
+  windowMs = 30 * ONE_DAY_MS,
+): Promise<boolean> {
   const sinceTs = Date.now() - windowMs;
   const sinceIso = new Date(sinceTs).toISOString().slice(0, 10);
+  const days = Math.max(1, Math.ceil(windowMs / ONE_DAY_MS));
+  const secret = bridgeSecret();
 
-  const bm = safeGet(
-    `SELECT 1 AS x FROM biomarker WHERE user_id = ? AND date >= ? LIMIT 1`,
-    userId,
-    sinceTs,
-  );
-  if (bm) return true;
+  try {
+    const bm = await fetchBiomarkers(userId);
+    if (bm.some((r) => r.date >= sinceTs)) return true;
 
-  const sym = safeGet(
-    `SELECT 1 AS x FROM symptom_log WHERE user_id = ? AND date >= ? LIMIT 1`,
-    userId,
-    sinceIso,
-  );
-  if (sym) return true;
+    const { rows: sym } = await convexServer().query(api.symptoms.list, {
+      secret,
+      authUserId: userId,
+      days,
+    });
+    if (sym.some((s) => s.date >= sinceIso)) return true;
 
-  const sup = safeGet(
-    `SELECT 1 AS x FROM supplement_log WHERE user_id = ? AND date >= ? LIMIT 1`,
-    userId,
-    sinceIso,
-  );
-  if (sup) return true;
+    // supplement_log all-taken-since: rows only exist for taken=1 (untaking
+    // deletes the row in Convex), so any row = activity, like the legacy probe.
+    const { rows: sup } = await convexServer().query(api.supplements.logHistory, {
+      secret,
+      authUserId: userId,
+      days,
+    });
+    if (sup.some((l) => l.date >= sinceIso)) return true;
+  } catch {
+    // Fail like the legacy safeGet path: treat as no activity.
+    return false;
+  }
 
   return false;
 }
@@ -227,30 +260,17 @@ export function userHasRecentActivity(userId: number, windowMs = 30 * ONE_DAY_MS
  * vs last week without depending on the single-tenant `computeLongevityScore`.
  * Heuristic: fraction of latest biomarkers within their reference range.
  *
- * `asOf` is the cutoff timestamp — only biomarkers with date <= asOf are counted.
+ * Pure over `allRows` (fetched once by the caller). `asOf` is the cutoff
+ * timestamp — only biomarkers with date <= asOf are counted.
  */
-function approxLongevityScore(userId: number, asOf: number): number | null {
-  const rows = safeAll(
-    `SELECT b.value, b.ref_low, b.ref_high
-       FROM biomarker b
-       JOIN (
-         SELECT slug, MAX(date) AS md
-           FROM biomarker
-          WHERE user_id = ? AND date <= ?
-          GROUP BY slug
-       ) x ON x.slug = b.slug AND x.md = b.date
-      WHERE b.user_id = ? AND b.date <= ?`,
-    userId,
-    asOf,
-    userId,
-    asOf,
-  ) as Array<{ value: number; ref_low: number | null; ref_high: number | null }>;
+function approxLongevityScore(allRows: BmRow[], asOf: number): number | null {
+  const latest = latestPerSlug(allRows, asOf);
   let inRange = 0;
   let total = 0;
-  for (const r of rows) {
-    if (r.ref_low == null || r.ref_high == null) continue;
+  for (const r of latest) {
+    if (r.refLow == null || r.refHigh == null) continue;
     total++;
-    if (r.value >= r.ref_low && r.value <= r.ref_high) inRange++;
+    if (r.value >= r.refLow && r.value <= r.refHigh) inRange++;
   }
   if (total === 0) return null;
   return Math.round((inRange / total) * 100);
@@ -267,70 +287,75 @@ export async function computeWeeklyDeltas(userId: number): Promise<WeeklyDeltas>
 
   const profile = await loadProfile(userId);
   const firstName = firstNameFromProfile(profile);
+  const secret = bridgeSecret();
 
-  // ---- newBiomarkers (last 7d) ----
-  const newBiomarkers = (safeAll(
-    `SELECT name, slug, value, date
-       FROM biomarker
-      WHERE user_id = ? AND date >= ?
-      ORDER BY date DESC
-      LIMIT 50`,
-    userId,
-    weekAgo,
-  ) as Array<{ name: string; slug: string; value: number; date: number }>).map((r) => ({
-    name: r.name,
-    slug: r.slug,
-    value: r.value,
-    date: r.date,
-  }));
+  // Fetch all biomarker rows once — reused by newBiomarkers, topTodos, and the
+  // longevity-score diff below.
+  const bmAll = await fetchBiomarkers(userId);
+
+  // ---- newBiomarkers (last 7d, date DESC, LIMIT 50) ----
+  const newBiomarkers: DigestBiomarker[] = bmAll
+    .filter((r) => r.date >= weekAgo)
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 50)
+    .map((r) => ({ name: r.name, slug: r.slug, value: r.value, date: r.date }));
 
   // ---- redFlagSymptoms (last 7d, key ∈ RED_FLAG_SYMPTOM_KEYS) ----
-  const placeholders = RED_FLAG_SYMPTOM_KEYS.map(() => "?").join(",");
-  const symptomRows = safeAll(
-    `SELECT key, COUNT(*) AS n
-       FROM symptom_log
-      WHERE user_id = ?
-        AND date >= ?
-        AND key IN (${placeholders})
-      GROUP BY key
-      ORDER BY n DESC`,
-    userId,
-    weekAgoIso,
-    ...RED_FLAG_SYMPTOM_KEYS,
-  ) as Array<{ key: string; n: number }>;
-  const redFlagSymptoms: DigestRedFlag[] = symptomRows.map((r) => ({ key: r.key, count: r.n }));
+  // GROUP BY key COUNT(*) reproduced in JS; one symptom_log row per (date,key).
+  let redFlagSymptoms: DigestRedFlag[] = [];
+  try {
+    const { rows: symRows } = await convexServer().query(api.symptoms.list, {
+      secret,
+      authUserId: userId,
+      days: 7,
+    });
+    const counts = new Map<string, number>();
+    for (const s of symRows) {
+      if (s.date >= weekAgoIso && RED_FLAG_SYMPTOM_KEYS.includes(s.key)) {
+        counts.set(s.key, (counts.get(s.key) ?? 0) + 1);
+      }
+    }
+    redFlagSymptoms = [...counts.entries()]
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count);
+  } catch {
+    // Best-effort — digest still ships without symptom flags.
+  }
 
   // ---- overdueScreenings (3 hardcoded ids, pap_smear only for women) ----
   const overdue = overdueScreenings(profile);
 
   // ---- supplementAdherencePct (taken count / (active supplements * 7)) ----
   let supplementAdherencePct: number | null = null;
-  const activeSups = safeGet(
-    `SELECT COUNT(*) AS n
-       FROM supplement
-      WHERE user_id = ?
-        AND (ended_at IS NULL OR ended_at = 0)`,
-    userId,
-  ) as { n: number } | undefined;
-  const activeCount = activeSups?.n ?? 0;
-  if (activeCount > 0) {
-    const taken = safeGet(
-      `SELECT COUNT(*) AS n
-         FROM supplement_log
-        WHERE user_id = ?
-          AND date >= ?
-          AND taken = 1`,
-      userId,
-      weekAgoIso,
-    ) as { n: number } | undefined;
-    const expected = activeCount * 7;
-    const got = taken?.n ?? 0;
-    supplementAdherencePct = expected > 0 ? Math.min(100, Math.round((got / expected) * 100)) : null;
+  try {
+    const { rows: supRows } = await convexServer().query(api.supplements.list, {
+      secret,
+      authUserId: userId,
+    });
+    // active = ended_at IS NULL OR ended_at = 0
+    const activeCount = supRows.filter((s) => {
+      const endedAt = s.endedAt as number | null;
+      return endedAt == null || endedAt === 0;
+    }).length;
+    if (activeCount > 0) {
+      // logHistory (no supplementId) returns taken rows only, last `days`.
+      const { rows: logRows } = await convexServer().query(api.supplements.logHistory, {
+        secret,
+        authUserId: userId,
+        days: 7,
+      });
+      const got = logRows.filter((l) => l.date >= weekAgoIso).length;
+      const expected = activeCount * 7;
+      supplementAdherencePct =
+        expected > 0 ? Math.min(100, Math.round((got / expected) * 100)) : null;
+    }
+  } catch {
+    // Best-effort — digest still ships without adherence.
   }
 
   // ---- vitalsScoreChange (this week vs last week) ----
-  const current = approxLongevityScore(userId, now);
-  const previousWeek = approxLongevityScore(userId, weekAgo);
+  const current = approxLongevityScore(bmAll, now);
+  const previousWeek = approxLongevityScore(bmAll, weekAgo);
 
   // ---- topTodos (top 3 pending actions from recommendations engine) ----
   let topTodos: DigestTodoItem[] = [];
@@ -338,20 +363,20 @@ export async function computeWeeklyDeltas(userId: number): Promise<WeeklyDeltas>
     // Lazy-import the engine to avoid loading the catalogs on every digest run
     // when the engine itself fails to resolve in serverless edge edge-cases.
     const { computeTodo } = require("./recommendations/engine") as typeof import("./recommendations/engine");
-    const biomarkers = safeAll(
-      `SELECT b.slug, b.name, b.value, b.ref_low as refLow, b.ref_high as refHigh
-       FROM biomarker b
-       JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x
-         ON x.slug = b.slug AND x.md = b.date
-       WHERE b.user_id = ?
-       ORDER BY b.name`,
-      userId,
-      userId,
-    ) as Array<{ slug: string; name: string; value: number; refLow: number | null; refHigh: number | null }>;
-    const dna = safeAll(
-      `SELECT rsid, category, has_risk as hasRisk, is_protective as isProtective FROM dna_insight WHERE user_id = ?`,
-      userId,
-    ) as Array<{ rsid: string; category: string; hasRisk: number | null; isProtective: number | null }>;
+    // latest-per-slug biomarkers, ORDER BY name
+    const biomarkers = latestPerSlug(bmAll)
+      .map((b) => ({ slug: b.slug, name: b.name, value: b.value, refLow: b.refLow, refHigh: b.refHigh }))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const { rows: dnaRows } = await convexServer().query(api.dna.insights, {
+      secret,
+      authUserId: userId,
+    });
+    const dna = dnaRows.map((d) => ({
+      rsid: d.rsid,
+      category: d.category,
+      hasRisk: d.hasRisk,
+      isProtective: d.isProtective,
+    }));
     const items = computeTodo({
       profile: profile as Parameters<typeof computeTodo>[0]["profile"],
       biomarkers: biomarkers.map((b) => ({ ...b, hasRisk: undefined })) as Parameters<typeof computeTodo>[0]["biomarkers"],

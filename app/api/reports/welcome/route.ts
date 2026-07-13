@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import { currentUserId, isDemoUser } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -28,7 +26,6 @@ export async function POST(_req: Request) {
   if (isDemoUser(userId)) {
     return NextResponse.json({ error: "Mode démo — pas de génération de report personnalisé" }, { status: 403 });
   }
-  ensureSchema();
 
   // Insert the pending report row (in Convex — the reports UI + status poller
   // read from Convex).
@@ -61,8 +58,6 @@ export async function POST(_req: Request) {
  * UI can show a live ticker.
  */
 async function processWelcomeReport(reportId: number, userId: number) {
-  const sqlite = db().$client;
-
   // Report meta ticker — read/merge/write via Convex (report row lives there).
   const updateMeta = async (patch: Record<string, unknown>) => {
     const { row } = await convexServer().query(api.reports.get, {
@@ -83,23 +78,37 @@ async function processWelcomeReport(reportId: number, userId: number) {
   });
   const profile = profileData ? decryptProfile(JSON.parse(profileData)) : {};
 
-  // Biomarkers — latest 200 for this user.
-  const biomarkers = sqlite
-    .prepare(
-      `SELECT name, slug, value, unit, ref_low as refLow, ref_high as refHigh, date
-       FROM biomarker WHERE user_id = ? ORDER BY date DESC LIMIT 200`,
-    )
-    .all(userId) as BiomarkerRow[];
+  // Biomarkers — latest 200 for this user (Convex; self-scoped). Convex returns
+  // rows date ASC; reproduce the legacy ORDER BY date DESC LIMIT 200.
+  const bioRes = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const biomarkers: BiomarkerRow[] = bioRes.rows
+    .slice()
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 200)
+    .map((b) => ({ name: b.name, slug: b.slug, value: b.value, unit: b.unit, refLow: b.refLow, refHigh: b.refHigh, date: b.date }));
 
-  // DNA insights — up to 200.
+  // DNA insights — up to 200 (Convex; self-scoped). Reproduce the legacy
+  // ORDER BY magnitude DESC (SQLite: NULLs last) LIMIT 200.
   await updateMeta({ progress: 30, step: "Analyse génétique" });
-  const dna = sqlite
-    .prepare(
-      `SELECT rsid, category, trait, effect, magnitude, risk_allele as riskAllele,
-              user_genotype as userGenotype, has_risk as hasRisk, is_protective as isProtective, summary
-       FROM dna_insight WHERE user_id = ? ORDER BY magnitude DESC LIMIT 200`,
-    )
-    .all(userId) as DnaInsightRow[];
+  const dnaRes = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const dna: DnaInsightRow[] = dnaRes.rows
+    .slice()
+    .sort((a, b) => {
+      if (a.magnitude == null && b.magnitude == null) return 0;
+      if (a.magnitude == null) return 1;
+      if (b.magnitude == null) return -1;
+      return b.magnitude - a.magnitude;
+    })
+    .slice(0, 200)
+    .map((d) => ({
+      rsid: d.rsid, category: d.category, trait: d.trait, effect: d.effect,
+      magnitude: d.magnitude, riskAllele: d.riskAllele, userGenotype: d.userGenotype,
+      hasRisk: !!d.hasRisk, isProtective: !!d.isProtective, summary: d.summary,
+    }));
 
   // Step 2 — deterministic signal selection.
   await updateMeta({ progress: 45, step: "Sélection des signaux" });

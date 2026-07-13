@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { buildActiveIndex, findCoverage } from "@/lib/supplement-nutrients";
 import { computeEnvironment } from "@/lib/environment";
@@ -243,23 +243,35 @@ function isAvoidSuggestion(supplementText: string, dose: string, timing: string)
 }
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  // Reads resolve to the viewed (Foyer) user, read-only; auth proven by the session user.
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId || !viewUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const conv = convexServer();
+  const scope = { secret: bridgeSecret(), authUserId, viewUserId };
   const out: Suggestion[] = [];
 
-  // Active supplements index for coverage detection
-  const activeRows = sqlite.prepare(`SELECT id, name, brand, ingredients, ended_at FROM supplement WHERE ended_at IS NULL AND user_id = ?`).all(userId) as Array<{ id: number; name: string; brand: string | null; ingredients: string | null; ended_at: number | null }>;
+  // Active supplements index for coverage detection — via Convex.
+  // list() rows are Record<string, unknown>; reshape to buildActiveIndex's contract
+  // (ingredients stays a JSON string — buildActiveIndex parses it).
+  const supList = (await conv.query(api.supplements.list, scope)).rows;
+  const activeRows = supList.map((s) => ({
+    id: Number(s.id),
+    name: String(s.name ?? ""),
+    brand: (s.brand ?? null) as string | null,
+    ingredients: (s.ingredients ?? null) as string | null,
+    ended_at: (s.endedAt ?? null) as number | null,
+  }));
   const activeIndex = buildActiveIndex(activeRows);
 
-  // Biomarker-based
-  const latestBms = sqlite.prepare(`
-    SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
-    FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
-    WHERE b.user_id = ?
-  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+  // Biomarker-based — latest measurement per slug (MAX(date)) computed in JS.
+  const bmRows = (await conv.query(api.biomarkers.all, scope)).rows;
+  const latestBySlug = new Map<string, (typeof bmRows)[number]>();
+  for (const r of bmRows) {
+    const prev = latestBySlug.get(r.slug);
+    if (!prev || r.date > prev.date) latestBySlug.set(r.slug, r);
+  }
+  const latestBms = [...latestBySlug.values()];
 
   for (const r of latestBms) {
     const rec = BIOMARKER_RULES[r.slug];
@@ -276,8 +288,11 @@ export async function GET() {
     }
   }
 
-  // DNA-based
-  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype FROM dna_insight WHERE user_genotype IS NOT NULL AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; user_genotype: string }>;
+  // DNA-based — via Convex; keep only rows with a genotype, alias to snake_case.
+  const dnaAll = (await conv.query(api.dna.insights, scope)).rows;
+  const dnaRows = dnaAll
+    .filter((r) => r.userGenotype != null)
+    .map((r) => ({ rsid: r.rsid as string, trait: r.trait as string, user_genotype: r.userGenotype as string }));
   const byRsid = Object.fromEntries(dnaRows.map((r) => [r.rsid, r]));
 
   for (const rule of DNA_RULES) {
@@ -309,7 +324,7 @@ export async function GET() {
   // Environment-based (city × genes): winter vitamin D and pollution antioxidants.
   // Best-effort; skips when the same supplement is already suggested above.
   try {
-    const env = await computeEnvironment(userId);
+    const env = await computeEnvironment(viewUserId);
     if (env.location && env.sun
         && (env.sun.lowUvMonths >= 6 || (env.sun.lowUvMonths >= 4 && (env.sun.geneNames.length > 0 || (env.sun.vitDLevel != null && env.sun.vitDLevel < 30))))
         && !out.some((s) => /vitamine d/i.test(s.supplement))) {

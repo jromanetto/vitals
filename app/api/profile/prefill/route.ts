@@ -15,7 +15,7 @@ export async function GET() {
   });
   const raw = data ? JSON.parse(data) : {};
   const current = decryptProfile(raw);
-  const { patch, reasons } = computePrefill(userId, current);
+  const { patch, reasons } = await computePrefill(userId, current);
   return NextResponse.json({ patch, reasons });
 }
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   });
   const raw = data ? JSON.parse(data) : {};
   const current = decryptProfile(raw);
-  const { patch } = computePrefill(userId, current);
+  const { patch } = await computePrefill(userId, current);
 
   const next: Record<string, unknown> = { ...current };
   let applied = 0;

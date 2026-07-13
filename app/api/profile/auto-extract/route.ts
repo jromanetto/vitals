@@ -111,19 +111,25 @@ export async function POST(req: Request) {
     .prepare(`SELECT rc.text FROM rag_chunk rc JOIN document d ON d.id = rc.doc_id WHERE d.user_id = ? LIMIT 80`)
     .all(userId) as Array<{ text: string }>;
 
-  // 4. dna insights (this user)
-  const dnaIns = sqlite
-    .prepare(`SELECT category, trait, summary, has_risk as hasRisk, user_genotype as userGenotype FROM dna_insight WHERE user_id = ? LIMIT 150`)
-    .all(userId) as Array<{ category: string; trait: string; summary: string | null; hasRisk: number | null; userGenotype: string | null }>;
+  // 4. dna insights (this user) — via Convex (self scope), first 150.
+  const { rows: dnaAll } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const dnaIns = dnaAll.slice(0, 150).map((r) => ({
+    category: r.category,
+    trait: r.trait,
+    summary: r.summary,
+    hasRisk: r.hasRisk,
+    userGenotype: r.userGenotype,
+  }));
 
-  // 5. biomarker history (unique slugs with most recent value)
-  const biomarkers = sqlite.prepare(`
-    SELECT name, slug, value, unit, ref_low as refLow, ref_high as refHigh, date
-    FROM biomarker
-    WHERE user_id = ?
-    ORDER BY date DESC
-    LIMIT 200
-  `).all(userId) as Array<Record<string, unknown>>;
+  // 5. biomarker history — via Convex (self scope); ORDER BY date DESC, first 200.
+  const { rows: bmAll } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const biomarkers = [...bmAll]
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 200) as Array<Record<string, unknown>>;
 
   // 6. recent reports — via Convex (self scope), latest 8.
   const { rows: reportRows } = await convexServer().query(api.reports.list, {

@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 import { WelcomeReportClient } from "@/components/welcome-report/welcome-report-client";
@@ -19,8 +17,6 @@ export default async function WelcomeReportPage() {
 
   const userId = await currentUserId();
   if (!userId) redirect("/login");
-  ensureSchema();
-  const sqlite = db().$client;
 
   // Look for the latest welcome report for this user (report read via Convex;
   // scoped to self — matches the legacy currentUserId-scoped SELECT).
@@ -44,12 +40,16 @@ export default async function WelcomeReportPage() {
     const cards = (parsedMeta as { cards?: Array<{ kind: string }> }).cards ?? [];
     const isEmptyOnly = cards.length === 1 && cards[0]?.kind === "empty-state";
     if (isEmptyOnly) {
-      const hasBiomarkers = sqlite
-        .prepare(`SELECT 1 FROM biomarker WHERE user_id = ? LIMIT 1`)
-        .get(userId);
-      const hasDna = sqlite
-        .prepare(`SELECT 1 FROM dna_insight WHERE user_id = ? LIMIT 1`)
-        .get(userId);
+      // Existence checks via Convex (self-scoped), mirroring the legacy
+      // `SELECT 1 ... LIMIT 1` presence probes.
+      const { rows: bioRows } = await convexServer().query(api.biomarkers.all, {
+        secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+      });
+      const hasBiomarkers = bioRows.length > 0;
+      const { rows: dnaRows } = await convexServer().query(api.dna.insights, {
+        secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+      });
+      const hasDna = dnaRows.length > 0;
       if (hasBiomarkers || hasDna) {
         reportId = 0; // client will POST a fresh report
       } else {

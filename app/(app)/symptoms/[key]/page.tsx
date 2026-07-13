@@ -1,5 +1,3 @@
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
@@ -15,12 +13,15 @@ const LABELS: Record<string, string> = {
 
 type SymptomLog = { date: string; value: number; notes: string | null };
 
-// Symptom logs now come from Convex (symptoms domain). The available-biomarkers
-// list is a separate domain still on SQLite; left untouched here.
-async function loadBiomarkers(userId: number) {
-  ensureSchema();
-  const sqlite = db().$client;
-  return sqlite.prepare(`SELECT DISTINCT slug, name FROM biomarker WHERE user_id = ? ORDER BY name`).all(userId) as Array<{ slug: string; name: string }>;
+// Symptom logs and the available-biomarkers list both come from Convex now.
+// The list is a distinct (slug,name) set, name-sorted, for the correlation picker.
+async function loadBiomarkers(authUserId: number, viewUserId: number) {
+  const { rows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const bySlug = new Map<string, { slug: string; name: string }>();
+  for (const r of rows) if (!bySlug.has(r.slug)) bySlug.set(r.slug, { slug: r.slug, name: r.name });
+  return [...bySlug.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export default async function SymptomDetail({ params }: { params: Promise<{ key: string }> }) {
@@ -37,7 +38,7 @@ export default async function SymptomDetail({ params }: { params: Promise<{ key:
       key,
     });
     logs = res.rows as SymptomLog[];
-    bms = await loadBiomarkers(viewUserId);
+    bms = await loadBiomarkers(authUserId, viewUserId);
   }
   const label = LABELS[key] ?? key;
 
