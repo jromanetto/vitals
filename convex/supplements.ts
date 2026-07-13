@@ -178,7 +178,7 @@ export const logHistory = query({
   handler: async (ctx, { secret, authUserId, viewUserId, supplementId, days }) => {
     requireServer(secret);
     const userId = await resolveReadUser(ctx, authUserId, viewUserId);
-    const since = new Date(Date.now() - Math.min(365, days ?? 90) * 86400000)
+    const since = new Date(Date.now() - Math.min(3650, days ?? 90) * 86400000)
       .toISOString()
       .slice(0, 10);
     const logs = await ctx.db
