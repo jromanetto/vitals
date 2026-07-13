@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,23 +47,33 @@ function parseDateStr(s: string): number {
 export async function GET() {
   const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const authId = (await currentUserId()) ?? userId;
 
   ensureSchema();
   const d = db();
+  const convex = convexServer();
+  const secret = bridgeSecret();
   const events: TimelineEvent[] = [];
 
-  // 1. Biomarkers — group by date as a single "bilan sanguin" event
+  // 1. Biomarkers — group by date as a single "bilan sanguin" event.
+  // Reads via Convex (isolation resolved server-side); reproduce the SQL
+  // GROUP BY date / COUNT(*) over the returned rows.
   try {
-    const rows = d.$client.prepare(
-      `SELECT date, COUNT(*) as n FROM biomarker WHERE user_id = ? AND date IS NOT NULL GROUP BY date ORDER BY date DESC`
-    ).all(userId) as Array<{ date: number; n: number }>;
+    const { rows } = await convex.query(api.biomarkers.all, {
+      secret, authUserId: authId, viewUserId: userId,
+    });
+    const countByDate = new Map<number, number>();
     for (const r of rows) {
+      if (r.date == null) continue; // WHERE date IS NOT NULL
+      countByDate.set(r.date, (countByDate.get(r.date) ?? 0) + 1);
+    }
+    for (const [date, n] of countByDate) {
       events.push({
-        id: `bilan-${r.date}`,
+        id: `bilan-${date}`,
         kind: "bilan-sanguin",
-        date: r.date,
+        date,
         title: "Bilan sanguin",
-        subtitle: `${r.n} biomarqueur${r.n > 1 ? "s" : ""}`,
+        subtitle: `${n} biomarqueur${n > 1 ? "s" : ""}`,
         color: COLORS.bilan,
         href: "/biomarkers",
         category: "Bilans",
@@ -69,12 +81,15 @@ export async function GET() {
     }
   } catch {}
 
-  // 2. DNA import — single event derived from dna_insight rows for this user
-  // (dna_variant has no user_id column on legacy schemas — use dna_insight as proxy
-  // since enrich/seed scripts always insert dna_insight scoped to a user_id).
+  // 2. DNA import — single event derived from dna_insight rows for this user.
+  // dna_insight now comes from Convex; the DNA file date still lives in the
+  // (non-migrated) document table on SQLite.
   try {
-    const cnt = d.$client.prepare(`SELECT COUNT(*) as n FROM dna_insight WHERE user_id = ?`).get(userId) as { n: number };
-    if (cnt && cnt.n > 0) {
+    const { rows: dnaRows } = await convex.query(api.dna.insights, {
+      secret, authUserId: authId, viewUserId: userId,
+    });
+    const n = dnaRows.length;
+    if (n > 0) {
       // Use document table (scoped to this user) for the DNA file date if present
       const dnaDoc = d.$client.prepare(
         `SELECT date FROM document WHERE user_id = ? AND category = 'adn' AND date IS NOT NULL ORDER BY date ASC LIMIT 1`
@@ -85,7 +100,7 @@ export async function GET() {
         kind: "dna-import",
         date,
         title: "Import ADN",
-        subtitle: `${cnt.n.toLocaleString("fr-FR")} insights`,
+        subtitle: `${n.toLocaleString("fr-FR")} insights`,
         color: COLORS.dna,
         href: "/dna",
         category: "ADN",
@@ -93,17 +108,11 @@ export async function GET() {
     }
   } catch {}
 
-  // 3. Supplements — start + end
+  // 3. Supplements — start + end (via Convex)
   try {
-    const rows = d.$client.prepare(
-      `SELECT id, name, dose, started_at, ended_at FROM supplement WHERE user_id = ?`
-    ).all(userId) as Array<{
-      id: number;
-      name: string;
-      dose: string | null;
-      started_at: number | null;
-      ended_at: number | null;
-    }>;
+    const sup = await convex.query(api.supplements.list, { secret, authUserId: authId, viewUserId: userId });
+    const rows = (sup.rows as Array<{ id: number; name: string; dose: string | null; startedAt: number | null; endedAt: number | null }>)
+      .map((s) => ({ id: s.id, name: s.name, dose: s.dose ?? null, started_at: s.startedAt ?? null, ended_at: s.endedAt ?? null }));
     for (const r of rows) {
       if (r.started_at) {
         events.push({
@@ -132,20 +141,28 @@ export async function GET() {
     }
   } catch {}
 
-  // 4. Symptoms — group by date
+  // 4. Symptoms — group by date. Reads via Convex (days=3650 ≈ "all"); reproduce
+  // the SQL GROUP BY date / COUNT(*) / GROUP_CONCAT(key) over the returned rows.
   try {
-    const rows = d.$client.prepare(
-      `SELECT date, COUNT(*) as n, GROUP_CONCAT(key, ', ') as keys FROM symptom_log WHERE user_id = ? GROUP BY date ORDER BY date DESC`
-    ).all(userId) as Array<{ date: string; n: number; keys: string }>;
-    for (const r of rows) {
-      const ts = parseDateStr(r.date);
+    const { rows } = await convex.query(api.symptoms.list, {
+      secret, authUserId: authId, viewUserId: userId, days: 3650,
+    });
+    const byDate = new Map<string, { n: number; keys: string[] }>();
+    for (const l of rows) {
+      const g = byDate.get(l.date) ?? { n: 0, keys: [] };
+      g.n += 1;
+      g.keys.push(l.key);
+      byDate.set(l.date, g);
+    }
+    for (const [date, g] of byDate) {
+      const ts = parseDateStr(date);
       if (!ts) continue;
       events.push({
-        id: `symptom-${r.date}`,
+        id: `symptom-${date}`,
         kind: "symptom",
         date: ts,
-        title: `Symptômes (${r.n})`,
-        subtitle: r.keys?.split(",").slice(0, 3).map((k) => k.trim()).join(" · "),
+        title: `Symptômes (${g.n})`,
+        subtitle: g.keys.slice(0, 3).join(" · "),
         color: COLORS.symptom,
         href: "/symptoms",
         category: "Symptômes",
@@ -153,18 +170,11 @@ export async function GET() {
     }
   } catch {}
 
-  // 5. Reminders
+  // 5. Reminders (via Convex; reminders are owner-scoped)
   try {
-    const rows = d.$client.prepare(
-      `SELECT id, title, description, due_at, category, done FROM reminder WHERE user_id = ? ORDER BY due_at DESC`
-    ).all(userId) as Array<{
-      id: number;
-      title: string;
-      description: string | null;
-      due_at: number;
-      category: string | null;
-      done: number;
-    }>;
+    const rem = await convex.query(api.reminders.list, { secret, authUserId: userId });
+    const rows = (rem.rows as Array<{ id: number; title: string; description: string | null; dueAt: number; category: string | null; done: number }>)
+      .map((r) => ({ id: r.id, title: r.title, description: r.description ?? null, due_at: r.dueAt, category: r.category ?? null, done: r.done }));
     for (const r of rows) {
       events.push({
         id: `reminder-${r.id}`,
