@@ -51,6 +51,28 @@ export const list = query({
   },
 });
 
+// Reactive variant for the browser: authenticated via the custom JWT (ctx.auth),
+// NOT the server-bridge secret. Self-scoped (the JWT sub is the user). Same shape
+// as `list`. Used by useQuery on the client for live updates.
+export const listLive = query({
+  args: {},
+  handler: async (ctx) => {
+    const id = await ctx.auth.getUserIdentity();
+    if (!id) return { rows: [], takenToday: [] };
+    const userId = Number(id.subject);
+    const supps = await ctx.db.query("supplement").withIndex("by_user", (q) => q.eq("userId", userId)).collect();
+    supps.sort((a, b) => {
+      const ae = a.endedAt == null ? 0 : 1, be = b.endedAt == null ? 0 : 1;
+      if (ae !== be) return ae - be;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    const today = todayIso();
+    const logs = await ctx.db.query("supplement_log").withIndex("by_user", (q) => q.eq("userId", userId)).collect();
+    const takenToday = logs.filter((l) => l.date === today && l.taken === 1).map((l) => l.supplementLegacyId);
+    return { rows: supps.map(toClient), takenToday };
+  },
+});
+
 // POST /api/supplements  (create or update; writes always scope to authUserId)
 export const upsert = mutation({
   args: {

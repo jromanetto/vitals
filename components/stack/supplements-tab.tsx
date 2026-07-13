@@ -1,7 +1,8 @@
 "use client";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery as useConvexQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle, Sun } from "lucide-react";
 import { InteractionsCard } from "@/components/interactions-card";
@@ -40,11 +41,9 @@ const PRIORITY_STYLES = {
 const PRIORITY_LABELS = { high: "Priorité haute", moderate: "Modéré", info: "Info" };
 
 export function SupplementsTab() {
-  const qc = useQueryClient();
-  const { data: suppData } = useQuery<{ rows: Supplement[]; takenToday: number[] }>({
-    queryKey: ["supplements"],
-    queryFn: async () => (await fetch("/api/supplements")).json(),
-  });
+  // Live, reactive: browser subscribes to Convex directly (authenticated via the
+  // JWT bridge). Writes via the REST routes below mutate Convex -> this auto-updates.
+  const suppData = useConvexQuery(api.supplements.listLive) as { rows: Supplement[]; takenToday: number[] } | undefined;
   const rows: Supplement[] = suppData?.rows ?? [];
   const [taken, setTaken] = useState<Set<number>>(new Set());
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -79,7 +78,8 @@ export function SupplementsTab() {
   useEffect(() => { loadAux(); }, []);
   useEffect(() => { setTaken(new Set(suppData?.takenToday ?? [])); }, [suppData]);
   async function refresh() {
-    await qc.invalidateQueries({ queryKey: ["supplements"] });
+    // Supplement rows are a live Convex subscription (auto-updates on write);
+    // only the auxiliary suggestions/blood-help panels need a manual reload.
     loadAux();
   }
 
