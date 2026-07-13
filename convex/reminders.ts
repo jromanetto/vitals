@@ -30,6 +30,20 @@ export const list = query({
   },
 });
 
+// Reactive variant for the browser (authenticated via ctx.auth JWT, self-scoped).
+// Returns raw rows; the client derives overdue/daysUntil from the current time.
+export const listLive = query({
+  args: {},
+  handler: async (ctx) => {
+    const idn = await ctx.auth.getUserIdentity();
+    if (!idn) return { rows: [] };
+    const userId = Number(idn.subject);
+    const rows = await ctx.db.query("reminder").withIndex("by_user", (q) => q.eq("userId", userId)).collect();
+    rows.sort((a, b) => a.dueAt - b.dueAt);
+    return { rows: rows.map(toClient) };
+  },
+});
+
 export const create = mutation({
   args: {
     secret: v.string(),

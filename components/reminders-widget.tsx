@@ -1,5 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery as useConvexQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Bell, ArrowRight, AlertTriangle } from "lucide-react";
@@ -31,22 +33,26 @@ function formatDueLabel(daysUntil: number, dueAt: number): string {
 }
 
 export function RemindersWidget() {
-  const [items, setItems] = useState<Reminder[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/reminders", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => {
-        if (cancelled) return;
-        const upcoming = (d.rows ?? []).filter((r: Reminder) => !r.done).slice(0, 3);
-        setItems(upcoming);
-        setLoading(false);
-      })
-      .catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+  // Live reactive subscription (JWT-authed): the dashboard widget updates in
+  // real time when a reminder is added/toggled anywhere in the app.
+  const live = useConvexQuery(api.reminders.listLive) as
+    | { rows: Array<{ id: number; title: string; description: string | null; dueAt: number; category: string | null; done: number; createdAt: number }> }
+    | undefined;
+  const loading = live === undefined;
+  const items: Reminder[] = useMemo(() => {
+    const now = Date.now();
+    return (live?.rows ?? [])
+      .filter((r) => !r.done)
+      .slice(0, 3)
+      .map((r) => ({
+        ...r,
+        description: r.description ?? null,
+        category: r.category ?? null,
+        done: !!r.done,
+        overdue: !r.done && r.dueAt < now,
+        daysUntil: Math.round((r.dueAt - now) / 86400000),
+      })) as Reminder[];
+  }, [live]);
 
   if (loading) {
     return (

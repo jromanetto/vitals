@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from "react";
+import { useQuery as useConvexQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Plus, X, Check, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
@@ -49,9 +51,22 @@ function defaultDueAtLocal(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Derive overdue/daysUntil client-side from the raw reactive row (was the REST
+// route's enrich()). `done` comes as 0/1 from Convex.
+function enrichReminder(r: { id: number; title: string; description: string | null; dueAt: number; category: string | null; done: number; createdAt: number }): Reminder {
+  const now = Date.now();
+  return {
+    id: r.id, title: r.title, description: r.description ?? null, dueAt: r.dueAt,
+    category: r.category ?? null, done: !!r.done, createdAt: r.createdAt,
+    overdue: !r.done && r.dueAt < now, daysUntil: Math.round((r.dueAt - now) / 86400000),
+  };
+}
+
 export default function RemindersPage() {
-  const [items, setItems] = useState<Reminder[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Live reactive subscription (JWT-authed). REST writes below auto-update this.
+  const live = useConvexQuery(api.reminders.listLive) as { rows: Parameters<typeof enrichReminder>[0][] } | undefined;
+  const loading = live === undefined;
+  const items = useMemo(() => (live?.rows ?? []).map(enrichReminder), [live]);
   const [title, setTitle] = useState("");
   const _searchParams = useSearchParams();
   const _titleRef = useRef<HTMLInputElement>(null);
@@ -66,14 +81,8 @@ export default function RemindersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [showDone, setShowDone] = useState(false);
 
-  async function load() {
-    const r = await fetch("/api/reminders", { cache: "no-store" });
-    const d = await r.json();
-    setItems(d.rows ?? []);
-    setLoading(false);
-  }
-  useEffect(() => { load(); }, []);
-
+  // Writes go through the REST routes (server-bridge); the live subscription
+  // above reflects them automatically — no manual reload / optimistic state.
   async function add(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !dueAtLocal) return;
@@ -89,22 +98,18 @@ export default function RemindersPage() {
       setTitle("");
       setDescription("");
       setDueAtLocal(defaultDueAtLocal());
-      load();
     }
   }
 
   async function toggle(id: number, done: boolean) {
-    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, done } : it)));
     await fetch("/api/reminders", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, done }),
     });
-    load();
   }
 
   async function remove(id: number) {
-    setItems((prev) => prev.filter((it) => it.id !== id));
     await fetch(`/api/reminders?id=${id}`, { method: "DELETE" });
   }
 
