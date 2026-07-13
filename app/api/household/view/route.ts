@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { currentUserId, hasActiveLink, setViewUser, clearViewUser } from "@/lib/auth";
-import { ensureSchema } from "@/lib/db/migrate";
 
 export const runtime = "nodejs";
 
@@ -10,7 +9,6 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
 
   const body = await req.json().catch(() => ({})) as { subjectId?: number | null };
   const subjectId = body.subjectId == null ? null : Number(body.subjectId);
@@ -19,7 +17,7 @@ export async function POST(req: Request) {
     await clearViewUser();
     return NextResponse.json({ ok: true, viewingId: userId, viewingSelf: true });
   }
-  if (!Number.isFinite(subjectId) || !hasActiveLink(userId, subjectId)) {
+  if (!Number.isFinite(subjectId) || !(await hasActiveLink(userId, subjectId))) {
     return NextResponse.json({ error: "Profil non autorisé" }, { status: 403 });
   }
   await setViewUser(subjectId);

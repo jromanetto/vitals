@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 const COOKIE = "vitals_session";
 const ACTIVE_COOKIE = "vitals_active";
@@ -152,10 +154,12 @@ export async function currentUserId(): Promise<number | null> {
 const VIEW_COOKIE = "vitals_view";
 
 /** True iff `viewerId` has an active, consented link to read `subjectId`. */
-export function hasActiveLink(viewerId: number, subjectId: number): boolean {
+export async function hasActiveLink(viewerId: number, subjectId: number): Promise<boolean> {
   try {
-    const sqlite = db().$client;
-    return !!sqlite.prepare(`SELECT 1 FROM household_link WHERE viewer_user_id = ? AND subject_user_id = ? AND status = 'active'`).get(viewerId, subjectId);
+    const { active } = await convexServer().query(api.household.hasActiveLink, {
+      secret: bridgeSecret(), viewerId, subjectId,
+    });
+    return active;
   } catch { return false; }
 }
 
@@ -172,7 +176,7 @@ export async function effectiveUserId(): Promise<number | null> {
   const raw = c.get(VIEW_COOKIE)?.value;
   const subjectId = raw ? parseInt(raw, 10) : NaN;
   if (!Number.isFinite(subjectId) || subjectId === s.userId) return s.userId;
-  return hasActiveLink(s.userId, subjectId) ? subjectId : s.userId; // fail-closed to self
+  return (await hasActiveLink(s.userId, subjectId)) ? subjectId : s.userId; // fail-closed to self
 }
 
 export async function setViewUser(subjectId: number) {
@@ -195,12 +199,8 @@ export async function getViewContext(): Promise<{
   const viewingId = (await effectiveUserId()) ?? s.userId;
   let canView: Array<{ id: number; label: string; email: string }> = [];
   try {
-    canView = db().$client.prepare(`
-      SELECT h.subject_user_id AS id, COALESCE(h.label, u.email) AS label, u.email AS email
-      FROM household_link h JOIN user u ON u.id = h.subject_user_id
-      WHERE h.viewer_user_id = ? AND h.status = 'active' ORDER BY label
-    `).all(s.userId) as Array<{ id: number; label: string; email: string }>;
-  } catch { /* table may not exist yet */ }
+    canView = (await convexServer().query(api.household.canView, { secret: bridgeSecret(), userId: s.userId })).rows;
+  } catch { /* best-effort */ }
   return { selfId: s.userId, selfEmail: s.email, viewingId, viewingSelf: viewingId === s.userId, canView };
 }
 

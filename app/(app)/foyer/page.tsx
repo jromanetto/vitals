@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function FoyerPage() {
   const session = await getSession();
   const userId = await currentUserId();
-  const data = userId ? listHousehold(userId) : { canView: [], pendingOutgoing: [], pendingIncoming: [] };
+  const data = userId ? await listHousehold(userId) : { canView: [], pendingOutgoing: [], pendingIncoming: [] };
 
   return (
     <div className="space-y-8 max-w-3xl">
