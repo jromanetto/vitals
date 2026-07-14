@@ -44,6 +44,8 @@ console.log("round-trip:",
   "| city enc?", isEnc(raw.city),
   "| activityLevel plaintext?", raw.activityLevel === "Intense (5-6x/sem)",
   "| decrypt firstName ->", decStr(raw.firstName) === "Secret" ? "Secret ✓" : "FAIL");
+// Clean up the probe row so it never pollutes the real profile count.
+await c.mutation(api.profile.removeForUser, { secret: S, authUserId: U });
 
 // --- sweep real users (encrypt latest profile per user; idempotent) ---
 const USERS = [1, 999, 1000, 1006, 1013, 1019];

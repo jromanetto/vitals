@@ -32,6 +32,18 @@ export const upsert = mutation({
   },
 });
 
+// Delete a user's profile rows (account deletion / GDPR erasure; also used to
+// clean up the encryption script's round-trip probe). Scoped to self.
+export const removeForUser = mutation({
+  args: { secret: v.string(), authUserId: v.number() },
+  handler: async (ctx, { secret, authUserId }) => {
+    requireServer(secret);
+    const rows = await ctx.db.query("profile").withIndex("by_user", (q) => q.eq("userId", authUserId)).collect();
+    for (const r of rows) await ctx.db.delete(r._id);
+    return { deleted: rows.length };
+  },
+});
+
 // --- nutrition_pref ---
 export const nutritionPref = query({
   args: { secret: v.string(), authUserId: v.number(), viewUserId: v.optional(v.number()) },
