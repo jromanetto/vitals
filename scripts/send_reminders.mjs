@@ -3,24 +3,35 @@
  * Reminder push cron — run hourly:
  *   0 * * * * cd /home/script/vitals && node scripts/send_reminders.mjs >> logs/reminders-cron.log 2>&1
  *
- * Walks the `reminder` table for rows due_at within the next 24h that are not done
- * and not yet notified. Sends a web-push to every push_subscription of the owning user,
- * then marks notified_at to dedupe.
+ * Reads due reminders (next 24h, not done, not notified) + push subscriptions
+ * from CONVEX (not SQLite), sends web-push, marks notified, prunes dead subs.
+ *
+ * Prod env: needs NEXT_PUBLIC_CONVEX_URL + SERVER_BRIDGE_SECRET. These are read
+ * from process.env, else from data/auth.json (fields `convexUrl` +
+ * `serverBridgeSecret`), else from .env.local (dev).
  */
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
-import Database from "better-sqlite3";
 import webpush from "web-push";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
-const DB_PATH = process.env.VITALS_DB_PATH || path.join(ROOT, "data", "vitals.db");
 const AUTH_PATH = process.env.VITALS_CREDS_PATH || path.join(ROOT, "data", "auth.json");
 
 function log(...args) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}]`, ...args);
+  console.log(`[${new Date().toISOString()}]`, ...args);
+}
+
+function loadEnvLocal() {
+  const p = path.join(ROOT, ".env.local");
+  if (!fs.existsSync(p)) return;
+  for (const line of fs.readFileSync(p, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+  }
 }
 
 function loadAuth() {
@@ -32,6 +43,7 @@ function loadAuth() {
 }
 
 async function main() {
+  loadEnvLocal();
   const auth = loadAuth();
   webpush.setVapidDetails(
     auth.vapidSubject || "mailto:contact@vitals.blueproject.org",
@@ -39,51 +51,35 @@ async function main() {
     auth.vapidPrivateKey
   );
 
-  const sqlite = new Database(DB_PATH);
-  sqlite.pragma("journal_mode = WAL");
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || auth.convexUrl;
+  const secret = process.env.SERVER_BRIDGE_SECRET || auth.serverBridgeSecret;
+  if (!convexUrl || !secret) {
+    throw new Error("NEXT_PUBLIC_CONVEX_URL / SERVER_BRIDGE_SECRET missing (env or data/auth.json)");
+  }
+  const convex = new ConvexHttpClient(convexUrl);
 
   const now = Date.now();
   const horizon = now + 24 * 60 * 60 * 1000;
 
-  const rows = sqlite
-    .prepare(
-      `SELECT id, user_id, title, description, due_at
-       FROM reminder
-       WHERE done = 0
-         AND notified_at IS NULL
-         AND due_at <= ?
-       ORDER BY due_at ASC`
-    )
-    .all(horizon);
-
+  const { rows } = await convex.query(api.reminders.due, { secret, horizon });
   if (rows.length === 0) {
     log("no due reminders within 24h");
-    sqlite.close();
     return;
   }
-
   log(`found ${rows.length} reminder(s) to notify`);
 
   for (const r of rows) {
-    const subs = sqlite
-      .prepare(`SELECT id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?`)
-      .all(r.user_id);
+    const { rows: subs } = await convex.query(api.push.subsForSend, { secret, userId: r.userId });
 
     if (subs.length === 0) {
-      log(`reminder ${r.id} (user ${r.user_id}): no subscriptions, marking notified`);
-      sqlite.prepare(`UPDATE reminder SET notified_at = ? WHERE id = ?`).run(now, r.id);
+      log(`reminder ${r.id} (user ${r.userId}): no subscriptions, marking notified`);
+      await convex.mutation(api.reminders.markNotified, { secret, id: r.id, at: Date.now() });
       continue;
     }
 
-    const dueDate = new Date(r.due_at);
-    const dueLabel = dueDate.toLocaleString("fr-FR", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
+    const dueLabel = new Date(r.dueAt).toLocaleString("fr-FR", {
+      weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
     });
-
     const payload = JSON.stringify({
       title: `Rappel — ${r.title}`,
       body: r.description ? `${r.description}\n${dueLabel}` : `Échéance : ${dueLabel}`,
@@ -94,17 +90,12 @@ async function main() {
     let sent = 0;
     for (const s of subs) {
       try {
-        await webpush.sendNotification(
-          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          payload
-        );
-        sqlite
-          .prepare(`UPDATE push_subscription SET last_used_at = ? WHERE id = ?`)
-          .run(Date.now(), s.id);
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+        await convex.mutation(api.push.touchLastUsed, { secret, id: s.id });
         sent += 1;
       } catch (e) {
         if (e?.statusCode === 410 || e?.statusCode === 404) {
-          sqlite.prepare(`DELETE FROM push_subscription WHERE id = ?`).run(s.id);
+          await convex.mutation(api.push.deleteById, { secret, id: s.id });
           log(`pruned expired subscription ${s.id}`);
         } else {
           log(`push error sub=${s.id} reminder=${r.id}:`, e?.message ?? e);
@@ -112,11 +103,9 @@ async function main() {
       }
     }
 
-    sqlite.prepare(`UPDATE reminder SET notified_at = ? WHERE id = ?`).run(Date.now(), r.id);
+    await convex.mutation(api.reminders.markNotified, { secret, id: r.id, at: Date.now() });
     log(`reminder ${r.id} (${r.title}) notified to ${sent}/${subs.length} device(s)`);
   }
-
-  sqlite.close();
 }
 
 main().catch((e) => {

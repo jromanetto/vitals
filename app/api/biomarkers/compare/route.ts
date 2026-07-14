@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { convertValue } from "@/lib/parsers/normalize-units";
 
 export const runtime = "nodejs";
 
-type DateRow = { date: number; count: number };
+type Raw = { slug: string; name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number };
 
 type Row = {
   slug: string;
@@ -26,32 +26,38 @@ type Row = {
   dateB: number | null;
 };
 
-/** Snap to the nearest measurement on/around the target date (within ±60 days), per slug. */
-function valueNearDate(sqlite: any, userId: number, slug: string, target: number): { date: number; value: number } | null {
+/** Nearest measurement on/around the target date (±60 days), from an in-memory slug group. */
+function valueNearDate(rows: Raw[], target: number): { date: number; value: number } | null {
   const WINDOW_MS = 60 * 86400000;
-  const row = sqlite.prepare(
-    `SELECT date, value FROM biomarker
-     WHERE slug = ? AND user_id = ? AND date BETWEEN ? AND ?
-     ORDER BY ABS(date - ?) ASC LIMIT 1`
-  ).get(slug, userId, target - WINDOW_MS, target + WINDOW_MS, target) as { date: number; value: number } | undefined;
-  return row ?? null;
+  let best: { date: number; value: number } | null = null;
+  let bestDist = Infinity;
+  for (const r of rows) {
+    if (r.date < target - WINDOW_MS || r.date > target + WINDOW_MS) continue;
+    const dist = Math.abs(r.date - target);
+    if (dist < bestDist) { bestDist = dist; best = { date: r.date, value: r.value }; }
+  }
+  return best;
 }
 
 export async function GET(req: Request) {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const all = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId,
+  });
+  const raw = all.rows as Raw[];
   const url = new URL(req.url);
 
-  // Discover the dates that have biomarker measurements (descending), so the UI can offer pickers.
-  const dates = sqlite.prepare(
-    `SELECT date, COUNT(*) AS count FROM biomarker WHERE user_id = ? GROUP BY date ORDER BY date DESC`
-  ).all(userId) as DateRow[];
+  // Dates that have measurements (descending), with counts.
+  const countByDate = new Map<number, number>();
+  for (const r of raw) countByDate.set(r.date, (countByDate.get(r.date) ?? 0) + 1);
+  const dates = [...countByDate.entries()]
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => b.date - a.date);
 
   if (dates.length === 0) return NextResponse.json({ rows: [], dates: [], dateA: null, dateB: null });
 
-  // Default: latest two distinct dates.
   const defaultA = dates[0]?.date ?? null;
   const defaultB = dates[1]?.date ?? null;
   const dateAParam = url.searchParams.get("dateA");
@@ -59,25 +65,40 @@ export async function GET(req: Request) {
   const dateA = dateAParam ? Number(dateAParam) : defaultA;
   const dateB = dateBParam ? Number(dateBParam) : defaultB;
 
-  // Get the union of slugs measured on either of the two reference dates (±60 days window via valueNearDate).
-  // We seed from rows on the exact target dates then expand via meta. Simpler: union of all slugs ever.
-  const allSlugs = sqlite.prepare(
-    `SELECT slug, MAX(name) AS name, MAX(category) AS category, MAX(unit) AS unit,
-            MAX(ref_low) AS refLow, MAX(ref_high) AS refHigh
-     FROM biomarker WHERE user_id = ? GROUP BY slug ORDER BY MAX(name)`
-  ).all(userId) as Array<{ slug: string; name: string; category: string | null; unit: string | null; refLow: number | null; refHigh: number | null }>;
+  // Aggregate per slug (MAX of name/category/unit/refs), ordered by name.
+  const bySlug = new Map<string, Raw[]>();
+  for (const r of raw) {
+    const arr = bySlug.get(r.slug) ?? [];
+    arr.push(r);
+    bySlug.set(r.slug, arr);
+  }
+  const maxOf = <T>(arr: Raw[], pick: (r: Raw) => T | null): T | null => {
+    let m: T | null = null;
+    for (const r of arr) { const v = pick(r); if (v != null && (m == null || v > m)) m = v; }
+    return m;
+  };
+  const allSlugs = [...bySlug.entries()]
+    .map(([slug, arr]) => ({
+      slug,
+      name: maxOf(arr, (r) => r.name) ?? slug,
+      category: maxOf(arr, (r) => r.category),
+      unit: maxOf(arr, (r) => r.unit),
+      refLow: maxOf(arr, (r) => r.refLow),
+      refHigh: maxOf(arr, (r) => r.refHigh),
+    }))
+    .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
 
   const rows: Row[] = [];
   for (const m of allSlugs) {
-    const a = dateA != null ? valueNearDate(sqlite, userId, m.slug, dateA) : null;
-    const b = dateB != null ? valueNearDate(sqlite, userId, m.slug, dateB) : null;
-    if (!a && !b) continue; // not measured anywhere near either target
+    const group = bySlug.get(m.slug) ?? [];
+    const a = dateA != null ? valueNearDate(group, dateA) : null;
+    const b = dateB != null ? valueNearDate(group, dateB) : null;
+    if (!a && !b) continue;
     const meta = META_BY_SLUG[m.slug];
     let optimalLow = meta?.optimalLow ?? null;
     let optimalHigh = meta?.optimalHigh ?? null;
     let longevityLow = meta?.longevityLow ?? null;
     let longevityHigh = meta?.longevityHigh ?? null;
-    // Convert meta ranges into the user's unit so the bar/scoring stays consistent.
     if (meta && m.unit && m.unit !== meta.unit) {
       const c = (v: number | null) => v == null ? null : convertValue(m.slug, meta.unit, m.unit!, v);
       const newOL = c(optimalLow);

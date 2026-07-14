@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSession, currentUserId, isDemoUser , effectiveUserId} from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, isDemoUser, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -108,7 +108,6 @@ export async function POST(req: Request) {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
-  ensureSchema();
 
   const ct = req.headers.get("content-type") ?? "";
   let csv = "";
@@ -134,53 +133,27 @@ export async function POST(req: Request) {
 
   if (rows.length === 0) return NextResponse.json({ error: "no rows parsed", source }, { status: 400 });
 
-  const sqlite = db().$client;
-  // Ensure table
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS wearable_date_idx ON wearable_metric(date)`);
-  sqlite.exec(`CREATE INDEX IF NOT EXISTS wearable_kind_idx ON wearable_metric(kind)`);
-
-  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit, user_id) VALUES (?, ?, ?, ?, ?, ?)`);
-  const tx = sqlite.transaction((items: Row[]) => {
-    for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null, userId);
+  // Bulk upsert on UNIQUE(userId, date, source, kind). Writes scope to self.
+  await convexServer().mutation(api.wearables.insertMany, {
+    secret: bridgeSecret(),
+    authUserId: userId,
+    rows: rows.map((r) => ({ date: r.date, source: r.source, kind: r.kind, value: r.value, unit: r.unit ?? null })),
   });
-  tx(rows);
 
   return NextResponse.json({ inserted: rows.length, source, kinds: [...new Set(rows.map((r) => r.kind))] });
 }
 
 export async function GET(req: Request) {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, UNIQUE(date, source, kind))`);
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const url = new URL(req.url);
   const days = Math.min(365, Number(url.searchParams.get("days") ?? "60"));
-  const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const rows = sqlite.prepare(`SELECT date, source, kind, value, unit FROM wearable_metric WHERE user_id = ? AND date >= ? ORDER BY date DESC`).all(userId, since);
-  const summary = sqlite.prepare(`SELECT source, kind, COUNT(*) c, AVG(value) avg FROM wearable_metric WHERE user_id = ? GROUP BY source, kind ORDER BY source, kind`).all(userId);
-
-  // Per-source overview: total rows, date range
-  const sources = sqlite.prepare(`
-    SELECT source,
-           COUNT(*) as total,
-           COUNT(DISTINCT date) as days,
-           COUNT(DISTINCT kind) as kinds,
-           MIN(date) as firstDate,
-           MAX(date) as lastDate
-    FROM wearable_metric WHERE user_id = ? GROUP BY source ORDER BY source
-  `).all(userId) as Array<{ source: string; total: number; days: number; kinds: number; firstDate: string; lastDate: string }>;
-
-  // 60-day series for headline kinds per source
-  const headlineKinds = ["hrv", "rhr", "recovery", "sleep_total_min", "sleep_score", "readiness"];
-  const series: Record<string, Array<{ date: string; value: number }>> = {};
-  for (const src of sources) {
-    for (const k of headlineKinds) {
-      const pts = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE source = ? AND kind = ? AND date >= ? AND user_id = ? ORDER BY date ASC`).all(src.source, k, since, userId) as Array<{ date: string; value: number }>;
-      if (pts.length > 0) series[`${src.source}:${k}`] = pts;
-    }
-  }
-
-  return NextResponse.json({ rows, summary, sources, series });
+  const data = await convexServer().query(api.wearables.overview, {
+    secret: bridgeSecret(),
+    authUserId,
+    viewUserId: viewUserId ?? authUserId,
+    days,
+  });
+  return NextResponse.json(data);
 }

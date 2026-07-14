@@ -7,6 +7,9 @@
  * against the current profile and presents only the deltas to the user.
  */
 import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import type { FunctionReturnType } from "convex/server";
 import type { WearableId, FrequencyBucket, YesNoUnknown } from "@/lib/medical/types";
 
 export type PrefillPatch = Record<string, unknown>;
@@ -38,37 +41,73 @@ function toFrequencyBucket(perWeek: number): FrequencyBucket {
 
 type RawRow = Record<string, unknown>;
 
-function rows<T = RawRow>(sql: string, ...params: unknown[]): T[] {
-  const sqlite = db().$client;
-  return sqlite.prepare(sql).all(...params) as T[];
-}
-
 function one<T = RawRow>(sql: string, ...params: unknown[]): T | undefined {
   const sqlite = db().$client;
   return sqlite.prepare(sql).get(...params) as T | undefined;
 }
 
-export function computePrefill(userId: number, current: Record<string, unknown>): {
+export async function computePrefill(userId: number, current: Record<string, unknown>): Promise<{
   patch: PrefillPatch;
   reasons: Record<string, string>;
-} {
+}> {
   const patch: PrefillPatch = {};
   const reasons: Record<string, string> = {};
+
+  // Migrated tables now read via Convex (self scope: authUserId = viewUserId = userId).
+  // Each read is wrapped so a single fetch failure degrades gracefully (mirrors the
+  // legacy per-block try/catch). `document` (block 7) stays on SQLite.
+  const conv = convexServer();
+  const q = { secret: bridgeSecret(), authUserId: userId, viewUserId: userId };
+
+  let biomarkerRows: FunctionReturnType<typeof api.biomarkers.all>["rows"] = [];
+  try {
+    biomarkerRows = (await conv.query(api.biomarkers.all, q)).rows;
+  } catch {}
+
+  // wearables.overview with days=365 (the query caps at 365): `sources` is all-time
+  // (DISTINCT source), `rows` are date-bounded to the requested window (used for the
+  // 60d averages and the "latest measurement" reads).
+  let wearRows: Array<{ date: string; source: string; kind: string; value: number; unit: string | null }> = [];
+  let wearSources: Array<{ source: string }> = [];
+  try {
+    const ov = await conv.query(api.wearables.overview, { ...q, days: 365 });
+    wearRows = ov.rows;
+    wearSources = ov.sources;
+  } catch {}
+
+  let nutrition: { dietType: string; allergies: string; aversions: string; cuisines: string } | null = null;
+  try {
+    nutrition = (await conv.query(api.profile.nutritionPref, q)).row;
+  } catch {}
+
+  let supplementRows: FunctionReturnType<typeof api.supplements.list>["rows"] = [];
+  try {
+    supplementRows = (await conv.query(api.supplements.list, q)).rows;
+  } catch {}
+
+  let symptomRows: FunctionReturnType<typeof api.symptoms.list>["rows"] = [];
+  try {
+    symptomRows = (await conv.query(api.symptoms.list, { ...q, days: 14 })).rows;
+  } catch {}
+
+  let dnaRows: FunctionReturnType<typeof api.dna.insights>["rows"] = [];
+  try {
+    dnaRows = (await conv.query(api.dna.insights, q)).rows;
+  } catch {}
 
   // ============================================================
   // 1) Last full blood panel date -> screeningHistory.blood_panel
   // ============================================================
   try {
-    const r = one<{ d: number }>(
-      `SELECT MAX(date) as d FROM biomarker WHERE user_id = ?`,
-      userId,
-    );
-    if (r?.d) {
-      const iso = new Date(r.d).toISOString().slice(0, 10);
-      const sh = (current.screeningHistory as Record<string, { lastDate?: string }>) ?? {};
-      if (!sh.blood_panel?.lastDate) {
-        patch.screeningHistory = { ...sh, blood_panel: { lastDate: iso } };
-        reasons.screeningHistory = `Dernier biomarqueur enregistré le ${iso}`;
+    if (biomarkerRows.length > 0) {
+      const maxDate = Math.max(...biomarkerRows.map((r) => r.date)); // MAX(date)
+      if (maxDate) {
+        const iso = new Date(maxDate).toISOString().slice(0, 10);
+        const sh = (current.screeningHistory as Record<string, { lastDate?: string }>) ?? {};
+        if (!sh.blood_panel?.lastDate) {
+          patch.screeningHistory = { ...sh, blood_panel: { lastDate: iso } };
+          reasons.screeningHistory = `Dernier biomarqueur enregistré le ${iso}`;
+        }
       }
     }
   } catch {}
@@ -77,12 +116,8 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 2) Wearables owned -> distinct sources in wearable_metric
   // ============================================================
   try {
-    const sources = rows<{ source: string }>(
-      `SELECT DISTINCT source FROM wearable_metric WHERE user_id = ?`,
-      userId,
-    );
     const owned: WearableId[] = [];
-    for (const s of sources) {
+    for (const s of wearSources) {
       const m = WEARABLE_SOURCE_MAP.find((x) => x.source === s.source.toLowerCase());
       if (m && !owned.includes(m.target)) owned.push(m.target);
     }
@@ -102,34 +137,28 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // ============================================================
   try {
     const since = new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10);
+    // AVG(value) WHERE kind = ? AND date >= since (across all sources), in JS.
+    const avgKind = (kind: string): number | null => {
+      const vals = wearRows.filter((r) => r.kind === kind && r.date >= since).map((r) => r.value);
+      if (vals.length === 0) return null;
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
 
-    const rhrRow = one<{ v: number }>(
-      `SELECT AVG(value) as v FROM wearable_metric WHERE user_id = ? AND kind = 'rhr' AND date >= ?`,
-      userId,
-      since,
-    );
-    if (rhrRow?.v && !current.restingHr) {
-      patch.restingHr = Math.round(rhrRow.v);
+    const rhr = avgKind("rhr");
+    if (rhr && !current.restingHr) {
+      patch.restingHr = Math.round(rhr);
       reasons.restingHr = "Moyenne 60j depuis tes wearables";
     }
 
-    const hrvRow = one<{ v: number }>(
-      `SELECT AVG(value) as v FROM wearable_metric WHERE user_id = ? AND kind = 'hrv' AND date >= ?`,
-      userId,
-      since,
-    );
-    if (hrvRow?.v && !current.hrv) {
-      patch.hrv = Math.round(hrvRow.v);
+    const hrv = avgKind("hrv");
+    if (hrv && !current.hrv) {
+      patch.hrv = Math.round(hrv);
       reasons.hrv = "HRV moyenne 60j depuis tes wearables";
     }
 
-    const sleepRow = one<{ v: number }>(
-      `SELECT AVG(value) as v FROM wearable_metric WHERE user_id = ? AND kind = 'sleep_total_min' AND date >= ?`,
-      userId,
-      since,
-    );
-    if (sleepRow?.v && !current.sleepHours) {
-      const hours = sleepRow.v / 60;
+    const sleep = avgKind("sleep_total_min");
+    if (sleep && !current.sleepHours) {
+      const hours = sleep / 60;
       // Bucket to match the chips offered in the wizard ["<5", "5-6", ..., "9+"].
       let bucket = "9+";
       if (hours < 5) bucket = "<5";
@@ -146,13 +175,7 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 4) Nutrition preferences -> dietType, allergiesFood
   // ============================================================
   try {
-    const np = one<{
-      diet_type: string;
-      allergies: string;
-      aversions: string;
-      cuisines: string;
-    }>(`SELECT diet_type, allergies, aversions, cuisines FROM nutrition_pref WHERE user_id = ? LIMIT 1`, userId);
-    if (np) {
+    if (nutrition) {
       const dietMap: Record<string, string> = {
         omnivore: "Omnivore",
         flexitarian: "Flexitarien",
@@ -164,20 +187,20 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
         paleo: "Paléo",
         mediterranean: "Méditerranéen",
       };
-      const mapped = dietMap[np.diet_type?.toLowerCase()] ?? "";
+      const mapped = dietMap[nutrition.dietType?.toLowerCase()] ?? "";
       if (mapped && !current.dietType) {
         patch.dietType = mapped;
         reasons.dietType = "Depuis tes préférences nutrition";
       }
       try {
-        const a = JSON.parse(np.allergies || "[]") as string[];
+        const a = JSON.parse(nutrition.allergies || "[]") as string[];
         if (Array.isArray(a) && a.length && !current.allergiesFood) {
           patch.allergiesFood = a.join(", ");
           reasons.allergiesFood = "Depuis tes préférences nutrition";
         }
       } catch {}
-      if (np.aversions && !current.foodsAvoided) {
-        patch.foodsAvoided = np.aversions;
+      if (nutrition.aversions && !current.foodsAvoided) {
+        patch.foodsAvoided = nutrition.aversions;
         reasons.foodsAvoided = "Depuis tes préférences nutrition";
       }
     }
@@ -187,10 +210,24 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 5) Current supplements -> supplements (textarea + count)
   // ============================================================
   try {
-    const sups = rows<{ name: string; dose: string | null; unit: string | null; timing: string | null }>(
-      `SELECT name, dose, unit, timing FROM supplement WHERE user_id = ? AND (ended_at IS NULL OR ended_at = 0) ORDER BY started_at DESC NULLS LAST`,
-      userId,
-    );
+    // active (endedAt null/0), then ORDER BY startedAt DESC NULLS LAST — reproduced in JS.
+    // list() rows are Record<string, unknown>; coerce the fields we read.
+    const sups = supplementRows
+      .map((s) => ({
+        name: String(s.name ?? ""),
+        dose: s.dose == null ? null : String(s.dose),
+        unit: s.unit == null ? null : String(s.unit),
+        timing: s.timing == null ? null : String(s.timing),
+        endedAt: typeof s.endedAt === "number" ? s.endedAt : null,
+        startedAt: typeof s.startedAt === "number" ? s.startedAt : null,
+      }))
+      .filter((s) => s.endedAt == null || s.endedAt === 0)
+      .sort((a, b) => {
+        if (a.startedAt == null && b.startedAt == null) return 0;
+        if (a.startedAt == null) return 1; // NULLS LAST
+        if (b.startedAt == null) return -1;
+        return b.startedAt - a.startedAt; // DESC
+      });
     if (sups.length > 0 && !current.supplements) {
       patch.supplements = sups
         .map((s) => {
@@ -208,24 +245,22 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 6) Recent active symptoms -> symptomsActive (last 14d, value>=4)
   // ============================================================
   try {
-    const since = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
-    const recent = rows<{ key: string }>(
-      `SELECT DISTINCT key FROM symptom_log WHERE user_id = ? AND date >= ? AND value >= 4`,
-      userId,
-      since,
+    // symptomRows already windowed to 14d by the Convex fn; keep value>=4 + DISTINCT key.
+    const recentKeys = Array.from(
+      new Set(symptomRows.filter((r) => r.value >= 4).map((r) => r.key)),
     );
-    if (recent.length > 0) {
+    if (recentKeys.length > 0) {
       const cur = (current.activeSymptoms as string[] | undefined) ?? [];
-      const merged = Array.from(new Set([...cur, ...recent.map((r) => r.key)]));
+      const merged = Array.from(new Set([...cur, ...recentKeys]));
       if (merged.length !== cur.length) {
         patch.activeSymptoms = merged;
-        reasons.activeSymptoms = `${recent.length} symptômes loggés ≥4 dans les 14 derniers jours`;
+        reasons.activeSymptoms = `${recentKeys.length} symptômes loggés ≥4 dans les 14 derniers jours`;
       }
     }
   } catch {}
 
   // ============================================================
-  // 7) Last consultation document -> screeningHistory.checkup
+  // 7) Last consultation document -> screeningHistory.checkup  (SQLite — kept)
   // ============================================================
   try {
     const r = one<{ d: number }>(
@@ -249,10 +284,15 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 8) DNA-flagged high-risk categories -> primaryGoals suggestion
   // ============================================================
   try {
-    const flagged = rows<{ category: string; n: number }>(
-      `SELECT category, COUNT(*) as n FROM dna_insight WHERE user_id = ? AND has_risk = 1 GROUP BY category ORDER BY n DESC LIMIT 5`,
-      userId,
-    );
+    // GROUP BY category, COUNT(*) WHERE has_risk = 1, ORDER BY n DESC LIMIT 5 — in JS.
+    const counts = new Map<string, number>();
+    for (const r of dnaRows) {
+      if (r.hasRisk === 1) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+    }
+    const flagged = [...counts.entries()]
+      .map(([category, n]) => ({ category, n }))
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 5);
     if (flagged.length > 0) {
       const dnaToGoal: Record<string, string> = {
         longevity: "Longévité",
@@ -283,28 +323,30 @@ export function computePrefill(userId: number, current: Record<string, unknown>)
   // 9) Anthropometric from wearable_metric (weight if scale connected)
   // ============================================================
   try {
-    const latestWeight = one<{ v: number }>(
-      `SELECT value as v FROM wearable_metric WHERE user_id = ? AND kind = 'weight' ORDER BY date DESC LIMIT 1`,
-      userId,
-    );
-    if (latestWeight?.v && !current.weight) {
-      patch.weight = Math.round(latestWeight.v * 10) / 10;
+    // Latest measurement per kind = row with the greatest date (ISO string) in window.
+    // CAVEAT: bounded to the 365d wearables.overview window (legacy was all-time).
+    const latestKind = (kind: string): number | null => {
+      let best: { date: string; value: number } | null = null;
+      for (const r of wearRows) {
+        if (r.kind !== kind) continue;
+        if (!best || r.date > best.date) best = { date: r.date, value: r.value };
+      }
+      return best ? best.value : null;
+    };
+
+    const weight = latestKind("weight");
+    if (weight && !current.weight) {
+      patch.weight = Math.round(weight * 10) / 10;
       reasons.weight = "Dernière mesure depuis ta balance connectée";
     }
-    const latestBf = one<{ v: number }>(
-      `SELECT value as v FROM wearable_metric WHERE user_id = ? AND kind = 'body_fat' ORDER BY date DESC LIMIT 1`,
-      userId,
-    );
-    if (latestBf?.v && !current.bodyFat) {
-      patch.bodyFat = Math.round(latestBf.v * 10) / 10;
+    const bf = latestKind("body_fat");
+    if (bf && !current.bodyFat) {
+      patch.bodyFat = Math.round(bf * 10) / 10;
       reasons.bodyFat = "Dernière mesure depuis ta balance connectée";
     }
-    const latestVo2 = one<{ v: number }>(
-      `SELECT value as v FROM wearable_metric WHERE user_id = ? AND kind = 'vo2max' ORDER BY date DESC LIMIT 1`,
-      userId,
-    );
-    if (latestVo2?.v && !current.vo2max) {
-      patch.vo2max = Math.round(latestVo2.v * 10) / 10;
+    const vo2 = latestKind("vo2max");
+    if (vo2 && !current.vo2max) {
+      patch.vo2max = Math.round(vo2 * 10) / 10;
       reasons.vo2max = "Dernière mesure VO2max depuis tes wearables";
     }
   } catch {}

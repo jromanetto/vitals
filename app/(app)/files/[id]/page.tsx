@@ -1,25 +1,37 @@
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { NotesWidget } from "@/components/notes-widget";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
-async function load(id: number, userId: number) {
+// The document row stays on SQLite; the extracted biomarkers now come from
+// Convex (self / effective user) and are filtered to this document's source.
+async function load(id: number, authUserId: number, viewUserId: number) {
   ensureSchema();
   const sqlite = db().$client;
-  const doc = sqlite.prepare(`SELECT id, path, title, category, date, pages FROM document WHERE id = ? AND user_id = ?`).get(id, userId) as { id: number; path: string; title: string | null; category: string; date: number | null; pages: number | null } | undefined;
+  const doc = sqlite.prepare(`SELECT id, path, title, category, date, pages FROM document WHERE id = ? AND user_id = ?`).get(id, viewUserId) as { id: number; path: string; title: string | null; category: string; date: number | null; pages: number | null } | undefined;
   if (!doc) return null;
-  const bms = sqlite.prepare(`SELECT name, value, unit FROM biomarker WHERE source = ? AND user_id = ? ORDER BY name LIMIT 30`).all(doc.path, userId) as Array<{ name: string; value: number; unit: string | null }>;
+  const { rows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+  const bms = rows
+    .filter((r) => r.source === doc.path)
+    .map((r) => ({ name: r.name, value: r.value, unit: r.unit }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 30);
   return { doc, bms };
 }
 
 export default async function FilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const userId = await effectiveUserId();
-  if (!userId) return <div className="text-muted-foreground">Document introuvable.</div>;
-  const data = await load(+id, userId);
+  const viewUserId = await effectiveUserId();
+  const authUserId = await currentUserId();
+  if (!viewUserId || !authUserId) return <div className="text-muted-foreground">Document introuvable.</div>;
+  const data = await load(+id, authUserId, viewUserId);
   if (!data) return <div className="text-muted-foreground">Document introuvable.</div>;
   const { doc, bms } = data;
   const fileName = doc.path.split("/").slice(-1)[0];

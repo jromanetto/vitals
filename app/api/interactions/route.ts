@@ -1,20 +1,31 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { findInteractions } from "@/lib/parsers/interactions";
 import { decryptProfile } from "@/lib/crypto-fields";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
-  const supplements = sqlite.prepare(`SELECT name FROM supplement WHERE ended_at IS NULL AND user_id = ?`).all(userId) as Array<{ name: string }>;
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const readViewUserId = viewUserId ?? authUserId;
+
+  const { rows: allSups } = await convexServer().query(api.supplements.list, {
+    secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+  });
+  // Legacy: active supplements only (ended_at IS NULL).
+  const supplements = allSups
+    .filter((r) => (r.endedAt as number | null) == null)
+    .map((r) => ({ name: (r.name as string) ?? "" }));
+
+  // Profile read via Convex (resolves the view user through active consent, fail-closed).
+  const { data } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+  });
+  const profile = data ? decryptProfile(JSON.parse(data)) : {};
   const meds = String(profile.medications ?? "").split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean);
   const interactions = findInteractions(supplements, meds);
   return NextResponse.json({ interactions, supplementCount: supplements.length, medicationCount: meds.length });

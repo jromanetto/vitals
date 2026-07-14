@@ -1,6 +1,6 @@
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { BiomarkerChart } from "@/components/biomarker-chart";
 import { BiomarkerCommentary } from "@/components/biomarker-commentary";
 import { MeasurementsEditor } from "@/components/measurements-editor";
@@ -12,13 +12,12 @@ export const dynamic = "force-dynamic";
 
 type Series = { date: number; value: number; source: string | null }[];
 
-async function loadHistory(slug: string, userId: number) {
-  ensureSchema();
-  const d = db();
-  const rows = d.$client.prepare(`
-    SELECT id, name, category, value, unit, ref_low as refLow, ref_high as refHigh, date, source
-    FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC
-  `).all(slug, userId) as Array<{ id: number; name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
+// Biomarker history via Convex (resolves read user through active consent, fail-closed).
+// Convex already sorts rows by date asc; downstream expects the SQL row shape.
+async function loadHistory(slug: string, authId: number, viewUserId: number) {
+  const { rows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId, slugs: [slug],
+  });
   return rows;
 }
 
@@ -27,7 +26,7 @@ export default async function BiomarkerDetail({ params }: { params: Promise<{ sl
   const userId = await effectiveUserId();
   const authId = await currentUserId();
   const viewingOther = !!userId && !!authId && userId !== authId;
-  const rows = userId ? await loadHistory(slug, userId) : [];
+  const rows = userId && authId ? await loadHistory(slug, authId, userId) : [];
   const meta = rows[0];
   const md = META_BY_SLUG[slug];
   const series: Series = rows.map((r) => ({ date: r.date, value: r.value, source: r.source }));

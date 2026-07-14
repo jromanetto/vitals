@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Printer } from "lucide-react";
 import { currentUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { ReportBodyPoller } from "@/components/report-body-poller";
 import { PrintTrigger } from "@/components/print-trigger";
 import { DoctorPackCover } from "@/components/praticien/doctor-pack-cover";
@@ -22,22 +23,23 @@ type ReportRow = {
   created_at: number;
 };
 
-type ProfileRow = { data: string };
-
 async function loadReport(id: number, userId: number): Promise<ReportRow | undefined> {
-  ensureSchema();
-  return db()
-    .$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ? AND user_id = ?`)
-    .get(id, userId) as ReportRow | undefined;
+  const { row } = await convexServer().query(api.reports.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId, id,
+  });
+  if (!row) return undefined;
+  return { id: row.id, kind: row.kind, title: row.title, body: row.body, created_at: row.createdAt };
 }
 
-function loadPatientLabel(userId: number): string {
+async function loadPatientLabel(userId: number): Promise<string> {
   try {
-    const row = db()
-      .$client.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-      .get(userId) as ProfileRow | undefined;
-    if (!row?.data) return "Patient";
-    const obj = JSON.parse(row.data) as { firstName?: string; lastName?: string };
+    const { data } = await convexServer().query(api.profile.get, {
+      secret: bridgeSecret(),
+      authUserId: userId,
+      viewUserId: userId,
+    });
+    if (!data) return "Patient";
+    const obj = decryptProfile(JSON.parse(data)) as { firstName?: string; lastName?: string };
     const first = (obj.firstName || "").trim();
     const last = (obj.lastName || "").trim();
     if (first) return first;
@@ -186,7 +188,7 @@ export default async function PraticienDoctorPackPage({
 
   const generating = !report.body || report.body.length < 30;
   const printMode = print === "1";
-  const patientLabel = loadPatientLabel(userId);
+  const patientLabel = await loadPatientLabel(userId);
 
   const { sections } = generating
     ? { sections: [] as Array<{ heading: string; body: string }> }

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QueryProvider } from "@/app/providers";
 
 export const metadata: Metadata = {
   title: "Vitals — Health Intelligence",
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-primary focus:text-primary-foreground focus:px-3 focus:py-1.5 focus:rounded-md">
           Aller au contenu principal
         </a>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider><QueryProvider>{children}</QueryProvider></ThemeProvider>
       </body>
     </html>
   );

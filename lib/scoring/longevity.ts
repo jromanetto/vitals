@@ -6,7 +6,8 @@
  *   - 20% lifestyle (profile.activityLevel, sleepHours, stressLevel, dietType, smoker, alcohol).
  *   - 15% trends (5-year direction of LDL, HOMA, CRP, ferritine, TSH, vit D).
  */
-import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "@/lib/crypto-fields";
 
 export type CompletenessSource = {
@@ -44,17 +45,26 @@ export type ScoreBreakdown = {
   };
 };
 
-export function computeLongevityScore(userId: number): ScoreBreakdown {
-  const sqlite = db().$client;
+// `userId` is the already-resolved (effective) user; reads go to Convex scoped to
+// it. Server-side only — the bridge secret gates the call.
+export async function computeLongevityScore(userId: number): Promise<ScoreBreakdown> {
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  const [bio, dnaRes, prof, wear] = await Promise.all([
+    convex.query(api.biomarkers.all, { secret, authUserId: userId }),
+    convex.query(api.dna.insights, { secret, authUserId: userId }),
+    convex.query(api.profile.get, { secret, authUserId: userId }),
+    convex.query(api.wearables.overview, { secret, authUserId: userId, days: 365 }),
+  ]);
+  const bioRows = bio.rows as Array<{ slug: string; name: string; value: number; refLow: number | null; refHigh: number | null; date: number }>;
 
   // ---------- 1. Biomarkers (40%) ----------
-  const latestBms = sqlite.prepare(`
-    SELECT b.slug, b.name, b.value, b.ref_low, b.ref_high
-    FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x
-    ON x.slug = b.slug AND x.md = b.date
-    WHERE b.user_id = ?
-  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; ref_low: number | null; ref_high: number | null }>;
+  // latest-per-slug (max date), mirroring the SQL JOIN.
+  const maxDate = new Map<string, number>();
+  for (const r of bioRows) { const m = maxDate.get(r.slug); if (m == null || r.date > m) maxDate.set(r.slug, r.date); }
+  const latestBms = bioRows
+    .filter((r) => r.date === maxDate.get(r.slug))
+    .map((b) => ({ slug: b.slug, name: b.name, value: b.value, ref_low: b.refLow, ref_high: b.refHigh }));
 
   let inRange = 0;
   let evaluable = 0;
@@ -67,9 +77,9 @@ export function computeLongevityScore(userId: number): ScoreBreakdown {
   const bmScore = bmMeasured ? (inRange / evaluable) * 40 : 0;
 
   // ---------- 2. DNA (25%) ----------
-  const dna = sqlite.prepare(`
-    SELECT category, has_risk, magnitude FROM dna_insight WHERE user_id = ? AND has_risk IS NOT NULL
-  `).all(userId) as Array<{ category: string; has_risk: number; magnitude: number | null }>;
+  const dna = (dnaRes.rows as Array<{ category: string; hasRisk: number | null; magnitude: number | null }>)
+    .filter((d) => d.hasRisk != null)
+    .map((d) => ({ category: d.category, has_risk: d.hasRisk as number, magnitude: d.magnitude }));
 
   let dnaFavorable = 0;
   let dnaRisk = 0;
@@ -93,8 +103,7 @@ export function computeLongevityScore(userId: number): ScoreBreakdown {
     : 0;
 
   // ---------- 3. Lifestyle (20%) ----------
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile: Record<string, unknown> = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
+  const profile: Record<string, unknown> = prof.data ? decryptProfile(JSON.parse(prof.data)) : {};
 
   const lifestyleChecks: { label: string; ok: boolean; weight: number }[] = [
     { label: "Activité ≥ modérée", weight: 4, ok: ["Modéré (3-4x/sem)", "Intense (5-6x/sem)", "Athlète"].includes(String(profile.activityLevel ?? "")) },
@@ -129,7 +138,10 @@ export function computeLongevityScore(userId: number): ScoreBreakdown {
   };
   let trendsEvaluable = 0; // trend biomarkers with ≥2 data points (i.e. a measurable trend)
   for (const slug of TREND_BIOMARKERS) {
-    const points = sqlite.prepare(`SELECT value, date FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(slug, userId) as Array<{ value: number; date: number }>;
+    const points = bioRows
+      .filter((r) => r.slug === slug)
+      .sort((a, b) => a.date - b.date)
+      .map((r) => ({ value: r.value, date: r.date }));
     if (points.length < 2) continue;
     trendsEvaluable++;
     const first = points[0].value;
@@ -149,10 +161,7 @@ export function computeLongevityScore(userId: number): ScoreBreakdown {
   const trendsScore = !trendsMeasured ? 0 : moves > 0 ? (trendsImproving / moves) * 15 : 7.5;
 
   // ---------- Wearables (not a score axis, but a completion source) ----------
-  let wearablesMeasured = false;
-  try {
-    wearablesMeasured = Boolean(sqlite.prepare(`SELECT 1 FROM wearable_metric WHERE user_id = ? LIMIT 1`).get(userId));
-  } catch { /* table may not exist yet */ }
+  const wearablesMeasured = (wear.sources?.length ?? 0) > 0;
 
   // ---------- Confidence-weighted total ----------
   // Only axes that actually have data contribute, rescaled to 0-100. A new

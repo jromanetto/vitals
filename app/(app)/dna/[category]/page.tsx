@@ -1,25 +1,26 @@
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import Link from "next/link";
 import { NotesWidget } from "@/components/notes-widget";
 import { HelpPill } from "@/components/help-pill";
 
 export const dynamic = "force-dynamic";
 
-async function load(category: string, userId: number) {
-  ensureSchema();
-  const d = db();
-  return d.$client.prepare(`
-    SELECT rsid, trait, effect, magnitude, risk_allele as riskAllele, user_genotype as userGenotype, has_risk as hasRisk, is_protective as isProtective, summary, source
-    FROM dna_insight WHERE category = ? AND user_id = ? ORDER BY (has_risk * COALESCE(magnitude,0)) DESC, magnitude DESC NULLS LAST
-  `).all(category, userId) as Array<{ rsid: string; trait: string; effect: string | null; magnitude: number | null; riskAllele: string | null; userGenotype: string | null; hasRisk: number | null; isProtective: number | null; summary: string | null; source: string | null }>;
+// dna_insight reads from Convex (resolved through the household read guard); the
+// query returns rows sorted like the legacy SQL and shaped with the same aliases.
+async function load(category: string, authUserId: number, viewUserId: number) {
+  const { rows } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId, viewUserId, category,
+  });
+  return rows;
 }
 
 export default async function DnaCat({ params }: { params: Promise<{ category: string }> }) {
   const { category } = await params;
-  const userId = await effectiveUserId();
-  const rows = userId ? await load(category, userId) : [];
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  const rows = authUserId ? await load(category, authUserId, viewUserId ?? authUserId) : [];
   return (
     <div className="space-y-10">
       <Link href="/dna" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">← Toutes les catégories</Link>

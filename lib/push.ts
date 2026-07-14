@@ -2,7 +2,8 @@
 import webpush from "web-push";
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 let configured = false;
 
@@ -49,10 +50,9 @@ export type PushPayload = {
 
 export async function sendToUser(userId: number, payload: PushPayload) {
   configure();
-  const sqlite = db().$client;
-  const subs = sqlite
-    .prepare(`SELECT id, endpoint, p256dh, auth FROM push_subscription WHERE user_id = ?`)
-    .all(userId) as { id: number; endpoint: string; p256dh: string; auth: string }[];
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  const { rows: subs } = await convex.query(api.push.subsForSend, { secret, userId });
 
   const data = JSON.stringify(payload);
   const results = await Promise.allSettled(
@@ -62,13 +62,11 @@ export async function sendToUser(userId: number, payload: PushPayload) {
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           data
         );
-        sqlite
-          .prepare(`UPDATE push_subscription SET last_used_at = ? WHERE id = ?`)
-          .run(Date.now(), s.id);
+        await convex.mutation(api.push.touchLastUsed, { secret, id: s.id });
       } catch (e: any) {
         // 410 Gone / 404 Not Found = expired endpoint, prune it
         if (e?.statusCode === 410 || e?.statusCode === 404) {
-          sqlite.prepare(`DELETE FROM push_subscription WHERE id = ?`).run(s.id);
+          await convex.mutation(api.push.deleteById, { secret, id: s.id });
         }
         throw e;
       }

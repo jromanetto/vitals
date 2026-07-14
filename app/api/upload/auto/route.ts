@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getSession, isDemoUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { currentUserId, isDemoUser } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { ensureSchema } from "@/lib/db/migrate";
 import { logAudit } from "@/lib/audit";
 import { ingestPdfFile, ingestDnaForUser, ingestImageFile } from "@/lib/ingest";
@@ -201,18 +202,15 @@ async function saveBinary(userId: number, folder: string, filename: string, buf:
   return target;
 }
 
-function ensureWearableTable() {
-  const sqlite = db().$client;
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS wearable_metric (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, value REAL NOT NULL, unit TEXT, user_id INTEGER DEFAULT 1, UNIQUE(date, source, kind, user_id))`);
-}
-
-function insertWearables(rows: Row[], userId: number): number {
+// Wearable rows land in Convex (single batched upsert on UNIQUE(userId, date,
+// source, kind)). Writes scope to authUserId ONLY — never a viewed member.
+async function insertWearables(rows: Row[], userId: number): Promise<number> {
   if (rows.length === 0) return 0;
-  ensureWearableTable();
-  const sqlite = db().$client;
-  const stmt = sqlite.prepare(`INSERT OR REPLACE INTO wearable_metric (date, source, kind, value, unit, user_id) VALUES (?, ?, ?, ?, ?, ?)`);
-  const tx = sqlite.transaction((items: Row[]) => { for (const r of items) stmt.run(r.date, r.source, r.kind, r.value, r.unit ?? null, userId); });
-  tx(rows);
+  await convexServer().mutation(api.wearables.insertMany, {
+    secret: bridgeSecret(),
+    authUserId: userId,
+    rows: rows.map((r) => ({ date: r.date, source: r.source, kind: r.kind, value: r.value, unit: r.unit ?? null })),
+  });
   return rows.length;
 }
 
@@ -228,9 +226,9 @@ type FileResult = {
 };
 
 export async function POST(req: Request) {
-  const s = await getSession();
-  if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  if (isDemoUser(s.userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (isDemoUser(userId)) return NextResponse.json({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }, { status: 403 });
   ensureSchema();
 
   const fd = await req.formData();
@@ -265,17 +263,17 @@ export async function POST(req: Request) {
           results.push({ filename, size, detected, reason, status: "skipped", message: "Journal entries non importés (v1)" });
           continue;
         }
-        const inserted = insertWearables(rows, s.userId);
+        const inserted = await insertWearables(rows, userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "oura-trends") {
         const text = await f.text();
         const rows = parseGenericCsv(text, "oura"); // headers cover most kinds
-        const inserted = insertWearables(rows, s.userId);
+        const inserted = await insertWearables(rows, userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "generic-csv") {
         const text = await f.text();
         const rows = parseGenericCsv(text, "generic");
-        const inserted = insertWearables(rows, s.userId);
+        const inserted = await insertWearables(rows, userId);
         results.push({ filename, size, detected, reason, status: "ok", message: `${inserted} mesures insérées`, inserted });
       } else if (detected === "pdf-document" || detected === "image" || detected === "spreadsheet" || detected === "dna-23andme") {
         let targetFolder = detected === "dna-23andme" ? "genetique" : (folder ?? "divers");
@@ -290,21 +288,21 @@ export async function POST(req: Request) {
             reason = "PDF · analyse sanguine (détecté par contenu)";
           }
         }
-        const dest = await saveBinary(s.userId, targetFolder, filename, buf);
+        const dest = await saveBinary(userId, targetFolder, filename, buf);
         // Ingest inline with the uploader's userId: the data lands in THEIR
         // account and is queryable immediately (the welcome wizard calls
         // auto-extract right after this returns). No detached global ingest.
         let extra = "";
         if (detected === "pdf-document") {
-          const res = await ingestPdfFile(dest, s.userId, targetFolder, { useLlm: true });
+          const res = await ingestPdfFile(dest, userId, targetFolder, { useLlm: true });
           extra = res.biomarkers > 0 ? ` · ${res.biomarkers} biomarqueurs extraits` : "";
         } else if (detected === "image") {
           // A photographed lab result → read it with Claude vision. If markers
           // come back, treat it as a blood panel; otherwise it stays a plain image.
-          const res = await ingestImageFile(dest, s.userId, "analyses-sang");
+          const res = await ingestImageFile(dest, userId, "analyses-sang");
           if (res.biomarkers > 0) { extra = ` · ${res.biomarkers} biomarqueurs extraits de ta photo`; reason = "Image · analyse sanguine (photo)"; }
         } else if (detected === "dna-23andme") {
-          const res = await ingestDnaForUser(s.userId, userDataRoot(s.userId));
+          const res = await ingestDnaForUser(userId, userDataRoot(userId));
           extra = ` · ${res.insights} insights ADN`;
         }
         const msg = bloodSwitched
@@ -313,11 +311,11 @@ export async function POST(req: Request) {
         results.push({ filename, size, detected, reason, status: "ok", message: msg, destination: dest });
       } else if (detected === "markdown-note") {
         const buf = await f.arrayBuffer();
-        const dest = await saveBinary(s.userId, "knowledge-base", filename, buf);
+        const dest = await saveBinary(userId, "knowledge-base", filename, buf);
         results.push({ filename, size, detected, reason, status: "ok", message: "Sauvegardé dans la knowledge base.", destination: dest });
       } else {
         const buf = await f.arrayBuffer();
-        const dest = await saveBinary(s.userId, "divers", filename, buf);
+        const dest = await saveBinary(userId, "divers", filename, buf);
         results.push({ filename, size, detected, reason, status: "ok", message: "Type inconnu — sauvegardé dans divers/", destination: dest });
       }
     } catch (e) {
@@ -325,6 +323,6 @@ export async function POST(req: Request) {
     }
   }
 
-  logAudit("upload-auto", `files=${files.length} user=${s.userId}`, req);
+  logAudit("upload-auto", `files=${files.length} user=${userId}`, req);
   return NextResponse.json({ results });
 }

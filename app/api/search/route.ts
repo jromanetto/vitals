@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
@@ -49,6 +51,7 @@ const ACTIONS: Hit[] = [
 export async function GET(req: Request) {
   const userId = await effectiveUserId();
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const authId = (await currentUserId()) ?? userId;
   ensureSchema();
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").toLowerCase().trim();
@@ -60,34 +63,75 @@ export async function GET(req: Request) {
   for (const a of ACTIONS) if (a.title.toLowerCase().includes(q) || (a.subtitle ?? "").toLowerCase().includes(q)) hits.push(a);
   for (const p of PAGES) if (p.title.toLowerCase().includes(q) || (p.subtitle ?? "").toLowerCase().includes(q)) hits.push(p);
 
-  // Reminders — scoped per user.
+  // Reminders — owner-scoped, via Convex.
   try {
-    const reminders = sqlite.prepare(`SELECT id, title, description, due_at, done FROM reminder WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?) ORDER BY done ASC, due_at ASC LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; title: string; description: string | null; due_at: number; done: number }>;
+    const rem = await convexServer().query(api.reminders.list, { secret: bridgeSecret(), authUserId: userId });
+    const reminders = (rem.rows as Array<{ id: number; title: string; description: string | null; dueAt: number; done: number }>)
+      .filter((r) => r.title.toLowerCase().includes(q) || (r.description ?? "").toLowerCase().includes(q))
+      .sort((a, b) => (a.done - b.done) || (a.dueAt - b.dueAt))
+      .slice(0, 5);
     for (const r of reminders) {
-      const dueStr = new Date(r.due_at).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+      const dueStr = new Date(r.dueAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
       hits.push({ kind: "reminder", title: r.title, subtitle: `${r.done ? "fait" : "à faire"} · ${dueStr}`, href: "/reminders" });
     }
   } catch {}
 
-  const bms = sqlite.prepare(`SELECT DISTINCT slug, name, category FROM biomarker WHERE user_id = ? AND (LOWER(name) LIKE ? OR LOWER(category) LIKE ?) LIMIT 8`).all(userId, `%${q}%`, `%${q}%`) as Array<{ slug: string; name: string; category: string | null }>;
-  for (const b of bms) hits.push({ kind: "biomarker", title: b.name, subtitle: b.category ?? "biomarker", href: `/biomarkers/${b.slug}` });
+  // Biomarkers via Convex (read scoped to auth user + active Foyer view). `q` is
+  // already lowercased; replicate DISTINCT slug + (name|category) LIKE + LIMIT 8.
+  const { rows: bmRows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const seenBm = new Set<string>();
+  for (const b of bmRows) {
+    if (seenBm.size >= 8) break;
+    if (seenBm.has(b.slug)) continue;
+    if (!((b.name ?? "").toLowerCase().includes(q) || (b.category ?? "").toLowerCase().includes(q))) continue;
+    seenBm.add(b.slug);
+    hits.push({ kind: "biomarker", title: b.name, subtitle: b.category ?? "biomarker", href: `/biomarkers/${b.slug}` });
+  }
 
-  const dna = sqlite.prepare(`SELECT DISTINCT rsid, category, trait FROM dna_insight WHERE user_id = ? AND (LOWER(trait) LIKE ? OR LOWER(category) LIKE ? OR LOWER(rsid) LIKE ?) LIMIT 6`).all(userId, `%${q}%`, `%${q}%`, `%${q}%`) as Array<{ rsid: string; category: string; trait: string }>;
-  for (const d of dna) hits.push({ kind: "dna", title: d.trait, subtitle: `${d.category} · ${d.rsid}`, href: `/dna/${d.category}` });
+  // DNA insights via Convex. Replicate DISTINCT (rsid,category,trait) +
+  // (trait|category|rsid) LIKE + LIMIT 6.
+  const { rows: dnaRows } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const seenDna = new Set<string>();
+  for (const dn of dnaRows) {
+    if (seenDna.size >= 6) break;
+    const key = `${dn.rsid}|${dn.category}|${dn.trait}`;
+    if (seenDna.has(key)) continue;
+    if (!((dn.trait ?? "").toLowerCase().includes(q) || (dn.category ?? "").toLowerCase().includes(q) || (dn.rsid ?? "").toLowerCase().includes(q))) continue;
+    seenDna.add(key);
+    hits.push({ kind: "dna", title: dn.trait, subtitle: `${dn.category} · ${dn.rsid}`, href: `/dna/${dn.category}` });
+  }
 
-  const reports = sqlite.prepare(`SELECT id, title, kind FROM report WHERE user_id = ? AND (LOWER(title) LIKE ? OR LOWER(kind) LIKE ?) ORDER BY created_at DESC LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; title: string; kind: string }>;
+  // Reports via Convex (read scoped to auth user + active Foyer view). `q` is
+  // already lowercased; replicate the LOWER(...) LIKE match + created_at DESC LIMIT 5.
+  const { rows: reportRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const reports = reportRows
+    .filter((r) => r.title.toLowerCase().includes(q) || r.kind.toLowerCase().includes(q))
+    .slice(0, 5);
   for (const r of reports) hits.push({ kind: "report", title: r.title, subtitle: r.kind, href: `/reports/${r.id}` });
 
   const docs = sqlite.prepare(`SELECT id, path, title, category FROM document WHERE user_id = ? AND (LOWER(path) LIKE ? OR LOWER(title) LIKE ?) LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; path: string; title: string | null; category: string }>;
   for (const d of docs) hits.push({ kind: "doc", title: d.title || d.path.split("/").slice(-1)[0], subtitle: d.category, href: `/files/${d.id}` });
 
-  const notes = sqlite.prepare(`SELECT id, target_type, target_id, body, tags FROM note WHERE user_id = ? AND (LOWER(body) LIKE ? OR LOWER(tags) LIKE ?) ORDER BY created_at DESC LIMIT 5`).all(userId, `%${q}%`, `%${q}%`) as Array<{ id: number; target_type: string; target_id: string; body: string; tags: string | null }>;
+  const { rows: noteRows } = await convexServer().query(api.notes.list, { secret: bridgeSecret(), authUserId: authId, viewUserId: userId });
+  const notes = (noteRows as Array<{ targetType: string; targetId: string; body: string; tags: string | null }>)
+    .filter((n) => n.body.toLowerCase().includes(q) || (n.tags ?? "").toLowerCase().includes(q))
+    .slice(0, 5)
+    .map((n) => ({ target_type: n.targetType, target_id: n.targetId, body: n.body, tags: n.tags }));
   for (const n of notes) {
     const href = n.target_type === "biomarker" ? `/biomarkers/${n.target_id}` : n.target_type === "dna" ? `/dna/${n.target_id.split(":")[0] ?? ""}` : n.target_type === "file" ? `/files/${n.target_id}` : "/notes";
     hits.push({ kind: "note", title: n.body.slice(0, 60), subtitle: `note · ${n.target_type} · ${n.tags ?? ""}`, href });
   }
 
-  const sups = sqlite.prepare(`SELECT id, name FROM supplement WHERE user_id = ? AND LOWER(name) LIKE ? AND ended_at IS NULL LIMIT 5`).all(userId, `%${q}%`) as Array<{ id: number; name: string }>;
+  const { rows: supRows } = await convexServer().query(api.supplements.list, { secret: bridgeSecret(), authUserId: authId, viewUserId: userId });
+  const sups = (supRows as Array<{ id: number; name: string; endedAt: number | null }>)
+    .filter((s) => s.endedAt == null && (s.name ?? "").toLowerCase().includes(q))
+    .slice(0, 5);
   for (const sp of sups) hits.push({ kind: "supplement", title: sp.name, subtitle: "supplément actif", href: "/supplements" });
 
   return NextResponse.json({ hits });

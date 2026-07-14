@@ -1,5 +1,6 @@
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 
 export type ProfileData = {
@@ -77,32 +78,29 @@ function statusOf(r: {
 }
 
 export async function loadPraticienData(userId: number): Promise<PraticienData> {
-  ensureSchema();
-  const sqlite = db().$client;
+  const convex = convexServer();
+  const secret = bridgeSecret();
+  // userId is the already-resolved owner; read scoped to self (no view-as).
+  const [profRes, bioRes, bloodRes, dnaRes, suppRes, sympRes] = await Promise.all([
+    convex.query(api.profile.get, { secret, authUserId: userId }),
+    convex.query(api.biomarkers.all, { secret, authUserId: userId }),
+    convex.query(api.reports.bloodReports, { secret, authUserId: userId }),
+    convex.query(api.dna.insights, { secret, authUserId: userId }),
+    convex.query(api.supplements.list, { secret, authUserId: userId }),
+    convex.query(api.symptoms.list, { secret, authUserId: userId, days: 30 }),
+  ]);
 
-  const profileRow = sqlite
-    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY id DESC LIMIT 1`)
-    .get(userId) as { data: string } | undefined;
   let profile: ProfileData = {};
-  if (profileRow) {
-    try { profile = JSON.parse(profileRow.data); } catch { profile = {}; }
-  }
+  if (profRes.data) { try { profile = decryptProfile(JSON.parse(profRes.data)) as ProfileData; } catch { profile = {}; } }
 
-  const latestPanel = sqlite
-    .prepare(`SELECT MAX(date) AS d FROM biomarker WHERE user_id = ?`)
-    .get(userId) as { d: number | null } | undefined;
-  const panelDate = latestPanel?.d ?? null;
-
-  let biomarkers: BiomarkerRow[] = [];
-  if (panelDate) {
-    biomarkers = sqlite
-      .prepare(
-        `SELECT slug, name, category, value, unit, ref_low AS refLow, ref_high AS refHigh, date
-         FROM biomarker WHERE user_id = ? AND date = ?
-         ORDER BY LOWER(name)`
-      )
-      .all(userId, panelDate) as BiomarkerRow[];
-  }
+  const bioRows = bioRes.rows as BiomarkerRow[];
+  const panelDate = bioRows.length ? Math.max(...bioRows.map((b) => b.date)) : null;
+  const biomarkers: BiomarkerRow[] = panelDate
+    ? bioRows
+        .filter((b) => b.date === panelDate)
+        .map((b) => ({ slug: b.slug, name: b.name, category: b.category, value: b.value, unit: b.unit, refLow: b.refLow, refHigh: b.refHigh, date: b.date }))
+        .sort((a, b) => (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()))
+    : [];
 
   const enriched: EnrichedBiomarker[] = biomarkers.map((b) => {
     const meta = META_BY_SLUG[b.slug];
@@ -122,48 +120,40 @@ export async function loadPraticienData(userId: number): Promise<PraticienData> 
 
   let bloodReport: PraticienData["bloodReport"] = null;
   try {
-    const row = sqlite
-      .prepare(`SELECT panel_date AS panelDate, body FROM blood_report WHERE user_id = ? ORDER BY panel_date DESC LIMIT 1`)
-      .get(userId) as { panelDate: number; body: string } | undefined;
+    const row = (bloodRes.rows as Array<{ panelDate: number; body: string }>)[0]; // already sorted panelDate DESC
     if (row) {
       const parsed = JSON.parse(row.body);
       bloodReport = { synthesis: parsed.synthesis, headline: parsed.headline, panelDate: row.panelDate };
     }
   } catch { bloodReport = null; }
 
-  const dnaRisks = sqlite
-    .prepare(
-      `SELECT rsid, trait, user_genotype AS genotype, magnitude, summary
-       FROM dna_insight WHERE user_id = ? AND has_risk = 1
-       ORDER BY COALESCE(magnitude,0) DESC LIMIT 25`
-    )
-    .all(userId) as DnaRow[];
-  const dnaProtective = sqlite
-    .prepare(
-      `SELECT rsid, trait, user_genotype AS genotype, magnitude, summary
-       FROM dna_insight WHERE user_id = ? AND is_protective = 1
-       ORDER BY COALESCE(magnitude,0) DESC LIMIT 25`
-    )
-    .all(userId) as DnaRow[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dnaAll = dnaRes.rows as Array<any>;
+  const toDna = (r: any): DnaRow => ({ rsid: r.rsid, trait: r.trait, genotype: r.userGenotype, magnitude: r.magnitude, summary: r.summary });
+  const byMag = (a: any, b: any) => (b.magnitude ?? 0) - (a.magnitude ?? 0);
+  const dnaRisks = dnaAll.filter((r) => r.hasRisk === 1).sort(byMag).slice(0, 25).map(toDna);
+  const dnaProtective = dnaAll.filter((r) => r.isProtective === 1).sort(byMag).slice(0, 25).map(toDna);
 
-  const supplements = sqlite
-    .prepare(
-      `SELECT name, brand, dose, unit, timing, frequency, duration
-       FROM supplement WHERE user_id = ? AND ended_at IS NULL
-       ORDER BY LOWER(name)`
-    )
-    .all(userId) as SupplementRow[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supplements = (suppRes.rows as Array<any>)
+    .filter((s) => s.endedAt == null)
+    .map((s) => ({ name: s.name, brand: s.brand ?? null, dose: s.dose ?? null, unit: s.unit ?? null, timing: s.timing ?? null, frequency: s.frequency ?? null, duration: s.duration ?? null }) as SupplementRow)
+    .sort((a, b) => (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()));
 
   const since = new Date();
   since.setDate(since.getDate() - 30);
   const sinceISO = since.toISOString().slice(0, 10);
-  const symptoms = sqlite
-    .prepare(
-      `SELECT key, AVG(value) AS avg, COUNT(*) AS n, MAX(date) AS last
-       FROM symptom_log WHERE user_id = ? AND date >= ?
-       GROUP BY key ORDER BY avg DESC`
-    )
-    .all(userId, sinceISO) as SymptomRow[];
+  // symptoms.list is already date-windowed (days:30); aggregate by key.
+  const symAgg = new Map<string, { key: string; sum: number; n: number; last: string }>();
+  for (const s of sympRes.rows as Array<{ key: string; value: number; date: string }>) {
+    if (s.date < sinceISO) continue;
+    const a = symAgg.get(s.key);
+    if (a) { a.sum += s.value; a.n += 1; if (s.date > a.last) a.last = s.date; }
+    else symAgg.set(s.key, { key: s.key, sum: s.value, n: 1, last: s.date });
+  }
+  const symptoms = [...symAgg.values()]
+    .map((a) => ({ key: a.key, avg: a.sum / a.n, n: a.n, last: a.last }) as SymptomRow)
+    .sort((a, b) => b.avg - a.avg);
 
   return { profile, panelDate, offRange, optimal, bloodReport, dnaRisks, dnaProtective, supplements, symptoms };
 }

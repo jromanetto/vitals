@@ -1,6 +1,8 @@
 "use client";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQuery as useConvexQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Sparkles, Check, X, Activity, Dna, ShieldAlert, AlertTriangle, Sun } from "lucide-react";
 import { InteractionsCard } from "@/components/interactions-card";
@@ -39,7 +41,10 @@ const PRIORITY_STYLES = {
 const PRIORITY_LABELS = { high: "Priorité haute", moderate: "Modéré", info: "Info" };
 
 export function SupplementsTab() {
-  const [rows, setRows] = useState<Supplement[]>([]);
+  // Live, reactive: browser subscribes to Convex directly (authenticated via the
+  // JWT bridge). Writes via the REST routes below mutate Convex -> this auto-updates.
+  const suppData = useConvexQuery(api.supplements.listLive) as { rows: Supplement[]; takenToday: number[] } | undefined;
+  const rows: Supplement[] = suppData?.rows ?? [];
   const [taken, setTaken] = useState<Set<number>>(new Set());
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -55,36 +60,40 @@ export function SupplementsTab() {
   const [showCovered, setShowCovered] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
 
-  async function load() {
-    const r = await fetch("/api/supplements");
-    const d = await r.json();
-    setRows(d.rows ?? []);
-    setTaken(new Set(d.takenToday ?? []));
+  // Supplement rows + takenToday come from the TanStack Query above; this loads
+  // the auxiliary suggestions + blood-help panels.
+  async function loadAux() {
     const sg = await fetch("/api/supplements/suggestions");
     setSuggestions((await sg.json()).suggestions ?? []);
     try {
       const br = await fetch("/api/biomarkers/latest");
       const bd = await br.json();
-      const rows = (bd.rows ?? []) as Array<{ slug: string; status: string }>;
-      const help = rows
+      const brows = (bd.rows ?? []) as Array<{ slug: string; status: string }>;
+      const help = brows
         .filter((row) => row.status === "low" || row.status === "slightly-off" || row.status === "attention")
         .map((row) => ({ biomarker: row.slug, status: row.status, nutrient: row.slug }));
       setBloodHelp(help);
     } catch {}
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadAux(); }, []);
+  useEffect(() => { setTaken(new Set(suppData?.takenToday ?? [])); }, [suppData]);
+  async function refresh() {
+    // Supplement rows are a live Convex subscription (auto-updates on write);
+    // only the auxiliary suggestions/blood-help panels need a manual reload.
+    loadAux();
+  }
 
   async function save() {
     if (!form.name) return;
     await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: editing?.id }) });
     setShowForm(false); setEditing(null);
     setForm({ name: "", dose: "", unit: "mg", timing: "matin", frequency: "1x/jour", notes: "", targetBiomarker: "", targetSnp: "", url: "", brand: "", imageUrl: "", ingredients: [], servingSize: "", suggestedUse: "", duration: "continu" });
-    load();
+    refresh();
   }
   async function del(id: number) {
     if (!confirm("Supprimer ce supplément ?")) return;
     await fetch(`/api/supplements?id=${id}`, { method: "DELETE" });
-    load();
+    refresh();
   }
   async function toggleTaken(id: number) {
     const next = new Set(taken);
@@ -97,7 +106,7 @@ export function SupplementsTab() {
     const targetBiomarker = s.biomarkerSlug ?? null;
     const targetSnp = s.rsid ?? null;
     await fetch("/api/supplements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: s.supplement, dose: s.dose, timing: s.timing, frequency: "1x/jour", notes: s.reason, targetBiomarker, targetSnp }) });
-    load();
+    refresh();
   }
 
   const active = rows.filter((r) => r.endedAt === null);

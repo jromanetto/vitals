@@ -19,6 +19,13 @@ import { db, schema } from "../lib/db";
 import { ensureSchema } from "../lib/db/migrate";
 import { ingestPdfFile, ingestDnaForUser, categoryFor } from "../lib/ingest";
 
+// biomarker + dna_insight are written to Convex now — the ingest primitives need
+// the Convex bridge env. Load .env.local (dev); prod sets these in the env.
+for (const line of (fs.existsSync(path.join(process.cwd(), ".env.local")) ? fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8").split("\n") : [])) {
+  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+  if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
+}
+
 const DATA_DIR = path.join(process.cwd(), "data");
 
 const USER_ID = parseInt(process.argv[2] ?? "1", 10) || 1;

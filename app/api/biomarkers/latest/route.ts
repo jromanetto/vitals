@@ -1,28 +1,29 @@
 import { NextResponse } from "next/server";
-import { getSession, effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
-import { sql } from "drizzle-orm";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { convertValue } from "@/lib/parsers/normalize-units";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const d = db();
-  // Latest value per slug
-  const rows = d.$client.prepare(`
-    SELECT b.slug, b.name, b.category, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date, b.source
-    FROM biomarker b
-    JOIN (
-      SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug
-    ) x ON x.slug = b.slug AND x.md = b.date
-    WHERE b.user_id = ?
-    ORDER BY LOWER(b.name)
-  `).all(userId, userId) as Array<{ slug: string; name: string; category: string | null; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number; source: string | null }>;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const all = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId,
+  });
+  // Latest value per slug: keep every row tying on max(date) for its slug (the
+  // SQL JOIN semantics), then dedupe below. Sorted by lower(name) like the SQL.
+  const maxDate = new Map<string, number>();
+  for (const r of all.rows) {
+    const m = maxDate.get(r.slug);
+    if (m == null || r.date > m) maxDate.set(r.slug, r.date);
+  }
+  const rows = all.rows
+    .filter((r) => r.date === maxDate.get(r.slug))
+    .sort((a, b) => (a.name || "").toLowerCase().localeCompare((b.name || "").toLowerCase()));
 
   // Dedupe: when multiple rows tie on (slug, max(date)), keep the one with reference data; otherwise the first.
   const bySlug = new Map<string, typeof rows[number]>();

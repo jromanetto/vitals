@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { WelcomeReportClient } from "@/components/welcome-report/welcome-report-client";
 import { isWelcomeReportEnabled } from "@/lib/welcome-report/enabled";
 
@@ -17,17 +17,12 @@ export default async function WelcomeReportPage() {
 
   const userId = await currentUserId();
   if (!userId) redirect("/login");
-  ensureSchema();
-  const sqlite = db().$client;
 
-  // Look for a recent welcome report (last hour) for this user.
-  const recent = sqlite
-    .prepare(
-      `SELECT id, meta FROM report
-       WHERE kind = 'welcome' AND user_id = ?
-       ORDER BY created_at DESC LIMIT 1`,
-    )
-    .get(userId) as { id: number; meta: string } | undefined;
+  // Look for the latest welcome report for this user (report read via Convex;
+  // scoped to self — matches the legacy currentUserId-scoped SELECT).
+  const { row: recent } = await convexServer().query(api.reports.latestByKind, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId, kind: "welcome",
+  });
 
   let reportId: number;
   let initialMeta: Record<string, unknown> = { status: "pending", progress: 0 };
@@ -35,7 +30,7 @@ export default async function WelcomeReportPage() {
   if (recent) {
     let parsedMeta: Record<string, unknown> = {};
     try {
-      parsedMeta = typeof recent.meta === "string" ? JSON.parse(recent.meta) : recent.meta;
+      parsedMeta = recent.meta ? (typeof recent.meta === "string" ? JSON.parse(recent.meta) : recent.meta) : {};
     } catch {}
 
     // Smart regen: if the existing report is empty-state-only (user signed up
@@ -45,12 +40,16 @@ export default async function WelcomeReportPage() {
     const cards = (parsedMeta as { cards?: Array<{ kind: string }> }).cards ?? [];
     const isEmptyOnly = cards.length === 1 && cards[0]?.kind === "empty-state";
     if (isEmptyOnly) {
-      const hasBiomarkers = sqlite
-        .prepare(`SELECT 1 FROM biomarker WHERE user_id = ? LIMIT 1`)
-        .get(userId);
-      const hasDna = sqlite
-        .prepare(`SELECT 1 FROM dna_insight WHERE user_id = ? LIMIT 1`)
-        .get(userId);
+      // Existence checks via Convex (self-scoped), mirroring the legacy
+      // `SELECT 1 ... LIMIT 1` presence probes.
+      const { rows: bioRows } = await convexServer().query(api.biomarkers.all, {
+        secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+      });
+      const hasBiomarkers = bioRows.length > 0;
+      const { rows: dnaRows } = await convexServer().query(api.dna.insights, {
+        secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+      });
+      const hasDna = dnaRows.length > 0;
       if (hasBiomarkers || hasDna) {
         reportId = 0; // client will POST a fresh report
       } else {

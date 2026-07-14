@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -90,13 +92,11 @@ export async function POST(req: Request) {
 
   const sqlite = db().$client;
 
-  // 1. existing profile (this user only)
-  const profileRow = sqlite
-    .prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`)
-    .get(userId) as { data: string | Record<string, unknown> } | undefined;
-  const profileData = profileRow
-    ? (typeof profileRow.data === "string" ? JSON.parse(profileRow.data) : profileRow.data)
-    : {};
+  // 1. existing profile (this user only) — via Convex
+  const { data: profileStored } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const profileData = profileStored ? JSON.parse(profileStored) : {};
   // Anonymized for LLM context — the actual values from profile are not what we
   // need here (we're extracting NEW facts from documents into profile).
   const existing = anonymizeProfile(decryptProfile(profileData as Record<string, unknown>));
@@ -111,24 +111,33 @@ export async function POST(req: Request) {
     .prepare(`SELECT rc.text FROM rag_chunk rc JOIN document d ON d.id = rc.doc_id WHERE d.user_id = ? LIMIT 80`)
     .all(userId) as Array<{ text: string }>;
 
-  // 4. dna insights (this user)
-  const dnaIns = sqlite
-    .prepare(`SELECT category, trait, summary, has_risk as hasRisk, user_genotype as userGenotype FROM dna_insight WHERE user_id = ? LIMIT 150`)
-    .all(userId) as Array<{ category: string; trait: string; summary: string | null; hasRisk: number | null; userGenotype: string | null }>;
+  // 4. dna insights (this user) — via Convex (self scope), first 150.
+  const { rows: dnaAll } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const dnaIns = dnaAll.slice(0, 150).map((r) => ({
+    category: r.category,
+    trait: r.trait,
+    summary: r.summary,
+    hasRisk: r.hasRisk,
+    userGenotype: r.userGenotype,
+  }));
 
-  // 5. biomarker history (unique slugs with most recent value)
-  const biomarkers = sqlite.prepare(`
-    SELECT name, slug, value, unit, ref_low as refLow, ref_high as refHigh, date
-    FROM biomarker
-    WHERE user_id = ?
-    ORDER BY date DESC
-    LIMIT 200
-  `).all(userId) as Array<Record<string, unknown>>;
+  // 5. biomarker history — via Convex (self scope); ORDER BY date DESC, first 200.
+  const { rows: bmAll } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const biomarkers = [...bmAll]
+    .sort((a, b) => b.date - a.date)
+    .slice(0, 200) as Array<Record<string, unknown>>;
 
-  // 6. recent reports
-  const reports = sqlite
-    .prepare(`SELECT kind, title, body, created_at as createdAt FROM report WHERE user_id = ? ORDER BY created_at DESC LIMIT 8`)
-    .all(userId) as Array<{ kind: string; title: string; body: string; createdAt: number }>;
+  // 6. recent reports — via Convex (self scope), latest 8.
+  const { rows: reportRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: userId, viewUserId: userId,
+  });
+  const reports = reportRows
+    .slice(0, 8)
+    .map((r) => ({ kind: r.kind, title: r.title, body: r.body, createdAt: r.createdAt }));
 
   // Build mega-context with budget
   const parts: string[] = [];

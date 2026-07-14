@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
-  const row = db().$client.prepare(`SELECT id, body, title, meta, kind FROM report WHERE id = ? AND user_id = ?`).get(Number(id), userId) as { id: number; body: string; title: string; meta: string | null; kind: string } | undefined;
+  const { row } = await convexServer().query(api.reports.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId, id: Number(id),
+  });
   if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   let meta: Record<string, unknown> = {};
   try { meta = row.meta ? (typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta) : {}; } catch {}

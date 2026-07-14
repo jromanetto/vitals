@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { db, schema } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
-import { decryptProfile } from "@/lib/crypto-fields";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
+import { encryptProfile, decryptProfile } from "@/lib/crypto-fields";
 import { logAudit } from "@/lib/audit";
-import { desc, sql } from "drizzle-orm";
 import path from "node:path";
 import fs from "node:fs/promises";
 
@@ -13,15 +12,15 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
 
   const body = (await req.json()) as { fields?: Record<string, unknown>; memories?: string[] };
   const fields = body.fields ?? {};
   const memories = Array.isArray(body.memories) ? body.memories.filter((x) => typeof x === "string") : [];
 
-  const d = db();
-  const rows = await d.select().from(schema.profile).where(sql`user_id = ${s.userId}`).orderBy(desc(schema.profile.updatedAt)).limit(1);
-  const existing = decryptProfile((rows[0]?.data as Record<string, unknown>) ?? {});
+  const { data: profileStored } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: s.userId, viewUserId: s.userId,
+  });
+  const existing = decryptProfile(profileStored ? JSON.parse(profileStored) : {});
 
   const merged: Record<string, unknown> = { ...existing };
   for (const [k, v] of Object.entries(fields)) {
@@ -30,8 +29,10 @@ export async function POST(req: Request) {
     merged[k] = v;
   }
 
-  // Match /api/profile POST behaviour: store plaintext (legacy), scoped to the user.
-  d.$client.prepare(`INSERT INTO profile (data, updated_at, user_id) VALUES (?, ?, ?)`).run(JSON.stringify(merged), Date.now(), s.userId);
+  // Match /api/profile POST behaviour: encrypt sensitive fields at rest, scoped to the user.
+  await convexServer().mutation(api.profile.upsert, {
+    secret: bridgeSecret(), authUserId: s.userId, data: JSON.stringify(encryptProfile(merged)),
+  });
 
   // Mirror profile.md — per-user so accounts don't overwrite each other on disk.
   try {
@@ -53,15 +54,17 @@ export async function POST(req: Request) {
   // Insert memories with kind=medical_history, dedup
   let memCreated = 0;
   if (memories.length) {
-    const sqlite = d.$client;
-    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? AND user_id = ? LIMIT 1`);
-    const ins = sqlite.prepare(`INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active, user_id) VALUES (?, ?, NULL, ?, ?, 1, ?)`);
+    const secret = bridgeSecret();
     for (const m of memories) {
       const trimmed = m.trim().slice(0, 500);
       if (!trimmed) continue;
-      const exists = dedup.get("medical_history", trimmed, s.userId);
+      const { exists } = await convexServer().query(api.chat.memoryExists, {
+        secret, authUserId: s.userId, kind: "medical_history", body: trimmed,
+      });
       if (exists) continue;
-      ins.run("medical_history", trimmed, 0.9, Date.now(), s.userId);
+      await convexServer().mutation(api.chat.insertMemory, {
+        secret, authUserId: s.userId, kind: "medical_history", body: trimmed, confidence: 0.9,
+      });
       memCreated++;
     }
   }

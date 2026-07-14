@@ -1,6 +1,6 @@
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import Link from "next/link";
 import { renderMarkdown } from "@/lib/markdown";
 import { ReportBodyPoller } from "@/components/report-body-poller";
@@ -8,9 +8,11 @@ import { PrintTrigger } from "@/components/print-trigger";
 
 export const dynamic = "force-dynamic";
 
-async function load(id: number, userId: number) {
-  ensureSchema();
-  return db().$client.prepare(`SELECT id, kind, title, body, created_at FROM report WHERE id = ? AND user_id = ?`).get(id, userId) as { id: number; kind: string; title: string; body: string; created_at: number } | undefined;
+async function load(id: number, authUserId: number, viewUserId: number) {
+  const { row } = await convexServer().query(api.reports.get, {
+    secret: bridgeSecret(), authUserId, viewUserId, id,
+  });
+  return row;
 }
 
 export default async function ReportPage({
@@ -22,9 +24,10 @@ export default async function ReportPage({
 }) {
   const { id } = await params;
   const { print } = await searchParams;
-  const userId = await effectiveUserId();
-  if (!userId) return <div className="text-muted-foreground">Rapport introuvable.</div>;
-  const r = await load(+id, userId);
+  const authUserId = await currentUserId();
+  if (!authUserId) return <div className="text-muted-foreground">Rapport introuvable.</div>;
+  const viewUserId = await effectiveUserId();
+  const r = await load(+id, authUserId, viewUserId ?? authUserId);
   if (!r) return <div className="text-muted-foreground">Rapport introuvable.</div>;
 
   const generating = !r.body || r.body.length < 30;
@@ -52,7 +55,7 @@ export default async function ReportPage({
       <header className={printMode ? "mb-8" : "mt-4 mb-8"}>
         <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium capitalize">{r.kind.replace(/-/g, " ")}</div>
         <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mt-2">{r.title}</h1>
-        <div className="text-xs text-muted-foreground mt-2">{new Date(r.created_at).toLocaleString("fr-FR")}</div>
+        <div className="text-xs text-muted-foreground mt-2">{new Date(r.createdAt).toLocaleString("fr-FR")}</div>
       </header>
       {generating ? (
         <ReportBodyPoller id={r.id} initialBody={r.body} />

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
@@ -14,18 +14,25 @@ export const maxDuration = 60;
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const userId = await effectiveUserId();
   const authId = await currentUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
+  if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { slug } = await params;
-  const sqlite = db().$client;
+  const metaKey = JSON.stringify({ slug });
 
-  // Cached? Scope by user_id so each user has their own cached commentary.
-  const cached = sqlite.prepare(`SELECT body, created_at FROM report WHERE kind = 'biomarker_insight' AND meta = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`).get(JSON.stringify({ slug }), userId) as { body: string; created_at: number } | undefined;
-  if (cached && Date.now() - cached.created_at < 30 * 24 * 3600 * 1000) {
+  // Cached? Convex has no meta-column filter, so list biomarker_insight reports
+  // (scoped to the effective/view user) and find the one keyed by this slug's
+  // meta. Rows come back created_at DESC, so find() yields the latest.
+  const { rows: insightRows } = await convexServer().query(api.reports.list, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId, kind: "biomarker_insight",
+  });
+  const cached = insightRows.find((r) => r.meta === metaKey);
+  if (cached && Date.now() - cached.createdAt < 30 * 24 * 3600 * 1000) {
     return NextResponse.json({ body: cached.body, cached: true });
   }
 
-  const rows = sqlite.prepare(`SELECT name, value, unit, ref_low as refLow, ref_high as refHigh, date FROM biomarker WHERE slug = ? AND user_id = ? ORDER BY date ASC`).all(slug, userId) as Array<{ name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
+  // Biomarker rows via Convex (resolves read user through active consent, fail-closed).
+  const { rows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId, slugs: [slug],
+  });
   if (rows.length === 0) return NextResponse.json({ error: "no data" }, { status: 404 });
   const meta = rows[0];
   const md = META_BY_SLUG[slug];
@@ -33,8 +40,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const apiKey = anthropicApiKey();
   if (!apiKey) return NextResponse.json({ body: "Clé Anthropic manquante." });
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
+  const { data: profileData } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: authId, viewUserId: userId,
+  });
+  const profile = profileData ? anonymizeProfile(decryptProfile(JSON.parse(profileData))) : {};
 
   const client = new Anthropic({ apiKey });
   const sys = "Tu es médecin de santé fonctionnelle. Tu commentes UN biomarqueur en français, en markdown court (3-5 paragraphes max). Tu cites les chiffres réels du patient et la cible optimale. Tu termines par 2-3 actions concrètes personnalisées.";
@@ -61,7 +70,10 @@ Donne ton analyse en 3-5 paragraphes courts, factuels.`;
   // Only persist the generated insight when looking at your OWN data — never
   // write to a household member's account while merely viewing it.
   if (userId === authId) {
-    sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run("biomarker_insight", `${meta.name} — analyse`, body, JSON.stringify({ slug }), Date.now(), userId);
+    await convexServer().mutation(api.reports.insert, {
+      secret: bridgeSecret(), authUserId: authId, kind: "biomarker_insight",
+      title: `${meta.name} — analyse`, body, meta: metaKey,
+    });
   }
   return NextResponse.json({ body, cached: false });
 }

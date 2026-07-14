@@ -1,10 +1,11 @@
 import { getSession, isDemoUser } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
-import { ensureSchema } from "@/lib/db/migrate";
 import { searchRag } from "@/lib/rag/search";
-import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { anthropicApiKey } from "@/lib/secrets";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
+import { decryptProfile } from "@/lib/crypto-fields";
 import { formatProfileForLLM } from "@/lib/profile/format";
 
 export const runtime = "nodejs";
@@ -93,14 +94,18 @@ const tools: Anthropic.Tool[] = [
 // ──────────────────────────────────────────────────────────────────
 type ToolInput = Record<string, unknown>;
 
-function execTool(name: string, input: ToolInput, userId: number): unknown {
-  const sqlite = db().$client;
+async function execTool(name: string, input: ToolInput, userId: number): Promise<unknown> {
   if (name === "get_biomarker_history") {
     const slug = String(input.slug ?? "");
     const limit = Math.min(Number(input.limit ?? 100), 500);
-    const rows = sqlite
-      .prepare(`SELECT name, slug, value, unit, ref_low, ref_high, date FROM biomarker WHERE user_id = ? AND slug = ? ORDER BY date DESC LIMIT ?`)
-      .all(userId, slug, limit) as Array<{ name: string; slug: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
+    // Fetch this slug's series (Convex returns date ASC); take latest `limit` (DESC).
+    const { rows: all } = await convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId: userId, slugs: [slug],
+    });
+    const rows = all
+      .slice()
+      .sort((a, b) => b.date - a.date)
+      .slice(0, limit);
     return {
       slug,
       count: rows.length,
@@ -108,8 +113,8 @@ function execTool(name: string, input: ToolInput, userId: number): unknown {
         date: new Date(r.date).toISOString().slice(0, 10),
         value: r.value,
         unit: r.unit,
-        ref_low: r.ref_low,
-        ref_high: r.ref_high,
+        ref_low: r.refLow,
+        ref_high: r.refHigh,
         name: r.name,
       })),
     };
@@ -117,12 +122,25 @@ function execTool(name: string, input: ToolInput, userId: number): unknown {
   if (name === "search_biomarkers") {
     const q = String(input.q ?? "").toLowerCase();
     if (!q) return { matches: [] };
-    const rows = sqlite
-      .prepare(
-        `SELECT slug, name, MAX(date) as last_date, COUNT(*) as n FROM biomarker WHERE user_id = ? AND (LOWER(slug) LIKE ? OR LOWER(name) LIKE ?) GROUP BY slug ORDER BY n DESC LIMIT 20`
-      )
-      .all(userId, `%${q}%`, `%${q}%`);
-    return { matches: rows };
+    const { rows: all } = await convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId: userId,
+    });
+    // Reproduce: WHERE LOWER(slug)/LOWER(name) LIKE %q% GROUP BY slug ORDER BY n DESC LIMIT 20.
+    // Rows come date ASC, so the last seen per slug is the most recent (used for name/last_date).
+    const bySlug = new Map<string, { slug: string; name: string; last_date: number; n: number }>();
+    for (const r of all) {
+      if (!(r.slug.toLowerCase().includes(q) || r.name.toLowerCase().includes(q))) continue;
+      const cur = bySlug.get(r.slug);
+      if (cur) {
+        cur.n += 1;
+        cur.name = r.name;
+        if (r.date > cur.last_date) cur.last_date = r.date;
+      } else {
+        bySlug.set(r.slug, { slug: r.slug, name: r.name, last_date: r.date, n: 1 });
+      }
+    }
+    const matches = [...bySlug.values()].sort((a, b) => b.n - a.n).slice(0, 20);
+    return { matches };
   }
   if (name === "get_correlation") {
     const aKind = String(input.a_kind);
@@ -130,8 +148,8 @@ function execTool(name: string, input: ToolInput, userId: number): unknown {
     const bKind = String(input.b_kind);
     const bKey = String(input.b_key);
     const lag = Math.min(Number(input.lag_days ?? (aKind === "biomarker" || bKind === "biomarker" ? 14 : 1)), 30);
-    const a = loadSeries(aKind, aKey, userId);
-    const b = loadSeries(bKind, bKey, userId);
+    const a = await loadSeries(aKind, aKey, userId);
+    const b = await loadSeries(bKind, bKey, userId);
     if (a.length < 5 || b.length < 5) return { error: "not enough data", n_a: a.length, n_b: b.length };
     const { x, y } = pairDated(a, b, lag);
     if (x.length < 5) return { error: "not enough overlapping dates", n: x.length };
@@ -149,60 +167,99 @@ function execTool(name: string, input: ToolInput, userId: number): unknown {
   if (name === "search_kb") {
     const q = String(input.q ?? "");
     const limit = Math.min(Number(input.limit ?? 6), 12);
-    // searchRag is async — we'll return a Promise; caller awaits.
-    return searchRag(q, limit, userId).then((hits) =>
-      hits.map((h) => ({ path: h.path, snippet: h.snippet, score: Math.round(h.score * 100) / 100, doc_id: h.docId }))
-    );
+    const hits = await searchRag(q, limit, userId);
+    return hits.map((h) => ({ path: h.path, snippet: h.snippet, score: Math.round(h.score * 100) / 100, doc_id: h.docId }));
   }
   if (name === "get_dna_traits") {
     const cat = input.category ? String(input.category).toLowerCase() : null;
     const kw = input.keyword ? String(input.keyword).toLowerCase() : null;
     const riskOnly = Boolean(input.risk_only);
     const limit = Math.min(Number(input.limit ?? 30), 138);
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (cat) {
-      where.push("LOWER(category) = ?");
-      params.push(cat);
-    }
-    if (kw) {
-      where.push("(LOWER(trait) LIKE ? OR LOWER(summary) LIKE ?)");
-      params.push(`%${kw}%`, `%${kw}%`);
-    }
-    if (riskOnly) where.push("has_risk = 1");
-    where.unshift("user_id = ?");
-    params.unshift(userId);
-    const sql = `SELECT rsid, category, trait, user_genotype, has_risk, magnitude, summary FROM dna_insight WHERE ${where.join(" AND ")} ORDER BY (has_risk * COALESCE(magnitude,1)) DESC LIMIT ?`;
-    return { matches: sqlite.prepare(sql).all(...params, limit) };
+    const { rows: all } = await convexServer().query(api.dna.insights, {
+      secret: bridgeSecret(), authUserId: userId,
+    });
+    // Reproduce the legacy WHERE + ORDER BY (has_risk * COALESCE(magnitude,1)) DESC.
+    let filtered = all;
+    if (cat) filtered = filtered.filter((r) => (r.category ?? "").toLowerCase() === cat);
+    if (kw) filtered = filtered.filter((r) => (r.trait ?? "").toLowerCase().includes(kw) || (r.summary ?? "").toLowerCase().includes(kw));
+    if (riskOnly) filtered = filtered.filter((r) => r.hasRisk === 1);
+    const matches = filtered
+      .slice()
+      .sort((a, b) => (b.hasRisk ?? 0) * (b.magnitude ?? 1) - (a.hasRisk ?? 0) * (a.magnitude ?? 1))
+      .slice(0, limit)
+      .map((r) => ({
+        rsid: r.rsid,
+        category: r.category,
+        trait: r.trait,
+        user_genotype: r.userGenotype,
+        has_risk: r.hasRisk,
+        magnitude: r.magnitude,
+        summary: r.summary,
+      }));
+    return { matches };
   }
   return { error: `unknown tool ${name}` };
 }
 
-function loadSeries(kind: string, key: string, userId: number): DatedValue[] {
-  const sqlite = db().$client;
+async function loadSeries(kind: string, key: string, userId: number): Promise<DatedValue[]> {
   if (kind === "biomarker") {
-    const rows = sqlite
-      .prepare(`SELECT date, value FROM biomarker WHERE user_id = ? AND (slug = ? OR LOWER(name) = LOWER(?)) ORDER BY date`)
-      .all(userId, key, key) as Array<{ date: number; value: number }>;
-    return rows.map((r) => ({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value }));
+    // slug = key OR LOWER(name) = LOWER(key). Convex only filters by slug, so fetch
+    // all and match either way in JS (rows arrive date ASC).
+    const { rows } = await convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId: userId,
+    });
+    const k = key.toLowerCase();
+    return rows
+      .filter((r) => r.slug === key || r.name.toLowerCase() === k)
+      .map((r) => ({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value }));
   }
   if (kind === "symptom") {
-    const rows = sqlite.prepare(`SELECT date, value FROM symptom_log WHERE user_id = ? AND key = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
-    return rows;
+    // Full per-key history, date ASC (exact match for the legacy SELECT).
+    const { rows } = await convexServer().query(api.symptoms.byKey, {
+      secret: bridgeSecret(), authUserId: userId, key,
+    });
+    return rows.map((r) => ({ date: r.date, value: r.value }));
   }
   if (kind === "habit") {
-    const rows = sqlite.prepare(`SELECT date, value FROM habit_log WHERE user_id = ? AND key = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
-    return rows;
+    // habit_log has no per-key Convex fn; list (capped 365d) then filter by key.
+    const { rows } = await convexServer().query(api.habits.list, {
+      secret: bridgeSecret(), authUserId: userId, days: 3650,
+    });
+    return rows
+      .filter((r) => r.key === key)
+      .map((r) => ({ date: r.date, value: r.value }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }
   if (kind === "supplement") {
-    const rows = sqlite
-      .prepare(`SELECT sl.date as date, sl.taken as value FROM supplement_log sl JOIN supplement s ON s.id = sl.supplement_id WHERE s.user_id = ? AND LOWER(s.name) LIKE LOWER(?) ORDER BY sl.date`)
-      .all(userId, `%${key}%`) as Array<{ date: string; value: number }>;
-    return rows;
+    // LOWER(s.name) LIKE %key% → collect matching supplement ids, then their taken logs.
+    const k = key.toLowerCase();
+    const { rows: supps } = await convexServer().query(api.supplements.list, {
+      secret: bridgeSecret(), authUserId: userId,
+    });
+    const matchIds = new Set(
+      supps.filter((s) => String(s.name ?? "").toLowerCase().includes(k)).map((s) => Number(s.id))
+    );
+    if (matchIds.size === 0) return [];
+    const out: DatedValue[] = [];
+    for (const id of matchIds) {
+      const res = await convexServer().query(api.supplements.logHistory, {
+        secret: bridgeSecret(), authUserId: userId, supplementId: id, days: 3650,
+      });
+      // With supplementId → per-supplement shape: { date, taken }[]
+      const logs = res.rows as Array<{ date: string; taken: number }>;
+      for (const l of logs) out.push({ date: l.date, value: l.taken });
+    }
+    return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }
   if (kind === "wearable") {
-    const rows = sqlite.prepare(`SELECT date, value FROM wearable_metric WHERE user_id = ? AND kind = ? ORDER BY date`).all(userId, key) as Array<{ date: string; value: number }>;
-    return rows;
+    // kind series, all sources combined (capped 365d), date ASC.
+    const { rows } = await convexServer().query(api.wearables.overview, {
+      secret: bridgeSecret(), authUserId: userId, days: 3650,
+    });
+    return rows
+      .filter((r) => r.kind === key)
+      .map((r) => ({ date: r.date, value: r.value }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   }
   return [];
 }
@@ -210,19 +267,24 @@ function loadSeries(kind: string, key: string, userId: number): DatedValue[] {
 // ──────────────────────────────────────────────────────────────────
 // Top correlations (precomputed, top 10)
 // ──────────────────────────────────────────────────────────────────
-function computeTopCorrelations(userId: number): Array<{ a: string; b: string; rho: number; p: number; n: number }> {
-  const sqlite = db().$client;
+async function computeTopCorrelations(userId: number): Promise<Array<{ a: string; b: string; rho: number; p: number; n: number }>> {
   const out: Array<{ a: string; b: string; rho: number; p: number; n: number }> = [];
 
-  const symptomLogs = sqlite.prepare(`SELECT date, key, value FROM symptom_log WHERE user_id = ?`).all(userId) as Array<{ date: string; key: string; value: number }>;
+  const { rows: symptomLogs } = await convexServer().query(api.symptoms.list, {
+    secret: bridgeSecret(), authUserId: userId, days: 3650,
+  });
   const symptomsByKey: Record<string, DatedValue[]> = {};
   for (const l of symptomLogs) (symptomsByKey[l.key] ??= []).push({ date: l.date, value: l.value });
 
-  const bmRows = sqlite.prepare(`SELECT slug, name, date, value FROM biomarker WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ slug: string; name: string; date: number; value: number }>;
+  const { rows: bmRows } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
   const bmsBySlug: Record<string, DatedValue[]> = {};
   for (const r of bmRows) (bmsBySlug[r.slug] ??= []).push({ date: new Date(r.date).toISOString().slice(0, 10), value: r.value });
 
-  const wearableRows = sqlite.prepare(`SELECT date, kind, value FROM wearable_metric WHERE user_id = ? ORDER BY date`).all(userId) as Array<{ date: string; kind: string; value: number }>;
+  const { rows: wearableRows } = await convexServer().query(api.wearables.overview, {
+    secret: bridgeSecret(), authUserId: userId, days: 3650,
+  });
   const wearablesByKind: Record<string, DatedValue[]> = {};
   for (const r of wearableRows) (wearablesByKind[r.kind] ??= []).push({ date: r.date, value: r.value });
 
@@ -259,78 +321,133 @@ function computeTopCorrelations(userId: number): Array<{ a: string; b: string; r
 type Hit = Awaited<ReturnType<typeof searchRag>>[number];
 
 async function buildContext(userQuery: string, activeSession: number, userId: number): Promise<{ context: string; sources: Hit[] }> {
-  const sqlite = db().$client;
+  // 1. Profile (via Convex — chat is owner-scoped, so no viewUserId)
+  const { data: profileEnc } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
+  const profileData = decryptProfile(profileEnc ? JSON.parse(profileEnc) : {});
 
-  // 1. Profile
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profileData = profileRow ? JSON.parse(profileRow.data) : {};
+  // 2. Latest 90 biomarkers (one per slug, latest). Convex returns date ASC, so the
+  // last row seen per slug is that slug's latest; then order slugs by date DESC, cap 90.
+  const { rows: bmAll } = await convexServer().query(api.biomarkers.all, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
+  const latestBySlug = new Map<string, { slug: string; name: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>();
+  for (const r of bmAll) {
+    latestBySlug.set(r.slug, { slug: r.slug, name: r.name, value: r.value, unit: r.unit, ref_low: r.refLow, ref_high: r.refHigh, date: r.date });
+  }
+  const bmRows = [...latestBySlug.values()].sort((a, b) => b.date - a.date).slice(0, 90);
 
-  // 2. Latest 90 biomarkers (one per slug, latest)
-  const bmRows = sqlite
-    .prepare(
-      `SELECT b.slug, b.name, b.value, b.unit, b.ref_low, b.ref_high, b.date FROM biomarker b JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date WHERE b.user_id = ? ORDER BY b.date DESC LIMIT 90`
-    )
-    .all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; ref_low: number | null; ref_high: number | null; date: number }>;
-
-  // 3. Full 138 DNA insights (no LIMIT)
-  const dnaRows = sqlite
-    .prepare(
-      `SELECT rsid, category, trait, user_genotype as ug, has_risk as hasRisk, magnitude, summary FROM dna_insight WHERE user_id = ? ORDER BY (has_risk * COALESCE(magnitude,1)) DESC, category, trait`
-    )
-    .all(userId) as Array<{ rsid: string; category: string; trait: string; ug: string; hasRisk: number | null; magnitude: number | null; summary: string }>;
+  // 3. Full 138 DNA insights. Sort like the legacy SQL:
+  //   (has_risk * COALESCE(magnitude,1)) DESC, category ASC, trait ASC
+  const { rows: dnaAll } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
+  const dnaRows = dnaAll
+    .map((d) => ({ rsid: d.rsid, category: d.category, trait: d.trait, ug: d.userGenotype, hasRisk: d.hasRisk, magnitude: d.magnitude, summary: d.summary }))
+    .sort((a, b) => {
+      const wa = (a.hasRisk ?? 0) * (a.magnitude ?? 1);
+      const wb = (b.hasRisk ?? 0) * (b.magnitude ?? 1);
+      if (wb !== wa) return wb - wa;
+      const c = (a.category ?? "").localeCompare(b.category ?? "");
+      if (c !== 0) return c;
+      return (a.trait ?? "").localeCompare(b.trait ?? "");
+    });
 
   // 4. Active supplements + 7d adherence
-  const supRows = sqlite
-    .prepare(`SELECT id, name, dose, unit, timing, frequency, target_biomarker, target_snp FROM supplement WHERE user_id = ? AND (ended_at IS NULL OR ended_at > ?)`)
-    .all(userId, Date.now()) as Array<{ id: number; name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; target_biomarker: string | null; target_snp: string | null }>;
-  const since7 = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-  const adherence = sqlite
-    .prepare(
-      `SELECT s.name, COUNT(sl.id) as taken FROM supplement s LEFT JOIN supplement_log sl ON sl.supplement_id = s.id AND sl.date >= ? AND sl.taken = 1 WHERE s.user_id = ? AND (s.ended_at IS NULL OR s.ended_at > ?) GROUP BY s.id`
-    )
-    .all(since7, userId, Date.now()) as Array<{ name: string; taken: number }>;
-  const adhMap = Object.fromEntries(adherence.map((a) => [a.name, a.taken]));
+  const { rows: suppAll } = await convexServer().query(api.supplements.list, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
+  const nowMs = Date.now();
+  const supRows = suppAll
+    .filter((s) => s.endedAt == null || Number(s.endedAt) > nowMs)
+    .map((s) => ({ id: s.id, name: s.name, dose: s.dose, unit: s.unit, timing: s.timing, frequency: s.frequency, target_biomarker: s.targetBiomarker, target_snp: s.targetSnp })) as Array<{ id: number; name: string; dose: string | null; unit: string | null; timing: string | null; frequency: string | null; target_biomarker: string | null; target_snp: string | null }>;
+  // taken=1 logs over the last 7 days, counted per supplement, mapped to name.
+  const takenRes = await convexServer().query(api.supplements.logHistory, {
+    secret: bridgeSecret(), authUserId: userId, days: 7,
+  });
+  // No supplementId → all-taken-since shape: { supplementId, date }[]
+  const takenLogs = takenRes.rows as Array<{ supplementId: number; date: string }>;
+  const countById = new Map<number, number>();
+  for (const l of takenLogs) countById.set(l.supplementId, (countById.get(l.supplementId) ?? 0) + 1);
+  const adhMap: Record<string, number> = {};
+  for (const s of supRows) adhMap[s.name] = countById.get(s.id) ?? 0;
 
   // 5. Symptoms 30d (averages)
-  const since30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const symptomAvg = sqlite
-    .prepare(`SELECT key, AVG(value) as avg, COUNT(*) as n FROM symptom_log WHERE user_id = ? AND date >= ? GROUP BY key ORDER BY n DESC`)
-    .all(userId, since30) as Array<{ key: string; avg: number; n: number }>;
+  const { rows: sympLogs } = await convexServer().query(api.symptoms.list, {
+    secret: bridgeSecret(), authUserId: userId, days: 30,
+  });
+  const sympAgg = new Map<string, { sum: number; n: number }>();
+  for (const l of sympLogs) {
+    const a = sympAgg.get(l.key) ?? { sum: 0, n: 0 };
+    a.sum += l.value; a.n += 1;
+    sympAgg.set(l.key, a);
+  }
+  const symptomAvg = [...sympAgg.entries()]
+    .map(([key, a]) => ({ key, avg: a.sum / a.n, n: a.n }))
+    .sort((a, b) => b.n - a.n);
 
   // 6. Habits 30d (counts)
-  const habitsCount = sqlite
-    .prepare(`SELECT key, COUNT(*) as n FROM habit_log WHERE user_id = ? AND date >= ? GROUP BY key ORDER BY n DESC`)
-    .all(userId, since30) as Array<{ key: string; n: number }>;
+  const { rows: habitLogs } = await convexServer().query(api.habits.list, {
+    secret: bridgeSecret(), authUserId: userId, days: 30,
+  });
+  const habitAgg = new Map<string, number>();
+  for (const l of habitLogs) habitAgg.set(l.key, (habitAgg.get(l.key) ?? 0) + 1);
+  const habitsCount = [...habitAgg.entries()]
+    .map(([key, n]) => ({ key, n }))
+    .sort((a, b) => b.n - a.n);
 
   // 7. Wearables 30d averages
-  const wearAvg = sqlite
-    .prepare(`SELECT kind, AVG(value) as avg, COUNT(*) as n FROM wearable_metric WHERE user_id = ? AND date >= ? GROUP BY kind`)
-    .all(userId, since30) as Array<{ kind: string; avg: number; n: number }>;
+  const { rows: wearRows } = await convexServer().query(api.wearables.overview, {
+    secret: bridgeSecret(), authUserId: userId, days: 30,
+  });
+  const wearAgg = new Map<string, { sum: number; n: number }>();
+  for (const r of wearRows) {
+    const a = wearAgg.get(r.kind) ?? { sum: 0, n: 0 };
+    a.sum += r.value; a.n += 1;
+    wearAgg.set(r.kind, a);
+  }
+  const wearAvg = [...wearAgg.entries()].map(([kind, a]) => ({ kind, avg: a.sum / a.n, n: a.n }));
 
   // 8. Top correlations (precomputed)
   let topCorr: Array<{ a: string; b: string; rho: number; p: number; n: number }> = [];
   try {
-    topCorr = computeTopCorrelations(userId);
+    topCorr = await computeTopCorrelations(userId);
   } catch {}
 
-  // 9. Active long-term memories
-  const memories = sqlite
-    .prepare(`SELECT kind, body, confidence FROM chat_memory WHERE user_id = ? AND active = 1 ORDER BY kind, created_at DESC LIMIT 200`)
-    .all(userId) as Array<{ kind: string; body: string; confidence: number }>;
+  // 9. Active long-term memories — ORDER BY kind, created_at DESC LIMIT 200
+  const { rows: memAll } = await convexServer().query(api.chat.listMemory, {
+    secret: bridgeSecret(), authUserId: userId, activeOnly: true,
+  });
+  const memories = memAll
+    .map((m) => ({ kind: m.kind, body: m.body, confidence: m.confidence ?? 0, createdAt: m.createdAt }))
+    .sort((a, b) => {
+      const c = a.kind.localeCompare(b.kind);
+      if (c !== 0) return c;
+      return b.createdAt - a.createdAt;
+    })
+    .slice(0, 200);
 
   // 9b. User notes — free-text observations attached to biomarkers/docs/etc.
-  const notes = sqlite
-    .prepare(`SELECT target_type as t, target_id as tid, body, created_at FROM note WHERE user_id = ? ORDER BY created_at DESC LIMIT 40`)
-    .all(userId) as Array<{ t: string; tid: string; body: string; created_at: number }>;
+  const { rows: notesAll } = await convexServer().query(api.notes.list, {
+    secret: bridgeSecret(), authUserId: userId,
+  });
+  const notes = notesAll
+    .slice(0, 40)
+    .map((n) => ({ t: n.targetType, tid: n.targetId, body: n.body, created_at: n.createdAt })) as Array<{ t: string; tid: string; body: string; created_at: number }>;
 
   // 10. Last 12 messages of current session — verify session ownership first.
-  const sessOwner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(activeSession) as { user_id: number } | undefined;
-  const history = sessOwner && sessOwner.user_id === userId
-    ? sqlite
-        .prepare(`SELECT role, content, created_at FROM chat_message WHERE session_id = ? ORDER BY id DESC LIMIT 12`)
-        .all(activeSession) as Array<{ role: string; content: string; created_at: number }>
-    : [];
-  history.reverse();
+  const sessOwner = await convexServer().query(api.chat.sessionOwner, {
+    secret: bridgeSecret(), sessionId: activeSession,
+  });
+  let history: Array<{ role: string; content: string; created_at: number }> = [];
+  if (sessOwner && sessOwner.userId === userId) {
+    const { rows: msgs } = await convexServer().query(api.chat.listMessages, {
+      secret: bridgeSecret(), sessionId: activeSession, order: "desc", limit: 12,
+    });
+    history = msgs.map((m) => ({ role: m.role, content: m.content, created_at: m.createdAt }));
+    history.reverse();
+  }
 
   // 11. RAG hits seeded by current query
   let hits: Hit[] = [];
@@ -431,32 +548,38 @@ export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
   if (isDemoUser(s.userId)) return new Response(JSON.stringify({ error: "Mode démo en lecture seule. Crée un compte pour modifier." }), { status: 403 });
-  ensureSchema();
 
   const { messages, sessionId } = (await req.json()) as { messages: { role: "user" | "assistant"; content: string }[]; sessionId?: number };
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUser) return new Response(JSON.stringify({ content: "Pas de question." }));
 
-  const sqlite = db().$client;
   const userId = s.userId;
-  let activeSession = sessionId;
-  if (!activeSession) {
-    const ins = sqlite
-      .prepare(`INSERT INTO chat_session (title, created_at, updated_at, user_id) VALUES (?, ?, ?, ?)`)
-      .run("Nouvelle conversation", Date.now(), Date.now(), userId);
-    activeSession = Number(ins.lastInsertRowid);
+  let activeSessionRaw = sessionId;
+  if (!activeSessionRaw) {
+    const { id } = await convexServer().mutation(api.chat.createSession, {
+      secret: bridgeSecret(), authUserId: userId, title: "Nouvelle conversation",
+    });
+    activeSessionRaw = id;
   } else {
     // Verify the session id provided actually belongs to this user.
-    const owner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(activeSession) as { user_id: number } | undefined;
-    if (!owner || owner.user_id !== userId) {
+    const owner = await convexServer().query(api.chat.sessionOwner, {
+      secret: bridgeSecret(), sessionId: activeSessionRaw,
+    });
+    if (!owner || owner.userId !== userId) {
       return new Response(JSON.stringify({ error: "session not found" }), { status: 404 });
     }
   }
-  sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at, user_id) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "user", lastUser.content, Date.now(), userId);
+  // Capture as a const so the value stays typed `number` inside the stream closure.
+  const activeSession: number = activeSessionRaw;
+  await convexServer().mutation(api.chat.insertMessage, {
+    secret: bridgeSecret(), authUserId: userId, sessionId: activeSession, role: "user", content: lastUser.content,
+  });
 
   const apiKey = anthropicApiKey();
   if (!apiKey) {
-    sqlite.prepare(`INSERT INTO chat_message (session_id, role, content, created_at, user_id) VALUES (?, ?, ?, ?, ?)`).run(activeSession, "assistant", "ANTHROPIC_API_KEY non configurée.", Date.now(), userId);
+    await convexServer().mutation(api.chat.insertMessage, {
+      secret: bridgeSecret(), authUserId: userId, sessionId: activeSession, role: "assistant", content: "ANTHROPIC_API_KEY non configurée.",
+    });
     return new Response(JSON.stringify({ content: "ANTHROPIC_API_KEY non configurée.", sessionId: activeSession, sources: [] }));
   }
 
@@ -532,13 +655,17 @@ export async function POST(req: Request) {
         if (!fullText) fullText = "(l'équipe médicale n'a pas produit de réponse)";
 
         // Persist final assistant message
-        sqlite
-          .prepare(`INSERT INTO chat_message (session_id, role, content, sources, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`)
-          .run(activeSession, "assistant", fullText, JSON.stringify(sourcesAccum), Date.now(), userId);
-        sqlite.prepare(`UPDATE chat_session SET updated_at = ? WHERE id = ?`).run(Date.now(), activeSession);
+        await convexServer().mutation(api.chat.insertMessage, {
+          secret: bridgeSecret(), authUserId: userId, sessionId: activeSession, role: "assistant", content: fullText, sources: JSON.stringify(sourcesAccum),
+        });
+        await convexServer().mutation(api.chat.touchSession, {
+          secret: bridgeSecret(), sessionId: activeSession,
+        });
 
         // Auto-rename on first exchange
-        const msgCount = (sqlite.prepare(`SELECT COUNT(*) c FROM chat_message WHERE session_id = ?`).get(activeSession) as { c: number }).c;
+        const { count: msgCount } = await convexServer().query(api.chat.countMessages, {
+          secret: bridgeSecret(), sessionId: activeSession,
+        });
         if (msgCount === 2) {
           try {
             const titleResp = await client.messages.create({
@@ -553,7 +680,9 @@ export async function POST(req: Request) {
               .trim()
               .replace(/^["']|["']$/g, "")
               .slice(0, 60);
-            if (title) sqlite.prepare(`UPDATE chat_session SET title = ? WHERE id = ?`).run(title, activeSession);
+            if (title) await convexServer().mutation(api.chat.renameSession, {
+              secret: bridgeSecret(), authUserId: userId, sessionId: activeSession, title,
+            });
           } catch {}
         }
 
@@ -595,16 +724,17 @@ export async function POST(req: Request) {
 async function fireAndForgetMemoryExtraction(sessionId: number): Promise<void> {
   const apiKey = anthropicApiKey();
   if (!apiKey) return;
-  const sqlite = db().$client;
   // Derive the session owner so extracted memories are stamped with THEIR user_id.
   // Without this the INSERT below defaulted to user_id 1, leaking every beta
   // user's chat memories into the owner's account.
-  const owner = sqlite.prepare(`SELECT user_id FROM chat_session WHERE id = ?`).get(sessionId) as { user_id: number } | undefined;
-  if (!owner) return;
-  const userId = owner.user_id;
-  const msgs = sqlite
-    .prepare(`SELECT role, content FROM chat_message WHERE session_id = ? ORDER BY id ASC LIMIT 40`)
-    .all(sessionId) as Array<{ role: string; content: string }>;
+  const owner = await convexServer().query(api.chat.sessionOwner, {
+    secret: bridgeSecret(), sessionId,
+  });
+  if (!owner || owner.userId == null) return;
+  const userId = owner.userId;
+  const { rows: msgs } = await convexServer().query(api.chat.listMessages, {
+    secret: bridgeSecret(), sessionId, order: "asc", limit: 40,
+  });
   if (msgs.length < 4) return;
 
   const transcript = msgs.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
@@ -643,17 +773,18 @@ Si rien à extraire : {"items":[]}`;
     if (!parsed.items?.length) return;
 
     const allowedKinds = new Set(["fact", "preference", "goal", "concern", "medical_history"]);
-    const insert = sqlite.prepare(
-      `INSERT INTO chat_memory (kind, body, source_session_id, confidence, created_at, active, user_id) VALUES (?, ?, ?, ?, ?, 1, ?)`
-    );
-    const dedup = sqlite.prepare(`SELECT id FROM chat_memory WHERE kind = ? AND body = ? AND user_id = ? LIMIT 1`);
     for (const it of parsed.items) {
       if (!allowedKinds.has(it.kind)) continue;
       const body = String(it.body).slice(0, 500).trim();
       if (!body) continue;
-      const existing = dedup.get(it.kind, body, userId) as { id: number } | undefined;
-      if (existing) continue;
-      insert.run(it.kind, body, sessionId, Math.min(Math.max(Number(it.confidence ?? 0.8), 0), 1), Date.now(), userId);
+      const { exists } = await convexServer().query(api.chat.memoryExists, {
+        secret: bridgeSecret(), authUserId: userId, kind: it.kind, body,
+      });
+      if (exists) continue;
+      await convexServer().mutation(api.chat.insertMemory, {
+        secret: bridgeSecret(), authUserId: userId, kind: it.kind, body,
+        sourceSessionId: sessionId, confidence: Math.min(Math.max(Number(it.confidence ?? 0.8), 0), 1),
+      });
     }
   } catch {
     // silent — extraction is best-effort

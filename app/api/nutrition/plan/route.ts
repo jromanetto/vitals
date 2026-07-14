@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { currentUserId, effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { anthropicApiKey } from "@/lib/secrets";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { decryptProfile } from "@/lib/crypto-fields";
@@ -16,15 +16,15 @@ export const maxDuration = 60;
 const CACHE_TTL_MS = 7 * 24 * 3600 * 1000;
 const REPORT_KIND = "nutrition-plan";
 
-function loadPrefs(sqlite: ReturnType<typeof db>["$client"], userId: number): NutritionPref {
-  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as
-    | { diet_type: string; allergies: string; aversions: string; budget: string; cuisines: string }
-    | undefined;
+// Convex nutrition_pref stores allergies/cuisines as JSON strings (like the legacy
+// SQLite columns), so they still need parsing here.
+type NutritionPrefRow = { dietType: string; allergies: string; aversions: string; budget: string; cuisines: string };
+function prefsFromRow(row: NutritionPrefRow | null): NutritionPref {
   if (!row) {
     return { dietType: "omnivore", allergies: [], aversions: "", budget: "medium", cuisines: [] };
   }
   return {
-    dietType: row.diet_type as NutritionPref["dietType"],
+    dietType: row.dietType as NutritionPref["dietType"],
     allergies: safeJsonArray(row.allergies),
     aversions: row.aversions ?? "",
     budget: row.budget as NutritionPref["budget"],
@@ -53,52 +53,60 @@ function summarizeProfile(p: Record<string, unknown>): string {
 export async function GET(req: Request) {
   const userId = await effectiveUserId();
   const authId = await currentUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!userId || !authId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const viewingOther = userId !== authId; // viewing a household member → never persist
-  ensureSchema();
+  const readViewUserId = userId; // effectiveUserId (truthy here)
 
   const url = new URL(req.url);
   // ?refresh=1 (preferred) or legacy ?force=1 forces regeneration
   const force = url.searchParams.get("refresh") === "1" || url.searchParams.get("force") === "1";
 
-  const sqlite = db().$client;
-
   // Fast path: serve any recent cached plan immediately, scoped to this user
-  // so demo accounts never see Julien's plan and vice-versa.
+  // (Convex resolves the read user) so demo accounts never see Julien's plan.
   if (!force) {
-    const cached = sqlite.prepare(
-      `SELECT body, meta, created_at FROM report WHERE kind = ? AND user_id = ? ORDER BY created_at DESC LIMIT 1`
-    ).get(REPORT_KIND, userId) as { body: string; meta: string; created_at: number } | undefined;
-    if (cached && Date.now() - cached.created_at < CACHE_TTL_MS) {
+    const { row } = await convexServer().query(api.reports.latestByKind, {
+      secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId, kind: REPORT_KIND,
+    });
+    if (row && Date.now() - row.createdAt < CACHE_TTL_MS) {
       try {
-        const plan = JSON.parse(cached.body) as NutritionPlan;
-        return NextResponse.json({ ...plan, cached: true, generatedAt: cached.created_at });
+        const plan = JSON.parse(row.body) as NutritionPlan;
+        return NextResponse.json({ ...plan, cached: true, generatedAt: row.createdAt });
       } catch {}
     }
   }
 
-  const prefs = loadPrefs(sqlite, userId);
+  // Reads via Convex (isolation resolved server-side via read-user resolution).
+  const [prefRes, bioRes, dnaRes, profRes] = await Promise.all([
+    convexServer().query(api.profile.nutritionPref, { secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId }),
+    convexServer().query(api.biomarkers.all, { secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId }),
+    convexServer().query(api.dna.insights, { secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId }),
+    convexServer().query(api.profile.get, { secret: bridgeSecret(), authUserId: authId, viewUserId: readViewUserId }),
+  ]);
 
-  const latestBms = sqlite.prepare(`
-    SELECT b.slug, b.name, b.value, b.unit, b.ref_low as refLow, b.ref_high as refHigh, b.date
-    FROM biomarker b
-    JOIN (SELECT slug, MAX(date) AS md FROM biomarker WHERE user_id = ? GROUP BY slug) x ON x.slug = b.slug AND x.md = b.date
-    WHERE b.user_id = ?
-  `).all(userId, userId) as Array<{ slug: string; name: string; value: number; unit: string | null; refLow: number | null; refHigh: number | null; date: number }>;
-  const biomarkers = latestBms.map((b) => ({
-    ...b,
+  const prefs = prefsFromRow(prefRes.row);
+
+  // Latest biomarker per slug (group by slug keeping max date).
+  const latestBySlug = new Map<string, (typeof bioRes.rows)[number]>();
+  for (const r of bioRes.rows) {
+    const cur = latestBySlug.get(r.slug);
+    if (!cur || r.date > cur.date) latestBySlug.set(r.slug, r);
+  }
+  const biomarkers = [...latestBySlug.values()].map((b) => ({
+    slug: b.slug, name: b.name, value: b.value, unit: b.unit, refLow: b.refLow, refHigh: b.refHigh, date: b.date,
     optimalLow: META_BY_SLUG[b.slug]?.optimalLow ?? null,
     optimalHigh: META_BY_SLUG[b.slug]?.optimalHigh ?? null,
   }));
 
-  const dnaRows = sqlite.prepare(`SELECT rsid, trait, user_genotype as userGenotype, category FROM dna_insight WHERE user_genotype IS NOT NULL AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; userGenotype: string; category: string }>;
+  const dnaRows = dnaRes.rows
+    .filter((d) => d.userGenotype != null)
+    .map((d) => ({ rsid: d.rsid, trait: d.trait, userGenotype: d.userGenotype as string, category: d.category }));
 
   const engine = runEngine({ biomarkers, dna: dnaRows, prefs });
   const fingerprint = inputFingerprint({ biomarkers, dna: dnaRows, prefs });
   const dataHash = crypto.createHash("sha256").update(fingerprint).digest("hex").slice(0, 16);
 
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? decryptProfile(JSON.parse(profileRow.data)) : {};
+  // profile.data is the field-encrypted blob returned verbatim by Convex; decrypt here.
+  const profile = profRes.data ? decryptProfile(JSON.parse(profRes.data)) : {};
   const profileSummary = summarizeProfile(profile);
 
   const apiKey = anthropicApiKey();
@@ -118,14 +126,14 @@ export async function GET(req: Request) {
   // household member's account while merely viewing it.
   const generatedAt = Date.now();
   const persistedPlan: NutritionPlan = { ...plan, cached: false, generatedAt };
-  if (!viewingOther) sqlite.prepare(`INSERT INTO report (kind, title, body, meta, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`).run(
-    REPORT_KIND,
-    `Plan nutrition — ${plan.dietPattern.label}`,
-    JSON.stringify(persistedPlan),
-    JSON.stringify({ generatedAt, dataHash, profileSnapshot: profileSummary }),
-    generatedAt,
-    userId
-  );
+  if (!viewingOther) await convexServer().mutation(api.reports.insert, {
+    secret: bridgeSecret(),
+    authUserId: authId,
+    kind: REPORT_KIND,
+    title: `Plan nutrition — ${plan.dietPattern.label}`,
+    body: JSON.stringify(persistedPlan),
+    meta: JSON.stringify({ generatedAt, dataHash, profileSnapshot: profileSummary }),
+  });
 
   return NextResponse.json(persistedPlan);
 }

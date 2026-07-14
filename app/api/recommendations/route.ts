@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { anonymizeProfile } from "@/lib/anonymize";
 
@@ -63,15 +63,32 @@ const AGE_GATED_BIOMARKERS: Array<{ slug: string; name: string; minAge: number; 
 ];
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const readViewUserId = viewUserId ?? authUserId;
 
-  const measured = new Set((sqlite.prepare(`SELECT DISTINCT slug FROM biomarker WHERE user_id = ?`).all(userId) as Array<{ slug: string }>).map((r) => r.slug));
-  const dnaRisks = sqlite.prepare(`SELECT rsid, trait, has_risk FROM dna_insight WHERE has_risk = 1 AND user_id = ?`).all(userId) as Array<{ rsid: string; trait: string; has_risk: number }>;
-  const profileRow = sqlite.prepare(`SELECT data FROM profile WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(userId) as { data: string } | undefined;
-  const profile = profileRow ? anonymizeProfile(decryptProfile(JSON.parse(profileRow.data))) : {};
+  // Biomarkers + DNA insights now come from Convex (isolation resolved server-side
+  // via active-link-only). Only the profile read stays on SQLite (no Convex fn yet).
+  const [bio, dna] = await Promise.all([
+    convexServer().query(api.biomarkers.all, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+    convexServer().query(api.dna.insights, {
+      secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+    }),
+  ]);
+
+  // Legacy did SELECT DISTINCT slug — only presence matters, not latest value.
+  const measured = new Set(bio.rows.map((r) => r.slug));
+  const dnaRisks = dna.rows
+    .filter((r) => !!r.hasRisk)
+    .map((r) => ({ rsid: r.rsid, trait: r.trait, has_risk: 1 as const }));
+
+  const { data } = await convexServer().query(api.profile.get, {
+    secret: bridgeSecret(), authUserId, viewUserId: readViewUserId,
+  });
+  const profile = data ? anonymizeProfile(decryptProfile(JSON.parse(data))) : {};
   const age = profile.birthDate ? Math.floor((Date.now() - new Date(profile.birthDate as string).getTime()) / (365.25 * 86400000)) : null;
 
   // Build map: slug → triggers + priority

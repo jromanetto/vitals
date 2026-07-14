@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import type { NutritionPref } from "@/lib/nutrition/types";
 
 export const runtime = "nodejs";
@@ -20,14 +20,10 @@ function safeJsonArray(s: string | null | undefined): string[] {
 export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
-  const row = sqlite.prepare(`SELECT diet_type, allergies, aversions, budget, cuisines FROM nutrition_pref WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`).get(s.userId) as
-    | { diet_type: string; allergies: string; aversions: string; budget: string; cuisines: string }
-    | undefined;
+  const { row } = await convexServer().query(api.profile.nutritionPref, { secret: bridgeSecret(), authUserId: s.userId });
   if (!row) return NextResponse.json(DEFAULT);
   return NextResponse.json({
-    dietType: row.diet_type as NutritionPref["dietType"],
+    dietType: row.dietType as NutritionPref["dietType"],
     allergies: safeJsonArray(row.allergies),
     aversions: row.aversions ?? "",
     budget: row.budget as NutritionPref["budget"],
@@ -38,22 +34,19 @@ export async function GET() {
 export async function POST(req: Request) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
   const body = await req.json().catch(() => null) as Partial<NutritionPref> | null;
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
-  const dietType = VALID_DIETS.includes(body.dietType as never) ? body.dietType : "omnivore";
-  const budget = VALID_BUDGETS.includes(body.budget as never) ? body.budget : "medium";
+  const dietType = VALID_DIETS.includes(body.dietType as never) ? body.dietType! : "omnivore";
+  const budget = VALID_BUDGETS.includes(body.budget as never) ? body.budget! : "medium";
   const allergies = (Array.isArray(body.allergies) ? body.allergies : []).filter((a) => VALID_ALLERGIES.includes(a as never));
   const aversions = typeof body.aversions === "string" ? body.aversions.slice(0, 500) : "";
   const cuisines = (Array.isArray(body.cuisines) ? body.cuisines : []).slice(0, 10).map(String);
 
-  const sqlite = db().$client;
-  // Single-row-per-user pattern: delete this user's row then insert
-  sqlite.prepare(`DELETE FROM nutrition_pref WHERE user_id = ?`).run(s.userId);
-  sqlite.prepare(`INSERT INTO nutrition_pref (diet_type, allergies, aversions, budget, cuisines, updated_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    dietType, JSON.stringify(allergies), aversions, budget, JSON.stringify(cuisines), Date.now(), s.userId
-  );
+  await convexServer().mutation(api.profile.upsertNutritionPref, {
+    secret: bridgeSecret(), authUserId: s.userId,
+    dietType, allergies: JSON.stringify(allergies), aversions, budget, cuisines: JSON.stringify(cuisines),
+  });
 
   return NextResponse.json({ ok: true, prefs: { dietType, allergies, aversions, budget, cuisines } });
 }

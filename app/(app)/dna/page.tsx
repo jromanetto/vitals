@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
-import { effectiveUserId } from "@/lib/auth";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { DnaCategoryCard } from "@/components/dna-category-card";
 import { DnaTopFindings } from "@/components/dna-top-findings";
 import { DnaOverview } from "@/components/dna-overview";
@@ -25,37 +27,51 @@ const CATEGORIES = [
   { id: "carriers", title: "Porteur", desc: "Mutations récessives transmissibles." },
 ];
 
-async function counts(userId: number) {
+const isCarrier = (cat: string) => cat.toLowerCase() === "carrier" || cat.toLowerCase() === "carriers" || cat.toLowerCase() === "porteur";
+
+async function counts(authUserId: number, viewUserId: number) {
+  // dna_variant (1.8M raw SNP rows) stays on SQLite — not migrated to Convex.
   ensureSchema();
   const d = db();
-  const variants = d.$client.prepare(`SELECT COUNT(*) as c FROM dna_variant WHERE user_id = ?`).get(userId) as { c: number } | undefined;
-  const rows = d.$client.prepare(`
-    SELECT category,
-           COUNT(*) as c,
-           SUM(CASE WHEN has_risk = 1 THEN 1 ELSE 0 END) as risk,
-           SUM(CASE WHEN is_protective = 1 THEN 1 ELSE 0 END) as protective
-    FROM dna_insight
-    WHERE user_id = ?
-    GROUP BY category
-  `).all(userId) as Array<{ category: string; c: number; risk: number; protective: number }>;
-  const byCat = Object.fromEntries(rows.map((r) => [r.category, { c: r.c, risk: r.risk, protective: r.protective }]));
+  const variants = d.$client.prepare(`SELECT COUNT(*) as c FROM dna_variant WHERE user_id = ?`).get(viewUserId) as { c: number } | undefined;
+
+  // dna_insight (derived) reads from Convex, resolved through the household guard.
+  const { rows: insights } = await convexServer().query(api.dna.insights, {
+    secret: bridgeSecret(), authUserId, viewUserId,
+  });
+
+  // Group by category into { c, risk, protective }.
+  const byCat: Record<string, { c: number; risk: number; protective: number }> = {};
+  for (const r of insights) {
+    const g = (byCat[r.category] ??= { c: 0, risk: 0, protective: 0 });
+    g.c += 1;
+    if (r.hasRisk === 1) g.risk += 1;
+    if (r.isProtective === 1) g.protective += 1;
+  }
   // Carrier traits aren't a personal risk — they're hetero recessive mutations
   // relevant only for reproduction. Excluding them from the global "% favorable"
   // avoids dragging the score down for variants the user can't act on.
-  const isCarrier = (cat: string) => cat.toLowerCase() === "carrier" || cat.toLowerCase() === "carriers" || cat.toLowerCase() === "porteur";
-  const totals = rows
-    .filter((r) => !isCarrier(r.category))
-    .reduce((acc, r) => ({ c: acc.c + r.c, risk: acc.risk + r.risk, protective: acc.protective + r.protective }), { c: 0, risk: 0, protective: 0 });
-  const carrierCount = rows.filter((r) => isCarrier(r.category)).reduce((a, r) => a + r.c, 0);
+  const totals = Object.entries(byCat)
+    .filter(([cat]) => !isCarrier(cat))
+    .reduce((acc, [, g]) => ({ c: acc.c + g.c, risk: acc.risk + g.risk, protective: acc.protective + g.protective }), { c: 0, risk: 0, protective: 0 });
 
-  const top = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, magnitude, summary FROM dna_insight WHERE has_risk = 1 AND user_id = ? AND LOWER(category) NOT IN ('carrier','carriers','porteur') ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all(userId) as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string }>;
-  const strengths = d.$client.prepare(`SELECT rsid, category, trait, user_genotype as genotype, COALESCE(magnitude,0) as magnitude, summary, is_protective as isProtective FROM dna_insight WHERE is_protective = 1 AND user_id = ? ORDER BY COALESCE(magnitude,0) DESC LIMIT 6`).all(userId) as Array<{ rsid: string; category: string; trait: string; genotype: string; magnitude: number; summary: string; isProtective: number }>;
+  const top = insights
+    .filter((r) => r.hasRisk === 1 && !isCarrier(r.category))
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 6)
+    .map((r) => ({ rsid: r.rsid, category: r.category, trait: r.trait, genotype: r.userGenotype ?? "", magnitude: r.magnitude ?? 0, summary: r.summary ?? "" }));
+
+  const strengths = insights
+    .filter((r) => r.isProtective === 1)
+    .sort((a, b) => (b.magnitude ?? 0) - (a.magnitude ?? 0))
+    .slice(0, 6)
+    .map((r) => ({ rsid: r.rsid, category: r.category, trait: r.trait, genotype: r.userGenotype ?? "", magnitude: r.magnitude ?? 0, summary: r.summary ?? "", isProtective: r.isProtective === 1 }));
 
   return {
     totalVariants: variants?.c ?? 0,
     byCat,
     top,
-    strengths: strengths.map((s) => ({ ...s, isProtective: !!s.isProtective })),
+    strengths,
     totalAnalyzed: totals.c,
     riskCount: totals.risk,
     protectiveCount: totals.protective,
@@ -63,9 +79,10 @@ async function counts(userId: number) {
 }
 
 export default async function DnaPage() {
-  const userId = await effectiveUserId();
-  if (!userId) redirect("/login");
-  const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts(userId);
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) redirect("/login");
+  const { totalVariants, byCat, top, strengths, totalAnalyzed, riskCount, protectiveCount } = await counts(authUserId, viewUserId ?? authUserId);
   return (
     <div className="space-y-12">
       <PageHeader

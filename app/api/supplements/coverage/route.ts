@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { effectiveUserId } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { currentUserId, effectiveUserId } from "@/lib/auth";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { NUTRIENT_TARGETS, TARGETS_BY_KEY, convertTo, statusOf, type CoverageStatus, type NutrientTarget } from "@/lib/nutrient-targets";
 import { nutrientsFromText } from "@/lib/supplement-nutrients";
 
@@ -45,12 +45,26 @@ type Coverage = {
 };
 
 export async function GET() {
-  const userId = await effectiveUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  ensureSchema();
-  const sqlite = db().$client;
+  const authUserId = await currentUserId();
+  const viewUserId = await effectiveUserId();
+  if (!authUserId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const rows = sqlite.prepare(`SELECT id, name, brand, dose, unit, frequency, ingredients, ended_at FROM supplement WHERE ended_at IS NULL AND user_id = ?`).all(userId) as SupRow[];
+  const { rows: allRows } = await convexServer().query(api.supplements.list, {
+    secret: bridgeSecret(), authUserId, viewUserId: viewUserId ?? authUserId,
+  });
+  // Legacy filtered to active supplements (ended_at IS NULL) server-side.
+  const rows: SupRow[] = allRows
+    .filter((r) => (r.endedAt as number | null) == null)
+    .map((r) => ({
+      id: r.id as number,
+      name: (r.name as string) ?? "",
+      brand: (r.brand as string | null) ?? null,
+      dose: (r.dose as string | null) ?? null,
+      unit: (r.unit as string | null) ?? null,
+      frequency: (r.frequency as string | null) ?? null,
+      ingredients: (r.ingredients as string | null) ?? null,
+      ended_at: (r.endedAt as number | null) ?? null,
+    }));
 
   const accum: Record<string, Coverage> = {};
   function add(key: string, supId: number, supName: string, value: number, unit: string, freq: number) {
