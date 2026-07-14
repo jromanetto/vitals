@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import { sealData } from "iron-session";
 
-const BASE = "http://127.0.0.1:3015";
+const BASE = process.env.SMOKE_BASE || "http://127.0.0.1:3015";
 const auth = JSON.parse(fs.readFileSync("data/auth.json", "utf8"));
 const tok = await sealData(
   { userId: 1, email: "julien@romanetto.com", iat: Date.now() },
