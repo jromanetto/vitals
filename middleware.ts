@@ -94,7 +94,9 @@ export function middleware(req: NextRequest) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.anthropic.com",
+      // Convex: HTTPS for the initial handshake + WSS for the reactive sync socket
+      // (browser->Convex live queries). Wildcard covers dev + prod deployments.
+      "connect-src 'self' https://api.anthropic.com https://*.convex.cloud wss://*.convex.cloud",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
