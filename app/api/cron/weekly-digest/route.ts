@@ -16,8 +16,8 @@
  * Failures on individual users are caught and reported in `errors[]` — one bad
  * user must not break the whole batch.
  */
-import { ensureSchema } from "@/lib/db/migrate";
-import { db } from "@/lib/db";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { sendEmail, isEmailConfigured } from "@/lib/email";
 import {
   computeWeeklyDeltas,
@@ -59,17 +59,12 @@ async function runDigest(req: Request): Promise<Response> {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  ensureSchema();
-  const sqlite = db().$client;
-
-  // Pull users. The `user` table is created lazily by the signup route, so
-  // guard against it not existing yet.
+  // Pull recipients from Convex, the source of truth for accounts.
   let users: UserRow[] = [];
   try {
-    users = sqlite
-      .prepare(`SELECT id, email FROM user ORDER BY id ASC`)
-      .all() as UserRow[];
-  } catch {
+    users = (await convexServer().query(api.users.listAll, { secret: bridgeSecret() })).rows;
+  } catch (e) {
+    console.error("[weekly-digest] user list", e);
     users = [];
   }
 

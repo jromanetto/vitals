@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { sealData } from "iron-session";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { logAudit } from "@/lib/audit";
 import { sendEmail, welcomeTemplate, waitlistTemplate } from "@/lib/email";
 import { rateLimitByIp, extractIp } from "@/lib/lockout";
@@ -51,18 +51,6 @@ export async function POST(req: Request) {
     );
   }
 
-  ensureSchema();
-  const sqlite = db().$client;
-  // Ensure user table exists (idempotent)
-  sqlite.exec(`CREATE TABLE IF NOT EXISTS user (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT UNIQUE NOT NULL,
-    hash TEXT NOT NULL,
-    secret TEXT NOT NULL,
-    role TEXT DEFAULT 'beta',
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-  )`);
-
   let body: { email?: string; password?: string; inviteCode?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "invalid body" }, { status: 400 }); }
   const email = (body.email || "").trim().toLowerCase();
@@ -73,20 +61,21 @@ export async function POST(req: Request) {
   if (password.length < 10) return NextResponse.json({ error: "Mot de passe trop court (10 caractères minimum)" }, { status: 400 });
   if (!/[A-Z]/.test(password) || !/\d/.test(password)) return NextResponse.json({ error: "Mot de passe doit contenir 1 majuscule et 1 chiffre" }, { status: 400 });
 
-  const existing = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email) as { id: number } | undefined;
-  if (existing) return NextResponse.json({ error: "Cet email est déjà utilisé" }, { status: 409 });
+  const { id: existingId } = await convexServer().query(api.users.idByEmail, {
+    secret: bridgeSecret(), email,
+  });
+  if (existingId != null) return NextResponse.json({ error: "Cet email est déjà utilisé" }, { status: 409 });
 
   // Gating: the beta is open if there are still free capacity slots
   // (betaUserCap in auth.json) or it's forced open via env, OR the request
   // carries a valid invite code. Anyone else lands on the waitlist.
-  const betaOpen = betaStatus().open;
+  const betaOpen = (await betaStatus()).open;
   const configuredInvite = getInviteCode();
   const validInvite = configuredInvite.length > 0 && inviteCode === configuredInvite;
   if (!betaOpen && !validInvite) {
     // Persist to waitlist table for later invitation
     try {
-      sqlite.exec(`CREATE TABLE IF NOT EXISTS waitlist (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000), invited_at INTEGER)`);
-      sqlite.prepare(`INSERT OR IGNORE INTO waitlist (email) VALUES (?)`).run(email);
+      await convexServer().mutation(api.waitlist.add, { secret: bridgeSecret(), email });
     } catch (e) { console.error("[signup] waitlist insert", e); }
     // Send waitlist confirmation email (best-effort, non-blocking)
     sendEmail({ to: email, ...waitlistTemplate(email) }).catch((e) => console.error("[signup] waitlist email", e));
@@ -105,8 +94,9 @@ export async function POST(req: Request) {
 
   const hash = await bcrypt.hash(password, 12);
   const secret = crypto.randomBytes(48).toString("base64url");
-  const result = sqlite.prepare(`INSERT INTO user (email, hash, secret) VALUES (?, ?, ?)`).run(email, hash, secret);
-  const userId = Number(result.lastInsertRowid);
+  const { id: userId } = await convexServer().mutation(api.users.create, {
+    secret: bridgeSecret(), email, hash, userSecret: secret,
+  });
 
   // Seal session
   const sealed = await sealData({ userId, email, iat: Date.now() }, { password: getSessionPassword(), ttl: TTL });

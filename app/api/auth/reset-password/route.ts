@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { readCredsFresh, writeCreds } from "@/lib/auth";
 import { rateLimitByIp, extractIp } from "@/lib/lockout";
 import { logAudit } from "@/lib/audit";
@@ -20,7 +20,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Trop de tentatives. Réessaye dans quelques minutes." }, { status: 429, headers: { "Retry-After": String(rl.retryAfter) } });
   }
 
-  ensureSchema();
   const body = (await req.json().catch(() => ({}))) as { token?: string; password?: string };
   const token = (body.token || "").trim();
   const password = body.password || "";
@@ -29,24 +28,28 @@ export async function POST(req: Request) {
   if (password.length < 10) return NextResponse.json({ error: "Mot de passe trop court (10 caractères minimum)" }, { status: 400 });
   if (!/[A-Z]/.test(password) || !/\d/.test(password)) return NextResponse.json({ error: "Mot de passe doit contenir 1 majuscule et 1 chiffre" }, { status: 400 });
 
-  const sqlite = db().$client;
-  const row = sqlite
-    .prepare(`SELECT id, email, expires_at AS expiresAt, used FROM password_reset WHERE token_hash = ?`)
-    .get(sha256(token)) as { id: number; email: string; expiresAt: number; used: number } | undefined;
-
-  if (!row || row.used || row.expiresAt < Date.now()) {
+  // Validate and burn the token in one transactional call. The previous
+  // SELECT-then-UPDATE checked the token, changed the password, and only then
+  // marked it used, so two requests arriving together could both pass the check
+  // and consume the same link. Burning up front closes that window; the cost is
+  // that a failure after this point requires requesting a new link, which is
+  // the right trade for a credential-changing operation.
+  const consumed = await convexServer().mutation(api.passwordReset.consume, {
+    secret: bridgeSecret(), tokenHash: sha256(token),
+  });
+  if (!consumed.ok || !consumed.email) {
     return NextResponse.json({ error: "Ce lien est invalide ou a expiré. Refais une demande." }, { status: 400 });
   }
 
   const hash = await bcrypt.hash(password, 12);
-  const email = row.email.toLowerCase();
+  const email = consumed.email.toLowerCase();
 
   // Update the password where the account actually lives: user table first,
   // then the legacy owner credentials in auth.json.
-  const userRow = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email) as { id: number } | undefined;
-  if (userRow) {
-    sqlite.prepare(`UPDATE user SET hash = ? WHERE id = ?`).run(hash, userRow.id);
-  } else {
+  const { ok: updated } = await convexServer().mutation(api.users.setPasswordHash, {
+    secret: bridgeSecret(), email, hash,
+  });
+  if (!updated) {
     try {
       const c = readCredsFresh();
       if (c.email && c.email.toLowerCase() === email) {
@@ -59,8 +62,6 @@ export async function POST(req: Request) {
     }
   }
 
-  // Burn the token (single-use) and any other outstanding ones for this email.
-  sqlite.prepare(`UPDATE password_reset SET used = 1 WHERE email = ? AND used = 0`).run(email);
   logAudit("password_reset_complete", `email=${email}`, req);
 
   return NextResponse.json({ ok: true });

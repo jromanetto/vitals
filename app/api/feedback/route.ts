@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
@@ -19,15 +21,14 @@ type FeedbackRow = {
   email: string | null;
 };
 
-function getUserRole(userId: number): string | null {
+async function getUserRole(userId: number): Promise<string | null> {
   try {
-    const sqlite = db().$client;
-    const row = sqlite
-      .prepare(`SELECT role FROM user WHERE id = ?`)
-      .get(userId) as { role: string | null } | undefined;
-    return row?.role ?? null;
+    const { role } = await convexServer().query(api.users.roleByLegacyId, {
+      secret: bridgeSecret(), legacyId: userId,
+    });
+    return role;
   } catch {
-    return null;
+    return null; // fail closed: no role means no access to the admin surface
   }
 }
 
@@ -89,7 +90,7 @@ export async function GET() {
   }
   ensureSchema();
 
-  const role = getUserRole(userId);
+  const role = await getUserRole(userId);
   if (!role || !FOUNDER_ROLES.has(role)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

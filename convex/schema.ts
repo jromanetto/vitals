@@ -366,8 +366,12 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  // legacyId is optional from here down: it only ever identified a row in the
+  // old SQLite file. Rows created natively in Convex have no legacy counterpart,
+  // so they omit it. (On `user` it stays required — there it is the actual user
+  // id referenced across the whole schema, not a migration artifact.)
   audit: defineTable({
-    legacyId: v.number(),
+    legacyId: v.optional(v.number()),
     userId: v.optional(v.number()),
     action: v.string(),
     target: v.optional(v.string()),
@@ -386,7 +390,7 @@ export default defineSchema({
   }),
 
   password_reset: defineTable({
-    legacyId: v.number(),
+    legacyId: v.optional(v.number()),
     email: v.string(),
     tokenHash: v.string(),
     expiresAt: v.number(),
@@ -395,7 +399,7 @@ export default defineSchema({
   }).index("by_token", ["tokenHash"]),
 
   waitlist: defineTable({
-    legacyId: v.number(),
+    legacyId: v.optional(v.number()),
     email: v.string(),
     createdAt: v.number(),
     invitedAt: v.optional(v.number()),

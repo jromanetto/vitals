@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/page-header";
 import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,15 +23,14 @@ type Row = {
 
 const FOUNDER_ROLES = new Set(["owner", "founder"]);
 
-function getUserRole(userId: number): string | null {
+async function getUserRole(userId: number): Promise<string | null> {
   try {
-    const sqlite = db().$client;
-    const row = sqlite
-      .prepare(`SELECT role FROM user WHERE id = ?`)
-      .get(userId) as { role: string | null } | undefined;
-    return row?.role ?? null;
+    const { role } = await convexServer().query(api.users.roleByLegacyId, {
+      secret: bridgeSecret(), legacyId: userId,
+    });
+    return role;
   } catch {
-    return null;
+    return null; // fail closed: no role means no access to the admin surface
   }
 }
 
@@ -55,7 +56,7 @@ function truncate(s: string | null, max = 120): string {
 export default async function AdminFeedbackPage() {
   const userId = await currentUserId();
   if (!userId) notFound();
-  const role = getUserRole(userId);
+  const role = await getUserRole(userId);
   if (!role || !FOUNDER_ROLES.has(role)) notFound();
 
   ensureSchema();

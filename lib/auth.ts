@@ -3,7 +3,6 @@ import { sealData, unsealData } from "iron-session";
 import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
-import { db } from "@/lib/db";
 import { convexServer, bridgeSecret } from "@/lib/convex-server";
 import { api } from "@/convex/_generated/api";
 
@@ -64,14 +63,20 @@ export async function getSession(): Promise<Session | null> {
   try {
     const data = await unsealData<RawSession>(tok, { password: password(), ttl: TTL });
     if (!data?.email) return null;
-    // If userId is missing (legacy sessions sealed before multi-tenant), look it up from user table by email.
+    // If userId is missing (legacy sessions sealed before multi-tenant), look it
+    // up by email. This resolution now FAILS CLOSED: it used to default to
+    // userId 1, which meant that any session it could not resolve — including
+    // during a transient backend error — was handed the owner's account and all
+    // of its health data. An unresolvable session is simply not authenticated.
     let userId = data.userId;
     if (userId == null) {
       try {
-        const sqlite = db().$client;
-        const row = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(data.email.toLowerCase()) as { id: number } | undefined;
-        userId = row?.id ?? 1; // fallback to legacy single-tenant Julien
-      } catch { userId = 1; }
+        const { id } = await convexServer().query(api.users.idByEmail, {
+          secret: bridgeSecret(), email: data.email.toLowerCase(),
+        });
+        if (id == null) return null;
+        userId = id;
+      } catch { return null; }
     }
     return { userId, email: data.email, iat: data.iat };
   } catch {
@@ -82,11 +87,13 @@ export async function getSession(): Promise<Session | null> {
 export async function setSession(email: string, userId?: number) {
   let uid = userId;
   if (uid == null) {
-    try {
-      const sqlite = db().$client;
-      const row = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(email.toLowerCase()) as { id: number } | undefined;
-      uid = row?.id ?? 1;
-    } catch { uid = 1; }
+    // Fails closed for the same reason as getSession: sealing a session with a
+    // guessed userId of 1 would mint a valid cookie for the owner's account.
+    const { id } = await convexServer().query(api.users.idByEmail, {
+      secret: bridgeSecret(), email: email.toLowerCase(),
+    });
+    if (id == null) throw new Error(`setSession: no user for ${email}`);
+    uid = id;
   }
   const tok = await sealData({ userId: uid, email: email.toLowerCase(), iat: Date.now() }, { password: password(), ttl: TTL });
   const c = await cookies();
@@ -107,30 +114,39 @@ export async function clearSession() {
 
 export async function verifyCredentials(email: string, pwd: string): Promise<{ ok: boolean; userId?: number }> {
   const lower = email.toLowerCase();
-  // 1) Try user table first (multi-tenant)
+  // 1) The user table is the source of truth.
+  //
+  // A backend failure here must NOT fall through to step 2: that fallback only
+  // compares against the owner's credentials in auth.json, so swallowing the
+  // error would silently narrow the whole login surface to a single account.
+  // Let it throw and return a 500 rather than answer wrongly.
+  const { user } = await convexServer().query(api.users.byEmail, {
+    secret: bridgeSecret(), email: lower,
+  });
+  if (user) {
+    const ok = await bcrypt.compare(pwd, user.hash);
+    return ok ? { ok: true, userId: user.id } : { ok: false };
+  }
+
+  // 2) Bootstrap path for the original single-tenant owner account, kept for the
+  //    case where the user table is empty (fresh install from auth.json).
+  let creds: Creds;
   try {
-    const sqlite = db().$client;
-    const row = sqlite.prepare(`SELECT id, hash FROM user WHERE LOWER(email) = ?`).get(lower) as { id: number; hash: string } | undefined;
-    if (row) {
-      const ok = await bcrypt.compare(pwd, row.hash);
-      return ok ? { ok: true, userId: row.id } : { ok: false };
-    }
-  } catch {}
-  // 2) Fallback to legacy auth.json (Julien-only original account)
-  try {
-    const c = readCredsFresh();
-    if (lower !== c.email.toLowerCase()) return { ok: false };
-    const ok = await bcrypt.compare(pwd, c.hash);
-    if (!ok) return { ok: false };
-    // Auto-migrate Julien into user table on first successful login if not present
-    try {
-      const sqlite = db().$client;
-      const existing = sqlite.prepare(`SELECT id FROM user WHERE LOWER(email) = ?`).get(lower) as { id: number } | undefined;
-      if (existing) return { ok: true, userId: existing.id };
-      sqlite.prepare(`INSERT INTO user (id, email, hash, secret, role) VALUES (1, ?, ?, ?, 'owner') ON CONFLICT DO NOTHING`).run(c.email, c.hash, c.secret);
-      return { ok: true, userId: 1 };
-    } catch { return { ok: true, userId: 1 }; }
-  } catch { return { ok: false }; }
+    creds = readCredsFresh();
+  } catch {
+    return { ok: false };
+  }
+  if (lower !== creds.email.toLowerCase()) return { ok: false };
+  if (!(await bcrypt.compare(pwd, creds.hash))) return { ok: false };
+
+  const { id } = await convexServer().mutation(api.users.create, {
+    secret: bridgeSecret(),
+    email: creds.email,
+    hash: creds.hash,
+    userSecret: creds.secret,
+    role: "owner",
+  });
+  return { ok: true, userId: id };
 }
 
 export function getTotpSecret(): string | null {

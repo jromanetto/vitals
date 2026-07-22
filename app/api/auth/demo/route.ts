@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { setSession } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
@@ -10,11 +10,11 @@ const DEMO_USER_ID = 999;
 const DEMO_EMAIL = "demo@vitals.app";
 
 export async function POST(req: Request) {
-  ensureSchema();
   // Confirm demo user exists (created by scripts/seed_demo.mjs)
-  const sqlite = db().$client;
-  const row = sqlite.prepare(`SELECT id FROM user WHERE id = ?`).get(DEMO_USER_ID) as { id: number } | undefined;
-  if (!row) {
+  const { exists } = await convexServer().query(api.users.existsByLegacyId, {
+    secret: bridgeSecret(), legacyId: DEMO_USER_ID,
+  });
+  if (!exists) {
     return NextResponse.json({ error: "demo non disponible — seed manquant" }, { status: 503 });
   }
 

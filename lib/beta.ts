@@ -6,9 +6,10 @@
  * back to the waitlist. Setting `betaUserCap = currentUsers + N` opens exactly
  * the next N spots. `VITALS_BETA_OPEN=true` forces it fully open regardless.
  */
-import { db } from "./db";
 import fs from "node:fs";
 import path from "node:path";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 function readAuth(): { betaUserCap?: number } {
   try {
@@ -19,14 +20,17 @@ function readAuth(): { betaUserCap?: number } {
   }
 }
 
-export function betaStatus(): { open: boolean; remaining: number; cap: number; count: number; unlimited: boolean } {
+export async function betaStatus(): Promise<{ open: boolean; remaining: number; cap: number; count: number; unlimited: boolean }> {
   const envOpen = process.env.VITALS_BETA_OPEN === "true";
   const cap = Number(readAuth().betaUserCap ?? 0) || 0;
   let count = 0;
   try {
-    count = (db().$client.prepare(`SELECT COUNT(*) AS c FROM user`).get() as { c: number }).c;
+    count = (await convexServer().query(api.users.count, { secret: bridgeSecret() })).count;
   } catch {
-    count = 0;
+    // Counting failure must not silently reopen a full beta: a count of 0 would
+    // make `count < cap` true and let unlimited signups through. Report the
+    // capacity gate as closed and let the invite-code path still work.
+    return { open: envOpen, remaining: 0, cap, count: 0, unlimited: envOpen };
   }
   const capOpen = cap > 0 && count < cap;
   const remaining = cap > 0 ? Math.max(0, cap - count) : 0;

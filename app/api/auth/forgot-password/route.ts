@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { db } from "@/lib/db";
-import { ensureSchema } from "@/lib/db/migrate";
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 import { readCredsFresh } from "@/lib/auth";
 import { rateLimitByIp, extractIp } from "@/lib/lockout";
 import { sendEmail, passwordResetTemplate } from "@/lib/email";
@@ -17,9 +17,11 @@ function sha256(s: string): string {
 }
 
 /** Does this email belong to a real account (user table or legacy owner)? */
-function accountExists(sqlite: ReturnType<typeof db>["$client"], email: string): boolean {
-  const row = sqlite.prepare(`SELECT 1 FROM user WHERE LOWER(email) = ?`).get(email);
-  if (row) return true;
+async function accountExists(email: string): Promise<boolean> {
+  const { id } = await convexServer().query(api.users.idByEmail, {
+    secret: bridgeSecret(), email,
+  });
+  if (id != null) return true;
   try {
     const c = readCredsFresh();
     if (c.email && c.email.toLowerCase() === email) return true;
@@ -35,7 +37,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Trop de demandes. Réessaye dans quelques minutes." }, { status: 429, headers: { "Retry-After": String(rl.retryAfter) } });
   }
 
-  ensureSchema();
   const body = (await req.json().catch(() => ({}))) as { email?: string };
   const email = (body.email || "").trim().toLowerCase();
 
@@ -45,18 +46,19 @@ export async function POST(req: Request) {
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return generic;
 
-  const sqlite = db().$client;
-  if (!accountExists(sqlite, email)) {
+  if (!(await accountExists(email))) {
     logAudit("password_reset_request_unknown", `email=${email}`, req);
     return generic;
   }
 
-  // Invalidate any previous unused tokens for this email, then issue a fresh one.
-  sqlite.prepare(`UPDATE password_reset SET used = 1 WHERE email = ? AND used = 0`).run(email);
+  // issue() invalidates any previous unused token for this email in the same
+  // transaction as the insert, so a fresh link always revokes the older one.
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = sha256(token);
   const expiresAt = Date.now() + TTL_MS;
-  sqlite.prepare(`INSERT INTO password_reset (email, token_hash, expires_at) VALUES (?, ?, ?)`).run(email, tokenHash, expiresAt);
+  await convexServer().mutation(api.passwordReset.issue, {
+    secret: bridgeSecret(), email, tokenHash, expiresAt,
+  });
 
   const resetUrl = `${APP_URL}/reset-password?token=${token}`;
   await sendEmail({ to: email, ...passwordResetTemplate(resetUrl) }).catch((e) => console.error("[forgot-password] email", e));

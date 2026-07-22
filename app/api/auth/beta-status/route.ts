@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { ensureSchema } from "@/lib/db/migrate";
 import { betaStatus } from "@/lib/beta";
 
 export const runtime = "nodejs";
@@ -12,8 +11,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   try {
-    ensureSchema();
-    const s = betaStatus();
+    const s = await betaStatus();
     return NextResponse.json({ open: s.open, remaining: s.unlimited ? null : s.remaining });
   } catch {
     return NextResponse.json({ open: false, remaining: 0 });

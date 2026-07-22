@@ -1,22 +1,5 @@
-import { db } from "./db";
-import { sql } from "drizzle-orm";
-
-let _ensured = false;
-
-function ensureAuditTable() {
-  if (_ensured) return;
-  const d = db();
-  d.run(sql.raw(`CREATE TABLE IF NOT EXISTS audit (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    action TEXT NOT NULL,
-    target TEXT,
-    ip TEXT,
-    user_agent TEXT,
-    created_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-  )`));
-  d.run(sql.raw(`CREATE INDEX IF NOT EXISTS audit_created_idx ON audit(created_at)`));
-  _ensured = true;
-}
+import { convexServer, bridgeSecret } from "@/lib/convex-server";
+import { api } from "@/convex/_generated/api";
 
 function extractIp(req?: Request): string | null {
   if (!req) return null;
@@ -26,17 +9,23 @@ function extractIp(req?: Request): string | null {
   return xri || null;
 }
 
-export function logAudit(action: string, target?: string | null, req?: Request) {
-  try {
-    ensureAuditTable();
-    const ip = extractIp(req);
-    const ua = req?.headers.get("user-agent") || null;
-    db().run(
-      sql`INSERT INTO audit (action, target, ip, user_agent) VALUES (${action}, ${target ?? null}, ${ip}, ${ua})`
-    );
-  } catch (e) {
-    console.error("[audit] log error:", e);
-  }
+/**
+ * Record a security event (login, signup, rate limit, password reset, ...).
+ *
+ * Deliberately fire-and-forget with a sync signature: the 30 call sites sit on
+ * request paths where an audit write must never add latency, and must never
+ * fail the request it is describing. Errors are logged, not propagated.
+ */
+export function logAudit(action: string, target?: string | null, req?: Request): void {
+  void convexServer()
+    .mutation(api.audit.log, {
+      secret: bridgeSecret(),
+      action,
+      target: target ?? undefined,
+      ip: extractIp(req) ?? undefined,
+      userAgent: req?.headers.get("user-agent") ?? undefined,
+    })
+    .catch((e) => console.error("[audit] log error:", e));
 }
 
 export type AuditRow = {
@@ -48,9 +37,16 @@ export type AuditRow = {
   created_at: number;
 };
 
-export function listAudit(limit = 50): AuditRow[] {
-  ensureAuditTable();
-  const d = db();
-  const rows = (d as any).$client.prepare(`SELECT id, action, target, ip, user_agent, created_at FROM audit ORDER BY created_at DESC LIMIT ?`).all(limit) as AuditRow[];
-  return rows;
+/** Async since the trail moved to Convex; both callers are server-side. */
+export async function listAudit(limit = 50): Promise<AuditRow[]> {
+  try {
+    const { rows } = await convexServer().query(api.audit.list, {
+      secret: bridgeSecret(),
+      limit,
+    });
+    return rows;
+  } catch (e) {
+    console.error("[audit] list error:", e);
+    return [];
+  }
 }

@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function SecurityPage() {
   const totp = hasTotpEnabled();
   const anonymize = isAnonymizeEnabled();
-  const events = listAudit(50);
+  const events = await listAudit(50);
   return (
     <div className="space-y-12">
       <PageHeader
