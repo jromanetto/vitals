@@ -16,3 +16,7 @@ __pycache__/
 .venv/
 tsconfig.tsbuildinfo
 .gstack/
+
+# graphify knowledge-graph output (local only)
+graphify-out/
+vitals.db
