@@ -14,10 +14,11 @@ import os from "node:os";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { type Biomarker } from "./biomarkers";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import { BIOMARKER_EXTRACTION_SYSTEM, canonicalizeRawBiomarkers, salvageObjects, type RawBm } from "./biomarkers-llm";
 
 const exec = promisify(execFile);
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = MODELS.EXTRACTION;
 const MAX_PAGES = 16;       // cap cost on very long PDFs
 const PAGES_PER_CALL = 4;   // images per vision request
 
@@ -48,6 +49,7 @@ export async function extractBiomarkersVisionFromImage(imagePath: string, apiKey
     const client = new Anthropic({ apiKey });
     const resp = await client.messages.create({
       model: MODEL,
+      thinking: THINKING.EXTRACTION,
       max_tokens: 8000,
       system: BIOMARKER_EXTRACTION_SYSTEM,
       messages: [{ role: "user", content: [
@@ -86,6 +88,7 @@ export async function extractBiomarkersVision(pdfPath: string, apiKey: string): 
       try {
         const resp = await client.messages.create({
           model: MODEL,
+          thinking: THINKING.EXTRACTION,
           max_tokens: 8000,
           system: BIOMARKER_EXTRACTION_SYSTEM,
           messages: [{ role: "user", content: [...images, { type: "text", text: "Extrais TOUS les résultats biologiques visibles sur ces pages, au format JSON demandé." }] }],

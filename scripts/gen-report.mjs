@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api.js";
+import { MODELS, THINKING } from "../lib/ai/models.mjs";
 
 // Inline field decryption (mirrors lib/crypto-fields; workers run via plain node,
 // no TS import). Profile blobs are field-encrypted at rest on Convex.
@@ -148,7 +149,9 @@ function anonymizeProfile(p) {
     let prompt = `Génère un rapport "${meta.title}" pour ce profil.\n\nPROFIL:\n\`\`\`json\n${JSON.stringify(safeProfile)}\n\`\`\`\n\nBIOMARQUEURS (${bms.length}):\n${bms.map((b) => `- ${b.name}: ${b.value} ${b.unit ?? ""} (ref ${b.refLow ?? "?"}–${b.refHigh ?? "?"}) — ${new Date(b.date).toISOString().slice(0,10)}`).join("\n")}\n\nADN (${dna.length}):\n${dna.map((i) => `- ${i.trait} = ${i.ug}${i.hasRisk ? " ⚠" : ""}: ${i.summary}`).join("\n")}\n\nSections:\n${meta.sections}\n\nMarkdown. Concret, chiffré, pas de disclaimer.`;
     prompt = anonymize(prompt, profileObj);
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929", max_tokens: 4000,
+      // max_tokens couvre thinking + markdown du rapport. 16000 reste sous le
+      // timeout HTTP du SDK en non-streaming.
+      model: MODELS.REASONING, thinking: THINKING.REASONING, max_tokens: 16000,
       system: meta.sys, messages: [{ role: "user", content: prompt }],
     });
     body = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");

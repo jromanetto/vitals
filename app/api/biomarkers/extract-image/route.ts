@@ -6,6 +6,7 @@ import { normalizeUnits } from "@/lib/parsers/normalize-units";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -78,7 +79,8 @@ export async function POST(req: Request) {
   let raw: RawExtraction;
   try {
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model: MODELS.EXTRACTION,
+      thinking: THINKING.EXTRACTION,
       max_tokens: 4000,
       messages: [{
         role: "user",

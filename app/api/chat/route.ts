@@ -7,15 +7,18 @@ import { anthropicApiKey } from "@/lib/secrets";
 import { spearman, spearmanP, pairDated, type DatedValue } from "@/lib/scoring/correlations";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { formatProfileForLLM } from "@/lib/profile/format";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const MODEL = "claude-opus-4-8";
+// Le chat streame ses deltas texte vers le client SSE : pas de `thinking` ici,
+// le front ne sait pas rendre les blocs de thinking. Voir lib/ai/models.mjs.
+const MODEL = MODELS.REASONING;
 // Cheap, fast model for the throwaway 6-word conversation title.
-const TITLE_MODEL = "claude-haiku-4-5-20251001";
+const TITLE_MODEL = MODELS.CHEAP;
 // Background memory extraction — structured, not user-facing; no need for Opus.
-const EXTRACT_MODEL = "claude-sonnet-4-6";
+const EXTRACT_MODEL = MODELS.EXTRACTION;
 
 // ──────────────────────────────────────────────────────────────────
 // Tool definitions exposed to Claude
@@ -759,6 +762,7 @@ Si rien à extraire : {"items":[]}`;
   try {
     const resp = await client.messages.create({
       model: EXTRACT_MODEL,
+      thinking: THINKING.EXTRACTION,
       max_tokens: 1200,
       system: sys,
       messages: [{ role: "user", content: transcript.slice(-15000) }],

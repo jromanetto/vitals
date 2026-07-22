@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import type { EngineOutput } from "./rules-engine";
 import { FOOD_BY_SLUG } from "./food-database";
 import type { NutritionPlan, NutritionPref } from "./types";
@@ -87,8 +88,10 @@ Génère le plan JSON maintenant.`;
 
   const client = new Anthropic({ apiKey });
   const resp = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929",
-    max_tokens: 3000,
+    model: MODELS.REASONING,
+    thinking: THINKING.REASONING,
+    // Marge pour le thinking, qui partage le budget max_tokens avec la réponse.
+    max_tokens: 12000,
     system: SYSTEM,
     messages: [{ role: "user", content: userPrompt }],
   });

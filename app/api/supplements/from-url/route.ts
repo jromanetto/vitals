@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -123,7 +124,8 @@ Règles:
 
   try {
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929",
+      model: MODELS.EXTRACTION,
+      thinking: THINKING.EXTRACTION,
       max_tokens: 3000,
       system: sys,
       messages: [{ role: "user", content: `URL: ${url}\nDomain: ${domain}\n\nContenu de la page:\n\n${text}` }],

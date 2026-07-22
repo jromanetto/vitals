@@ -5,6 +5,7 @@ import { searchRag } from "@/lib/rag/search";
 import { db } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
       const numbered = hits.map((h, i) => `[${i + 1}] ${h.snippet}`).join("\n\n");
       const sys = "Tu es un moteur de recherche médical. On te donne une question et N extraits indexés [1..N]. Tu retournes une liste JSON des indices les plus pertinents, du plus pertinent au moins, séparés par virgule. UNIQUEMENT le JSON array, ex: [3, 1, 7].";
       const resp = await client.messages.create({
-        model: "claude-sonnet-4-5-20250929", max_tokens: 200, system: sys,
+        model: MODELS.EXTRACTION, thinking: THINKING.EXTRACTION, max_tokens: 200, system: sys,
         messages: [{ role: "user", content: `Question: ${q}\n\nExtraits:\n${numbered}` }],
       });
       const text = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("");

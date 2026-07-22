@@ -9,9 +9,10 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import type { SignalCard1, SignalCard2, SignalCard3, SignalSet } from "./select-signals";
 
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = MODELS.REASONING;
 
 const SYSTEM_PROMPT = `Tu es un médecin fonctionnel français. Tu rédiges des cartes courtes (3 lignes max) à destination d'un patient à partir de FAITS DÉJÀ SÉLECTIONNÉS par un algorithme. Tu ne DOIS PAS:
 - Inventer des chiffres, statistiques, ou faits absents du contexte fourni
@@ -45,12 +46,14 @@ async function callClaude(userPrompt: string): Promise<string> {
   try {
     const res = await c.messages.create({
       model: MODEL,
-      max_tokens: 220,
+      thinking: THINKING.REASONING,
+      // Les cartes font ~220 tokens ; max_tokens est un plafond, pas une cible,
+      // et doit couvrir le thinking en plus du texte visible.
+      max_tokens: 4000,
       system: [
         {
           type: "text",
           text: SYSTEM_PROMPT,
-          // @ts-expect-error — cache_control is supported but typed loose
           cache_control: { type: "ephemeral" },
         },
       ],

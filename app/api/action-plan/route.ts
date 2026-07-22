@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import { formatProfileForLLM } from "@/lib/profile/format";
 import { computeEnvironment } from "@/lib/environment";
 
@@ -242,8 +243,10 @@ Génère le plan JSON.`;
 
   try {
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929",
-      max_tokens: 3500,
+      model: MODELS.REASONING,
+      thinking: THINKING.REASONING,
+      // Marge pour le thinking, qui partage le budget max_tokens avec la réponse.
+      max_tokens: 12000,
       system: sys,
       messages: [{ role: "user", content: userMsg }],
     });

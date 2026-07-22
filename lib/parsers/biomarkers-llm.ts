@@ -10,8 +10,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type Biomarker, lookupBiomarker } from "./biomarkers";
 import { normalizeUnits } from "./normalize-units";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = MODELS.EXTRACTION;
 
 const SYSTEM = `Tu extrais les résultats d'analyses biologiques d'un texte de laboratoire. Le texte vient souvent d'un OCR : les colonnes (résultat / valeurs de référence / unité) peuvent être mélangées ou désordonnées. Ton rôle est de rattacher correctement chaque marqueur à SON résultat patient.
 
@@ -83,6 +84,7 @@ export async function extractBiomarkersLLM(text: string, apiKey: string): Promis
       // is 30-40 markers with ref ranges — easily >2k output tokens. Too small
       // a cap truncated the JSON mid-array, the parse failed, and the caller
       // fell back to the regex parser on OCR-scrambled text (garbage values).
+      thinking: THINKING.EXTRACTION,
       max_tokens: 8000,
       system: SYSTEM,
       messages: [{ role: "user", content: text.slice(0, 24000) }],

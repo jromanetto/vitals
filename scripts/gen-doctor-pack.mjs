@@ -23,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api.js";
+import { MODELS, THINKING } from "../lib/ai/models.mjs";
 
 // Inline field decryption (mirrors lib/crypto-fields; worker runs via plain node).
 function decryptProfileDeep(obj, keyB64) {
@@ -163,7 +164,9 @@ Structure attendue:
 Sois concret, factuel, médecin-friendly.`;
 
     const resp = await client.messages.create({
-      model: "claude-sonnet-4-5-20250929", max_tokens: 4000,
+      // max_tokens couvre thinking + markdown du pack. 16000 reste sous le
+      // timeout HTTP du SDK en non-streaming.
+      model: MODELS.REASONING, thinking: THINKING.REASONING, max_tokens: 16000,
       system: sys, messages: [{ role: "user", content: prompt }],
     });
     body = resp.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");

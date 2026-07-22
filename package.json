@@ -11,7 +11,7 @@
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
+    "@anthropic-ai/sdk": "^0.112.5",
     "@convex-dev/react-query": "^0.1.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
@@ -35,7 +35,7 @@
     "lucide-react": "^0.460.0",
     "motion-dom": "^12.38.0",
     "motion-utils": "^12.36.0",
-    "next": "^15.5.18",
+    "next": "^15.5.21",
     "next-themes": "^0.4.3",
     "otplib": "^12.0.1",
     "pdf-parse": "^1.1.1",

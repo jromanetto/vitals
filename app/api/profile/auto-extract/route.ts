@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { decryptProfile } from "@/lib/crypto-fields";
 import { anonymizeProfile } from "@/lib/anonymize";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 
@@ -13,7 +14,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const MAX_CTX = 50000;
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = MODELS.EXTRACTION;
 
 const SCHEMA_DESC = `{
   // === Identité ===
@@ -217,6 +218,7 @@ Tâche: extrait un objet JSON correspondant au schema, en t'appuyant uniquement 
   try {
     resp = await client.messages.create({
       model: MODEL,
+      thinking: THINKING.EXTRACTION,
       max_tokens: 4500,
       system: SYSTEM,
       messages: [{ role: "user", content: userMsg }],

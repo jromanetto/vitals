@@ -6,6 +6,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
 import { META_BY_SLUG } from "@/lib/biomarker-meta";
 import { decryptProfile } from "@/lib/crypto-fields";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 import { anonymizeProfile } from "@/lib/anonymize";
 
 export const runtime = "nodejs";
@@ -61,7 +62,9 @@ Profile pertinent: âge ${profile.birthDate ? new Date().getFullYear() - new Dat
 Donne ton analyse en 3-5 paragraphes courts, factuels.`;
 
   const resp = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929", max_tokens: 1500,
+    // max_tokens couvre thinking + réponse : l'adaptive thinking consomme le
+    // même budget, d'où la marge par rapport aux ~1500 tokens de commentaire.
+    model: MODELS.REASONING, thinking: THINKING.REASONING, max_tokens: 8000,
     system: sys, messages: [{ role: "user", content: prompt }],
   });
   const body = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n");

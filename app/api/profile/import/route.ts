@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicApiKey } from "@/lib/secrets";
+import { MODELS, THINKING } from "@/lib/ai/models.mjs";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -53,7 +54,7 @@ SCHEMA cible (clés disponibles, à utiliser uniquement si pertinent):
 ${SCHEMA}`;
 
   const resp = await client.messages.create({
-    model: "claude-sonnet-4-5-20250929", max_tokens: 2500, system: sys,
+    model: MODELS.EXTRACTION, thinking: THINKING.EXTRACTION, max_tokens: 2500, system: sys,
     messages: [{ role: "user", content: `Extraits du texte suivant les infos pour le profil. Retourne juste le JSON.\n\nTEXTE:\n${text}` }],
   });
   const content = resp.content.filter((b) => b.type === "text").map((b) => (b as { text: string }).text).join("\n").trim();
