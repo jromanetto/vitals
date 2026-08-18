@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { VitalsWordmark } from "@/components/brand/logo";
+import { Reveal, Stagger, Item, HoverCard, Press } from "@/components/marketing/motion";
+import { WidgetCard } from "@/components/marketing/widget-card";
 
 export const metadata = {
   title: "Vitals — La santé qui se lit comme un relevé, pas comme un mystère",
@@ -32,12 +34,14 @@ export default function LandingPage() {
             <Link href="/login" className="text-muted-foreground hover:text-foreground transition">
               Se connecter
             </Link>
-            <Link
-              href="/signup"
-              className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition"
-            >
-              Rejoindre la bêta
-            </Link>
+            <Press className="inline-flex">
+              <Link
+                href="/signup"
+                className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition"
+              >
+                Rejoindre la bêta
+              </Link>
+            </Press>
           </nav>
         </div>
       </header>
@@ -45,41 +49,55 @@ export default function LandingPage() {
       <main id="main">
         {/* Hero */}
         <section className="max-w-6xl mx-auto px-6 pt-16 pb-16 md:pt-20 grid lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-14 items-center">
-          <div className="animate-rise">
-            <span className="inline-flex items-center gap-2 rounded-full border border-emerald/30 bg-emerald/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-emerald mb-6">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Bêta privée · accès sur invitation
-            </span>
-            <h1 className="text-4xl md:text-6xl font-bold tracking-[-0.035em] leading-[1.03] text-balance">
-              La santé qui se lit comme un <span className="text-emerald">relevé</span>, pas comme un mystère.
-            </h1>
-            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
-              Tes bilans sanguins, ton ADN, tes suppléments et tes wearables — au même endroit. Une équipe
-              médicale IA croise le tout et te répond en français, chiffres à l&apos;appui.
-            </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href="/signup"
-                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition"
-              >
-                Créer un compte gratuit <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link
-                href="/login?demo=1"
-                className="px-5 py-3 rounded-lg border border-border bg-card hover:bg-secondary/50 active:translate-y-px transition font-medium"
-              >
-                Voir la démo
-              </Link>
-            </div>
-            <p className="mt-5 font-mono text-xs text-muted-foreground tracking-wide">
-              chiffré de bout en bout · hébergé en UE · zéro publicité
-            </p>
-          </div>
+          <Stagger gap={0.09}>
+            <Item>
+              <span className="inline-flex items-center gap-2 rounded-full border border-emerald/30 bg-emerald/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-emerald mb-6">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald motion-safe:animate-pulse" /> Bêta privée · accès sur invitation
+              </span>
+            </Item>
+            <Item>
+              <h1 className="text-4xl md:text-6xl font-bold tracking-[-0.035em] leading-[1.03] text-balance">
+                La santé qui se lit comme un <span className="text-emerald">relevé</span>, pas comme un mystère.
+              </h1>
+            </Item>
+            <Item>
+              <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
+                Tes bilans sanguins, ton ADN, tes suppléments et tes wearables — au même endroit. Une équipe
+                médicale IA croise le tout et te répond en français, chiffres à l&apos;appui.
+              </p>
+            </Item>
+            <Item>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Press className="inline-flex">
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition"
+                  >
+                    Créer un compte gratuit <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Press>
+                <Press className="inline-flex">
+                  <Link
+                    href="/login?demo=1"
+                    className="px-5 py-3 rounded-lg border border-border bg-card hover:bg-secondary/50 transition font-medium"
+                  >
+                    Voir la démo
+                  </Link>
+                </Press>
+              </div>
+            </Item>
+            <Item>
+              <p className="mt-5 font-mono text-xs text-muted-foreground tracking-wide">
+                chiffré de bout en bout · hébergé en UE · zéro publicité
+              </p>
+            </Item>
+          </Stagger>
 
           {/* Readout — the thesis */}
-          <div className="animate-rise rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+          <Reveal x={26} y={0} delay={0.15} className="rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
               <div className="flex items-center gap-2 text-sm font-semibold">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Équipe médicale
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald motion-safe:animate-pulse" /> Équipe médicale
               </div>
               <div className="font-mono text-[11px] text-muted-foreground">médecin · généticien · nutri</div>
             </div>
@@ -124,23 +142,23 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
-          </div>
+          </Reveal>
         </section>
 
         {/* How it reads your data — zig-zag */}
         <section id="lit" className="max-w-6xl mx-auto px-6 py-20 border-t border-border">
-          <div className="max-w-2xl mb-14">
+          <Reveal className="max-w-2xl mb-14">
             <div className="eyebrow font-mono">Ce que Vitals fait de tes données</div>
             <h2 className="mt-3 text-3xl md:text-[2.4rem] font-bold tracking-[-0.03em] leading-tight text-balance">
               Chaque chiffre est rattaché à ton dossier, pas à une moyenne.
             </h2>
             <p className="mt-3 text-muted-foreground">Trois lectures qui parlent entre elles : le sang, les gènes, le quotidien.</p>
-          </div>
+          </Reveal>
 
           <div className="space-y-6">
             {/* 1 — bloodwork + trend sparkline */}
             <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-6">
-              <div>
+              <Reveal>
                 <div className="eyebrow font-mono">Bilans + IA</div>
                 <h3 className="mt-2 text-2xl font-semibold tracking-tight">Importe un PDF, récupère une lecture.</h3>
                 <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
@@ -156,7 +174,7 @@ export default function LandingPage() {
                     ),
                   )}
                 </ul>
-              </div>
+              </Reveal>
               <WidgetCard cap="Ferritine · 5 dernières prises">
                 <svg viewBox="0 0 320 84" className="w-full h-20 text-emerald" preserveAspectRatio="none" aria-label="Tendance ferritine en hausse">
                   <defs>
@@ -201,7 +219,7 @@ export default function LandingPage() {
                   ))}
                 </div>
               </WidgetCard>
-              <div>
+              <Reveal>
                 <div className="eyebrow font-mono">ADN + Suppléments</div>
                 <h3 className="mt-2 text-2xl font-semibold tracking-tight">160+ variants extraits de ton 23andMe.</h3>
                 <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
@@ -215,12 +233,12 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             </div>
 
             {/* 3 — Longevity plan + score dial */}
             <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-6">
-              <div>
+              <Reveal>
                 <div className="eyebrow font-mono">Plan d&apos;action longévité</div>
                 <h3 className="mt-2 text-2xl font-semibold tracking-tight">Un score quotidien, trois leviers.</h3>
                 <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
@@ -234,7 +252,7 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
               <WidgetCard cap="Vitals Score · aujourd'hui">
                 <div className="flex items-center gap-5">
                   <svg width="96" height="96" viewBox="0 0 96 96" className="shrink-0 text-emerald" aria-label="Score 74 sur 100">
@@ -266,13 +284,13 @@ export default function LandingPage() {
 
         {/* Pricing */}
         <section id="prix" className="max-w-5xl mx-auto px-6 py-20 border-t border-border">
-          <div className="mb-12">
+          <Reveal className="mb-12">
             <div className="eyebrow font-mono">Tarifs</div>
             <h2 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.03em]">Simple, et honnête.</h2>
             <p className="mt-3 text-muted-foreground">Bêta privée gratuite jusqu&apos;au lancement officiel.</p>
-          </div>
+          </Reveal>
           <div className="grid md:grid-cols-2 gap-5">
-            <div className="rounded-2xl border border-border bg-card p-6 flex flex-col">
+            <HoverCard className="rounded-2xl border border-border bg-card p-6 flex flex-col">
               <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Free</div>
               <div className="mt-2 font-mono tabular-nums text-4xl font-bold tracking-tight">
                 0 €<span className="text-base text-muted-foreground font-normal"> / mois</span>
@@ -288,8 +306,8 @@ export default function LandingPage() {
               <Link href="/signup" className="mt-auto text-center px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 active:translate-y-px transition font-medium">
                 Commencer gratuitement
               </Link>
-            </div>
-            <div className="relative rounded-2xl border-2 border-emerald bg-emerald/5 p-6 flex flex-col">
+            </HoverCard>
+            <HoverCard className="relative rounded-2xl border-2 border-emerald bg-emerald/5 p-6 flex flex-col">
               <span className="absolute -top-2.5 left-6 font-mono text-[10px] uppercase tracking-[0.14em] px-2 py-0.5 rounded bg-emerald text-primary-foreground">
                 recommandé
               </span>
@@ -314,13 +332,13 @@ export default function LandingPage() {
               <Link href="/signup" className="mt-auto text-center px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition">
                 Rejoindre la bêta
               </Link>
-            </div>
+            </HoverCard>
           </div>
         </section>
 
         {/* CTA band */}
         <section className="border-y border-border bg-card">
-          <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+          <Reveal className="max-w-3xl mx-auto px-6 py-20 text-center">
             <h2 className="text-3xl md:text-[2.6rem] font-bold tracking-[-0.035em] text-balance">
               Cinq minutes pour tout centraliser.
             </h2>
@@ -329,14 +347,18 @@ export default function LandingPage() {
               déjà tout ton dossier sous les yeux.
             </p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <Link href="/signup" className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition">
-                Créer mon compte <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/login?demo=1" className="px-5 py-3 rounded-lg border border-border bg-background hover:bg-secondary/50 active:translate-y-px transition font-medium">
-                Voir la démo
-              </Link>
+              <Press className="inline-flex">
+                <Link href="/signup" className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition">
+                  Créer mon compte <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Press>
+              <Press className="inline-flex">
+                <Link href="/login?demo=1" className="px-5 py-3 rounded-lg border border-border bg-background hover:bg-secondary/50 transition font-medium">
+                  Voir la démo
+                </Link>
+              </Press>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
 
@@ -379,16 +401,6 @@ export default function LandingPage() {
           toute décision de santé.
         </div>
       </footer>
-    </div>
-  );
-}
-
-/** Data widget shell — a bordered card with a mono caption. */
-function WidgetCard({ cap, children, className }: { cap: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-2xl border border-border bg-card p-5 shadow-xl ${className ?? ""}`}>
-      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-4">{cap}</div>
-      {children}
     </div>
   );
 }
