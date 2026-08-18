@@ -1,208 +1,362 @@
 import Link from "next/link";
-import { ArrowRight, Activity, Brain, Dna, Pill, Target, Heart, FlaskConical, Sparkles } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { VitalsWordmark } from "@/components/brand/logo";
 
 export const metadata = {
-  title: "Vitals — La plateforme de santé qui te connaît mieux que ton médecin",
-  description: "Centralise tes bilans sanguins, ADN, suppléments et wearables. L'équipe médicale IA t'explique tout.",
+  title: "Vitals — La santé qui se lit comme un relevé, pas comme un mystère",
+  description:
+    "Centralise tes bilans sanguins, ton ADN, tes suppléments et tes wearables. Une équipe médicale IA croise le tout et te répond en français, chiffres à l'appui.",
 };
+
+// Emerald→amber fill for a reference-range bar that sits above its personalised
+// target (the LDL / APOE4 example). Written with the theme's HSL tokens so it
+// reads identically in light and dark.
+const RR_FILL = "linear-gradient(90deg, hsl(160 84% 39%), hsl(38 92% 50%))";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {/* Top nav */}
-      <header className="border-b border-border bg-background/80 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-emerald" />
-            <span className="text-lg font-semibold tracking-tight">Vitals</span>
+    <div className="mkt-ambient min-h-screen bg-background text-foreground">
+      {/* Nav */}
+      <header className="sticky top-0 z-40 border-b border-border bg-background/70 backdrop-blur">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link href="/" aria-label="Vitals — accueil">
+            <VitalsWordmark />
           </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/about" className="text-muted-foreground hover:text-foreground transition hidden sm:inline">À propos</Link>
-            <Link href="/login" className="text-muted-foreground hover:text-foreground transition">Se connecter</Link>
-            <Link href="/signup" className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition font-medium">Rejoindre la bêta</Link>
+          <nav className="flex items-center gap-5 text-sm">
+            <Link href="#lit" className="text-muted-foreground hover:text-foreground transition hidden md:inline">
+              Comment ça lit tes données
+            </Link>
+            <Link href="#prix" className="text-muted-foreground hover:text-foreground transition hidden md:inline">
+              Tarifs
+            </Link>
+            <Link href="/login" className="text-muted-foreground hover:text-foreground transition">
+              Se connecter
+            </Link>
+            <Link
+              href="/signup"
+              className="px-3.5 py-2 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition"
+            >
+              Rejoindre la bêta
+            </Link>
           </nav>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-br from-emerald/10 via-background to-background" />
-        <div className="max-w-5xl mx-auto px-6 pt-20 pb-24 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald/30 bg-emerald/10 text-emerald text-xs font-medium mb-6">
-            <Sparkles className="h-3.5 w-3.5" /> Bêta privée — accès sur invitation
-          </div>
-          <h1 className="text-4xl md:text-6xl font-semibold tracking-tight leading-tight max-w-4xl mx-auto">
-            La plateforme de santé qui te <span className="text-emerald">connaît mieux</span> que ton médecin
-          </h1>
-          <p className="text-lg md:text-xl text-muted-foreground mt-6 max-w-2xl mx-auto leading-relaxed">
-            Centralise tes bilans sanguins, ton ADN, tes suppléments et tes wearables. L&apos;équipe médicale IA t&apos;explique tout, en français, et te guide vers la longévité.
-          </p>
-          <div className="flex items-center justify-center gap-3 mt-10 flex-wrap">
-            <Link href="/signup" className="px-5 py-3 rounded-md bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition inline-flex items-center gap-2">
-              Créer un compte gratuit <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link href="/login?demo=1" className="px-5 py-3 rounded-md border border-border bg-card hover:bg-secondary/40 transition font-medium">
-              Voir la démo
-            </Link>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">Données chiffrées · Hébergement EU · Aucune publicité</p>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="max-w-6xl mx-auto px-6 py-20 border-t border-border">
-        <div className="text-center mb-12">
-          <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Ce que Vitals fait</div>
-          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Toute ta santé, un seul endroit</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { icon: Activity, title: "Bilans + IA", desc: "Importe tes PDF, l'IA analyse, classe par système, génère un compte-rendu adapté à ton historique. Comparaison entre 2 prises pour mesurer l'effet d'une intervention." },
-            { icon: Dna, title: "ADN + Suppléments", desc: "Charge ton 23andMe, on extrait 160+ variants. Recommandations personnalisées (MTHFR, COMT, APOE…). Bilan nutritionnel quotidien : alimentation + supplément vs cible longévité." },
-            { icon: Target, title: "Plan d'action longévité", desc: "Score 0-100 quotidien. 3 piliers actionnables : sommeil, sport, nutrition. Chaque action est priorisée et liée à tes vrais biomarqueurs." },
-          ].map((f, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card p-6">
-              <div className="h-12 w-12 rounded-xl bg-emerald/15 border border-emerald/30 flex items-center justify-center mb-4">
-                <f.icon className="h-5 w-5 text-emerald" />
-              </div>
-              <h3 className="text-lg font-semibold tracking-tight mb-2">{f.title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="bg-card/30 border-y border-border">
-        <div className="max-w-6xl mx-auto px-6 py-20">
-          <div className="text-center mb-12">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Comment ça marche</div>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">5 minutes pour démarrer</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[
-              { n: "1", t: "Crée ton compte", d: "Email, mot de passe. Hébergement EU, chiffré." },
-              { n: "2", t: "Importe ton 1er bilan", d: "PDF, photo, ou saisie manuelle. L'IA détecte tout." },
-              { n: "3", t: "Discute avec ton équipe", d: "Pose tes questions comme à un médecin qui a tout ton dossier." },
-              { n: "4", t: "Suis ton plan", d: "Sommeil, sport, nutrition. Score quotidien, rappels santé." },
-            ].map((s, i) => (
-              <div key={i} className="relative">
-                <div className="rounded-2xl border border-border bg-card p-5">
-                  <div className="text-3xl font-semibold tabular-nums text-emerald mb-2">{s.n}</div>
-                  <h3 className="font-semibold mb-1">{s.t}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{s.d}</p>
-                </div>
-                {i < 3 && <div className="hidden md:block absolute top-1/2 -right-3 -translate-y-1/2 z-10"><ArrowRight className="h-4 w-4 text-emerald/60" /></div>}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Capabilities deeper */}
-      <section className="max-w-6xl mx-auto px-6 py-20">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Équipe médicale IA</div>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Comme un médecin qui a vraiment lu ton dossier</h2>
-            <p className="text-muted-foreground mt-4 leading-relaxed">
-              Médecin fonctionnel, généticien, nutrithérapeute, endocrinologue : une équipe d&apos;experts virtuels qui croisent tes données et te répondent en langage clair.
+      <main id="main">
+        {/* Hero */}
+        <section className="max-w-6xl mx-auto px-6 pt-16 pb-16 md:pt-20 grid lg:grid-cols-[1.05fr_0.95fr] gap-12 lg:gap-14 items-center">
+          <div className="animate-rise">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald/30 bg-emerald/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-emerald mb-6">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Bêta privée · accès sur invitation
+            </span>
+            <h1 className="text-4xl md:text-6xl font-bold tracking-[-0.035em] leading-[1.03] text-balance">
+              La santé qui se lit comme un <span className="text-emerald">relevé</span>, pas comme un mystère.
+            </h1>
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
+              Tes bilans sanguins, ton ADN, tes suppléments et tes wearables — au même endroit. Une équipe
+              médicale IA croise le tout et te répond en français, chiffres à l&apos;appui.
             </p>
-            <ul className="mt-6 space-y-3 text-sm">
-              {[
-                "Recommandations personnalisées selon ton ADN (MTHFR, COMT, APOE…)",
-                "Comparaison entre tes prises de sang : qu'est-ce qui a bougé ?",
-                "Détection des suppléments à éviter selon tes variants génétiques",
-                "Vue praticien imprimable pour partager avec ton vrai médecin",
-              ].map((b, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <div className="h-1.5 w-1.5 rounded-full bg-emerald mt-2 shrink-0" />
-                  <span className="text-foreground/90">{b}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-6 shadow-2xl">
-            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-border">
-              <Sparkles className="h-4 w-4 text-emerald" />
-              <span className="font-semibold">Équipe médicale</span>
-              <span className="text-xs text-muted-foreground ml-auto">médecin · généticien · nutrithérapeute</span>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/signup"
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition"
+              >
+                Créer un compte gratuit <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/login?demo=1"
+                className="px-5 py-3 rounded-lg border border-border bg-card hover:bg-secondary/50 active:translate-y-px transition font-medium"
+              >
+                Voir la démo
+              </Link>
             </div>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-end">
-                <div className="bg-primary text-primary-foreground rounded-lg px-3 py-2 max-w-[80%]">
-                  Mon LDL est à 111 mg/dL avec mon APOE4, c'est inquiétant ?
-                </div>
-              </div>
-              <div className="bg-secondary/40 rounded-lg px-3 py-2">
-                <div className="text-emerald text-xs font-medium mb-1">Réflexion en cours…</div>
-                <div className="text-foreground/90">
-                  Avec ton variant <span className="text-emerald font-mono">rs429358 CT</span> (APOE3/4), la cible LDL doit être plus stricte que la population standard. À 111 mg/dL tu es au-dessus de la cible longévité (&lt; 70 mg/dL pour APOE4 carriers selon Attia).
-                  <br /><br />
-                  Stratégie : ApoB &lt; 80 mg/dL prioritaire, oméga-3 index &gt; 8%, et envisager une statine basse dose après discussion médicale.
-                </div>
-              </div>
-            </div>
+            <p className="mt-5 font-mono text-xs text-muted-foreground tracking-wide">
+              chiffré de bout en bout · hébergé en UE · zéro publicité
+            </p>
           </div>
-        </div>
-      </section>
 
-      {/* Pricing teaser */}
-      <section className="bg-card/30 border-y border-border">
-        <div className="max-w-5xl mx-auto px-6 py-20">
-          <div className="text-center mb-12">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground/80 font-medium mb-2">Pricing</div>
-            <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">Simple et juste</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="rounded-2xl border border-border bg-card p-6">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Free</div>
-              <div className="text-3xl font-semibold mb-2">0 €<span className="text-base font-normal text-muted-foreground">/mois</span></div>
-              <p className="text-sm text-muted-foreground mb-4">Tout l'essentiel pour démarrer</p>
-              <ul className="text-sm space-y-2">
-                <li>✓ 1 bilan sanguin / mois</li>
-                <li>✓ ADN illimité (1 import à vie)</li>
-                <li>✓ 5 questions chat / jour</li>
-                <li>✓ Vue praticien imprimable</li>
-                <li>✓ Profil santé complet</li>
-              </ul>
+          {/* Readout — the thesis */}
+          <div className="animate-rise rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald" /> Équipe médicale
+              </div>
+              <div className="font-mono text-[11px] text-muted-foreground">médecin · généticien · nutri</div>
             </div>
-            <div className="rounded-2xl border-2 border-emerald bg-emerald/5 p-6 relative">
-              <span className="absolute -top-3 right-4 text-[10px] uppercase tracking-wider px-2 py-1 rounded-full bg-emerald text-primary-foreground">Recommandé</span>
-              <div className="text-[10px] uppercase tracking-wider text-emerald mb-2">Pro</div>
-              <div className="text-3xl font-semibold mb-2">9 €<span className="text-base font-normal text-muted-foreground">/mois</span></div>
-              <p className="text-sm text-muted-foreground mb-4">Pour optimiser ta longévité</p>
-              <ul className="text-sm space-y-2">
-                <li>✓ Bilans illimités</li>
-                <li>✓ Chat illimité avec équipe médicale</li>
-                <li>✓ Sync wearables (Whoop, Oura, Apple Health)</li>
-                <li>✓ Plan d'action quotidien IA</li>
-                <li>✓ Comparaison de bilans</li>
-                <li>✓ Rappels santé personnalisés</li>
-                <li>✓ Partage médecin (lien sécurisé)</li>
-              </ul>
+            <div className="p-5 space-y-5">
+              <div>
+                <div className="flex items-baseline justify-between mb-2">
+                  <span className="text-sm font-medium text-foreground/80">LDL cholestérol</span>
+                  <span className="font-mono tabular-nums text-[15px] font-semibold">
+                    111 <span className="text-muted-foreground font-normal">mg/dL</span>
+                  </span>
+                </div>
+                <div className="relative h-2 rounded-md bg-secondary/60 border border-border overflow-hidden">
+                  <div className="animate-rr h-full rounded-md" style={{ width: "58%", background: RR_FILL }} />
+                  {/* personalised APOE4 target marker */}
+                  <div className="absolute -top-1 -bottom-1 w-0.5 bg-foreground/60" style={{ left: "38%" }} />
+                </div>
+                <div className="mt-1.5 flex justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
+                  <span>0</span>
+                  <span>cible APOE4 · 70</span>
+                  <span>190</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Au-dessus de la cible longévité pour porteur <span className="text-amber-500 font-medium">APOE3/4</span>.
+                  Le repère est ton seuil personnalisé, pas la norme labo.
+                </p>
+              </div>
+
+              <div className="border-t border-dashed border-border pt-4 space-y-2.5">
+                <div className="flex justify-end">
+                  <div className="max-w-[82%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground text-sm px-3 py-2">
+                    Mon LDL est à 111 avec mon APOE4, je m&apos;inquiète ?
+                  </div>
+                </div>
+                <div className="max-w-[92%] rounded-2xl rounded-bl-sm bg-secondary/50 border border-border text-sm px-3 py-2.5 text-foreground/90">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-emerald mb-1.5">raisonnement</div>
+                  Avec ton variant <code className="font-mono text-emerald bg-emerald/10 px-1 py-0.5 rounded text-xs">rs429358 CT</code>{" "}
+                  (APOE3/4), la cible LDL est plus stricte que la population générale. À 111 mg/dL tu dépasses le
+                  seuil longévité (&lt; 70 pour porteur APOE4).
+                  <br />
+                  <br />
+                  Priorité : ApoB &lt; 80, index oméga-3 &gt; 8 %, et discuter une statine faible dose avec ton médecin.
+                </div>
+              </div>
             </div>
           </div>
-          <p className="text-center text-xs text-muted-foreground mt-8">Bêta privée gratuite jusqu'au lancement officiel.</p>
-        </div>
-      </section>
+        </section>
+
+        {/* How it reads your data — zig-zag */}
+        <section id="lit" className="max-w-6xl mx-auto px-6 py-20 border-t border-border">
+          <div className="max-w-2xl mb-14">
+            <div className="eyebrow font-mono">Ce que Vitals fait de tes données</div>
+            <h2 className="mt-3 text-3xl md:text-[2.4rem] font-bold tracking-[-0.03em] leading-tight text-balance">
+              Chaque chiffre est rattaché à ton dossier, pas à une moyenne.
+            </h2>
+            <p className="mt-3 text-muted-foreground">Trois lectures qui parlent entre elles : le sang, les gènes, le quotidien.</p>
+          </div>
+
+          <div className="space-y-6">
+            {/* 1 — bloodwork + trend sparkline */}
+            <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-6">
+              <div>
+                <div className="eyebrow font-mono">Bilans + IA</div>
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight">Importe un PDF, récupère une lecture.</h3>
+                <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
+                  L&apos;IA détecte chaque marqueur, le classe par système, et compare deux prises pour mesurer
+                  l&apos;effet d&apos;une intervention — pas juste « dans la norme / hors norme ».
+                </p>
+                <ul className="mt-5 space-y-2.5 text-sm">
+                  {["Détection PDF, photo ou saisie manuelle", "Comparaison entre deux bilans : qu'est-ce qui a bougé ?", "Vue praticien imprimable pour ton vrai médecin"].map(
+                    (t) => (
+                      <li key={t} className="flex gap-2.5 text-foreground/80">
+                        <span className="font-mono text-emerald">→</span> {t}
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+              <WidgetCard cap="Ferritine · 5 dernières prises">
+                <svg viewBox="0 0 320 84" className="w-full h-20 text-emerald" preserveAspectRatio="none" aria-label="Tendance ferritine en hausse">
+                  <defs>
+                    <linearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0" stopColor="currentColor" stopOpacity="0.28" />
+                      <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d="M0,66 L64,58 L128,60 L192,40 L256,30 L320,18 L320,84 L0,84 Z" fill="url(#spark)" />
+                  <path d="M0,66 L64,58 L128,60 L192,40 L256,30 L320,18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="320" cy="18" r="4" fill="currentColor" />
+                </svg>
+                <div className="mt-2 flex justify-between font-mono text-[11px] tabular-nums">
+                  <span className="text-muted-foreground">34 → 68 µg/L</span>
+                  <span className="text-emerald">▲ +100 % / 14 mois</span>
+                </div>
+              </WidgetCard>
+            </div>
+
+            {/* 2 — DNA + SNP table */}
+            <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-6">
+              <WidgetCard cap="Variants pertinents · aujourd'hui" className="md:order-first">
+                <div className="divide-y divide-border">
+                  {[
+                    { g: "MTHFR", v: "C677T · AG", chip: "folate méthylé", tone: "watch" },
+                    { g: "COMT", v: "V158M · AA", chip: "catéchol lent", tone: "watch" },
+                    { g: "APOE", v: "rs429358 · CT", chip: "LDL strict", tone: "watch" },
+                    { g: "FTO", v: "rs9939609 · TT", chip: "favorable", tone: "ok" },
+                  ].map((r) => (
+                    <div key={r.g} className="flex items-center justify-between py-2.5 text-sm">
+                      <span className="font-mono font-semibold">
+                        {r.g} <span className="text-muted-foreground font-normal text-xs">{r.v}</span>
+                      </span>
+                      <span
+                        className={`font-mono text-[10.5px] px-2 py-0.5 rounded ${
+                          r.tone === "ok" ? "text-emerald bg-emerald/10" : "text-amber-500 bg-amber-500/10"
+                        }`}
+                      >
+                        {r.chip}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </WidgetCard>
+              <div>
+                <div className="eyebrow font-mono">ADN + Suppléments</div>
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight">160+ variants extraits de ton 23andMe.</h3>
+                <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
+                  Recommandations rattachées à tes vrais génotypes — et surtout, les suppléments à éviter selon tes
+                  variants. Un import à vie suffit.
+                </p>
+                <ul className="mt-5 space-y-2.5 text-sm">
+                  {["Méthylation, détox, réponse aux nutriments", "Bilan nutritionnel quotidien vs cible longévité", "Alertes d'interaction supplément × génotype"].map((t) => (
+                    <li key={t} className="flex gap-2.5 text-foreground/80">
+                      <span className="font-mono text-emerald">→</span> {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* 3 — Longevity plan + score dial */}
+            <div className="grid md:grid-cols-2 gap-8 md:gap-12 items-center py-6">
+              <div>
+                <div className="eyebrow font-mono">Plan d&apos;action longévité</div>
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight">Un score quotidien, trois leviers.</h3>
+                <p className="mt-3 text-foreground/80 leading-relaxed max-w-lg">
+                  Sommeil, sport, nutrition. Chaque action est priorisée et reliée à un biomarqueur réel — pas des
+                  conseils génériques recopiés d&apos;un blog.
+                </p>
+                <ul className="mt-5 space-y-2.5 text-sm">
+                  {["Score 0–100 recalculé chaque jour", "Actions classées par impact attendu", "Rappels santé personnalisés"].map((t) => (
+                    <li key={t} className="flex gap-2.5 text-foreground/80">
+                      <span className="font-mono text-emerald">→</span> {t}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <WidgetCard cap="Vitals Score · aujourd'hui">
+                <div className="flex items-center gap-5">
+                  <svg width="96" height="96" viewBox="0 0 96 96" className="shrink-0 text-emerald" aria-label="Score 74 sur 100">
+                    <circle cx="48" cy="48" r="40" fill="none" className="text-secondary" stroke="currentColor" strokeWidth="8" />
+                    <circle
+                      cx="48" cy="48" r="40" fill="none" stroke="currentColor" strokeWidth="8" strokeLinecap="round"
+                      strokeDasharray="251.2" strokeDashoffset="65" transform="rotate(-90 48 48)"
+                    />
+                  </svg>
+                  <div>
+                    <div className="font-mono tabular-nums text-4xl font-bold tracking-tight">
+                      74<span className="text-base text-muted-foreground font-normal">/100</span>
+                    </div>
+                    <div className="mt-1 space-y-1 text-[13px] text-foreground/80">
+                      <div>
+                        sommeil <span className="font-mono text-emerald">+6</span> · sport{" "}
+                        <span className="font-mono text-emerald">+4</span>
+                      </div>
+                      <div>
+                        nutrition <span className="font-mono text-amber-500">−3</span> oméga-3 bas
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </WidgetCard>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section id="prix" className="max-w-5xl mx-auto px-6 py-20 border-t border-border">
+          <div className="mb-12">
+            <div className="eyebrow font-mono">Tarifs</div>
+            <h2 className="mt-3 text-3xl md:text-4xl font-bold tracking-[-0.03em]">Simple, et honnête.</h2>
+            <p className="mt-3 text-muted-foreground">Bêta privée gratuite jusqu&apos;au lancement officiel.</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-5">
+            <div className="rounded-2xl border border-border bg-card p-6 flex flex-col">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">Free</div>
+              <div className="mt-2 font-mono tabular-nums text-4xl font-bold tracking-tight">
+                0 €<span className="text-base text-muted-foreground font-normal"> / mois</span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground mb-5">L&apos;essentiel pour démarrer ton dossier</p>
+              <ul className="space-y-2.5 text-sm text-foreground/80 mb-6">
+                {["1 bilan sanguin / mois", "ADN illimité (1 import à vie)", "5 questions chat / jour", "Vue praticien imprimable"].map((t) => (
+                  <li key={t}>
+                    <span className="text-emerald font-semibold">✓</span> {t}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup" className="mt-auto text-center px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 active:translate-y-px transition font-medium">
+                Commencer gratuitement
+              </Link>
+            </div>
+            <div className="relative rounded-2xl border-2 border-emerald bg-emerald/5 p-6 flex flex-col">
+              <span className="absolute -top-2.5 left-6 font-mono text-[10px] uppercase tracking-[0.14em] px-2 py-0.5 rounded bg-emerald text-primary-foreground">
+                recommandé
+              </span>
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-emerald">Pro</div>
+              <div className="mt-2 font-mono tabular-nums text-4xl font-bold tracking-tight">
+                9 €<span className="text-base text-muted-foreground font-normal"> / mois</span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground mb-5">Pour optimiser ta longévité</p>
+              <ul className="space-y-2.5 text-sm text-foreground/80 mb-6">
+                {[
+                  "Bilans illimités + comparaison",
+                  "Chat illimité avec l'équipe médicale",
+                  "Sync wearables (Whoop, Oura, Apple Health)",
+                  "Plan d'action quotidien + rappels",
+                  "Partage médecin par lien sécurisé",
+                ].map((t) => (
+                  <li key={t}>
+                    <span className="text-emerald font-semibold">✓</span> {t}
+                  </li>
+                ))}
+              </ul>
+              <Link href="/signup" className="mt-auto text-center px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition">
+                Rejoindre la bêta
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* CTA band */}
+        <section className="border-y border-border bg-card">
+          <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+            <h2 className="text-3xl md:text-[2.6rem] font-bold tracking-[-0.035em] text-balance">
+              Cinq minutes pour tout centraliser.
+            </h2>
+            <p className="mt-4 text-muted-foreground max-w-xl mx-auto">
+              Crée ton compte, importe un premier bilan, et pose ta première question comme à un médecin qui aurait
+              déjà tout ton dossier sous les yeux.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
+              <Link href="/signup" className="inline-flex items-center gap-2 px-5 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition">
+                Créer mon compte <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link href="/login?demo=1" className="px-5 py-3 rounded-lg border border-border bg-background hover:bg-secondary/50 active:translate-y-px transition font-medium">
+                Voir la démo
+              </Link>
+            </div>
+          </div>
+        </section>
+      </main>
 
       {/* Footer */}
       <footer className="border-t border-border bg-background">
         <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
           <div>
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="h-2 w-2 rounded-full bg-emerald" />
-              <span className="font-semibold">Vitals</span>
-            </div>
-            <p className="text-muted-foreground text-xs leading-relaxed">La plateforme de santé personnelle. Hébergement EU, données chiffrées.</p>
+            <VitalsWordmark className="mb-3" />
+            <p className="text-muted-foreground text-xs leading-relaxed max-w-[26ch]">
+              La plateforme de santé personnelle. Hébergement UE, données chiffrées. Vitals n&apos;est pas un
+              dispositif médical.
+            </p>
           </div>
           <div>
             <div className="font-semibold mb-3">Produit</div>
             <ul className="space-y-2 text-muted-foreground">
-              <li><Link href="/about" className="hover:text-foreground transition">À propos</Link></li>
+              <li><Link href="#lit" className="hover:text-foreground transition">Fonctionnalités</Link></li>
+              <li><Link href="#prix" className="hover:text-foreground transition">Tarifs</Link></li>
               <li><Link href="/login" className="hover:text-foreground transition">Se connecter</Link></li>
-              <li><Link href="/signup" className="hover:text-foreground transition">Rejoindre la bêta</Link></li>
+              <li><Link href="/about" className="hover:text-foreground transition">À propos</Link></li>
             </ul>
           </div>
           <div>
@@ -215,15 +369,26 @@ export default function LandingPage() {
           <div>
             <div className="font-semibold mb-3">Contact</div>
             <ul className="space-y-2 text-muted-foreground text-xs">
-              <li>contact@vitals.blueproject.org</li>
+              <li className="font-mono">contact@vitals.club</li>
               <li>RGPD compliant</li>
             </ul>
           </div>
         </div>
         <div className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Vitals. Vitals n'est pas un dispositif médical. Consulte ton médecin avant toute décision de santé.
+          © {new Date().getFullYear()} Vitals. Vitals n&apos;est pas un dispositif médical. Consulte ton médecin avant
+          toute décision de santé.
         </div>
       </footer>
+    </div>
+  );
+}
+
+/** Data widget shell — a bordered card with a mono caption. */
+function WidgetCard({ cap, children, className }: { cap: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-2xl border border-border bg-card p-5 shadow-xl ${className ?? ""}`}>
+      <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground mb-4">{cap}</div>
+      {children}
     </div>
   );
 }

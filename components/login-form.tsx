@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
+import { VitalsWordmark } from "@/components/brand/logo";
 
 export function LoginForm() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="mkt-ambient min-h-screen flex items-center justify-center p-6">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -64,10 +65,11 @@ export function LoginForm() {
         className="w-full max-w-md"
       >
         <div className="glass border border-border rounded-2xl p-8 shadow-2xl">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="h-2 w-2 rounded-full bg-emerald" />
-            <h1 className="text-2xl font-semibold tracking-tight">Vitals</h1>
-          </div>
+          <VitalsWordmark
+            markClassName="h-6 w-6"
+            textClassName="text-2xl font-semibold tracking-tight"
+            className="mb-1"
+          />
           <p className="text-muted-foreground text-sm mb-7">Health intelligence dashboard</p>
 
           {idle && !err && (

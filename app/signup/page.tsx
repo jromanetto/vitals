@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Eye, EyeOff, Loader2, Sparkles, Ticket } from "lucide-react";
+import { VitalsWordmark } from "@/components/brand/logo";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -72,12 +73,11 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-6 bg-gradient-to-br from-emerald/5 via-background to-background">
+    <div className="mkt-ambient min-h-screen flex items-center justify-center bg-background p-6">
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
                   className="w-full max-w-md">
-        <Link href="/" className="flex items-center gap-2.5 mb-8 justify-center">
-          <div className="h-2.5 w-2.5 rounded-full bg-emerald" />
-          <span className="text-lg font-semibold tracking-tight">Vitals</span>
+        <Link href="/" className="flex justify-center mb-8" aria-label="Vitals — accueil">
+          <VitalsWordmark />
         </Link>
 
         <div className="rounded-2xl border border-border bg-card p-6 md:p-8 shadow-2xl">
