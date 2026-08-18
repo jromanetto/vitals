@@ -24,6 +24,10 @@ const PUBLIC_PATHS = new Set<string>([
   "/about",
   "/legal/privacy",
   "/legal/terms",
+  // OAuth consent screen — public so it can preserve the full authorize query
+  // when bouncing an unauthenticated user to /login (the page itself gates on
+  // the session).
+  "/authorize",
   // PWA assets (no file extension → not exempted by the matcher, so list them
   // explicitly; otherwise the home-screen / manifest icon redirects to /login).
   "/icon",
@@ -35,7 +39,9 @@ const PUBLIC_PATHS = new Set<string>([
 // /api/cron/* endpoints are self-secured via CRON_SECRET header inside the route.
 // /api/mcp is Bearer-token authenticated inside the route (personal access
 // token, not the session cookie), so it must bypass the cookie middleware.
-const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/", "/api/csp-report", "/api/mcp"];
+// /api/oauth/* is the OAuth token/register/metadata surface (no session cookie
+// — the token endpoint is reached by Claude's servers, not the browser).
+const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/", "/api/csp-report", "/api/mcp", "/api/oauth"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;

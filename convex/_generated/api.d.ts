@@ -17,6 +17,7 @@ import type * as household from "../household.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as mcpToken from "../mcpToken.js";
 import type * as notes from "../notes.js";
+import type * as oauthCode from "../oauthCode.js";
 import type * as passwordReset from "../passwordReset.js";
 import type * as profile from "../profile.js";
 import type * as push from "../push.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   "lib/auth": typeof lib_auth;
   mcpToken: typeof mcpToken;
   notes: typeof notes;
+  oauthCode: typeof oauthCode;
   passwordReset: typeof passwordReset;
   profile: typeof profile;
   push: typeof push;

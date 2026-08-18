@@ -398,6 +398,22 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_token", ["tokenHash"]),
 
+  // oauth_code — short-lived authorization codes for the OAuth 2.0 + PKCE flow
+  // that lets Claude connect as a native remote MCP connector. Single-use,
+  // ~10 min TTL. Only the sha256 of the code is stored. Exchanged at /token
+  // (with the PKCE verifier) for an mcp_token access token.
+  oauth_code: defineTable({
+    codeHash: v.string(),
+    userId: v.number(),
+    clientId: v.string(),
+    redirectUri: v.string(),
+    codeChallenge: v.string(),
+    scope: v.optional(v.string()),
+    used: v.number(), // 0 | 1
+    expiresAt: v.number(),
+    createdAt: v.number(),
+  }).index("by_code", ["codeHash"]),
+
   // mcp_token — personal access tokens for the read-only MCP server. The
   // plaintext token is shown once at creation and never stored; only its
   // sha256 hash lives here. Scoped to one user, revocable. userId is the

@@ -37,9 +37,12 @@ function bearer(req: NextRequest): string | null {
 }
 
 function unauthorized(): NextResponse {
+  // Advertise the protected-resource metadata (RFC 9728) so an MCP client can
+  // discover the OAuth authorization server and start the connector flow.
+  const wwwAuth = `Bearer realm="vitals-mcp", resource_metadata="https://vitals.club/.well-known/oauth-protected-resource"`;
   return NextResponse.json(
     { jsonrpc: "2.0", id: null, error: { code: -32001, message: "Unauthorized: valid Bearer token required" } },
-    { status: 401, headers: { ...CORS, "WWW-Authenticate": 'Bearer realm="vitals-mcp"' } },
+    { status: 401, headers: { ...CORS, "WWW-Authenticate": wwwAuth } },
   );
 }
 
