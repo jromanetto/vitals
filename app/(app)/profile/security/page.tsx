@@ -1,5 +1,6 @@
 import { SecurityPanel } from "@/components/security-panel";
 import { PushPanel } from "@/components/push-panel";
+import { McpTokenPanel } from "@/components/mcp-token-panel";
 import { hasTotpEnabled } from "@/lib/auth";
 import { isAnonymizeEnabled } from "@/lib/anonymize";
 import { listAudit } from "@/lib/audit";
@@ -20,6 +21,7 @@ export default async function SecurityPage() {
         icon={<Lock className="h-5 w-5 text-emerald" />}
       />
       <PushPanel />
+      <McpTokenPanel />
       <SecurityPanel totpEnabled={totp} anonymizeEnabled={anonymize} events={events} />
     </div>
   );

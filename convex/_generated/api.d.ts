@@ -15,6 +15,7 @@ import type * as dna from "../dna.js";
 import type * as habits from "../habits.js";
 import type * as household from "../household.js";
 import type * as lib_auth from "../lib/auth.js";
+import type * as mcpToken from "../mcpToken.js";
 import type * as notes from "../notes.js";
 import type * as passwordReset from "../passwordReset.js";
 import type * as profile from "../profile.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   habits: typeof habits;
   household: typeof household;
   "lib/auth": typeof lib_auth;
+  mcpToken: typeof mcpToken;
   notes: typeof notes;
   passwordReset: typeof passwordReset;
   profile: typeof profile;

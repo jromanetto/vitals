@@ -33,7 +33,9 @@ const PUBLIC_PATHS = new Set<string>([
 
 // Path prefixes that are always public (api auth + health-check + cron).
 // /api/cron/* endpoints are self-secured via CRON_SECRET header inside the route.
-const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/", "/api/csp-report"];
+// /api/mcp is Bearer-token authenticated inside the route (personal access
+// token, not the session cookie), so it must bypass the cookie middleware.
+const PUBLIC_PREFIXES = ["/api/auth", "/api/health-check", "/legal/", "/share/", "/api/share/", "/api/cron/", "/api/csp-report", "/api/mcp"];
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true;

@@ -398,6 +398,21 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_token", ["tokenHash"]),
 
+  // mcp_token — personal access tokens for the read-only MCP server. The
+  // plaintext token is shown once at creation and never stored; only its
+  // sha256 hash lives here. Scoped to one user, revocable. userId is the
+  // legacyId (the real user id used across the schema).
+  mcp_token: defineTable({
+    userId: v.number(),
+    tokenHash: v.string(),
+    name: v.optional(v.string()),
+    revoked: v.number(), // 0 | 1
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+  })
+    .index("by_token", ["tokenHash"])
+    .index("by_user", ["userId"]),
+
   waitlist: defineTable({
     legacyId: v.optional(v.number()),
     email: v.string(),
