@@ -1,8 +1,10 @@
 /**
- * Consent approval — called by the /authorize page after the logged-in user
- * clicks "Autoriser". Session-guarded: the code is bound to the authenticated
- * user. Mints a single-use authorization code (PKCE-bound) and returns the
- * redirect URL the browser should navigate to.
+ * Consent approval — the target of the /authorize consent form (native POST, so
+ * the session cookie is carried by a top-level navigation, not a fetch). Mints a
+ * single-use PKCE-bound authorization code and 303-redirects the browser to the
+ * client's redirect_uri. If the session is missing/expired, it bounces to /login
+ * (preserving the authorize request) so the flow self-heals instead of dead-
+ * ending on a 401.
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
@@ -22,29 +24,47 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest): Promise<NextResponse> {
-  const userId = await currentUserId();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+function field(fd: FormData, k: string): string {
+  const v = fd.get(k);
+  return typeof v === "string" ? v : "";
+}
 
-  let b: {
-    clientId?: string;
-    redirectUri?: string;
-    codeChallenge?: string;
-    codeChallengeMethod?: string;
-    state?: string;
-  };
+export async function POST(req: NextRequest): Promise<NextResponse> {
+  let fd: FormData;
   try {
-    b = await req.json();
+    fd = await req.formData();
   } catch {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const { clientId, redirectUri, codeChallenge, codeChallengeMethod, state } = b;
+  const clientId = field(fd, "clientId");
+  const redirectUri = field(fd, "redirectUri");
+  const codeChallenge = field(fd, "codeChallenge");
+  const codeChallengeMethod = field(fd, "codeChallengeMethod");
+  const state = field(fd, "state");
+
   if (!redirectUri || !isAllowedRedirect(redirectUri)) {
     return NextResponse.json({ error: "invalid redirect_uri" }, { status: 400 });
   }
   if (!codeChallenge || codeChallengeMethod !== "S256") {
     return NextResponse.json({ error: "PKCE S256 required" }, { status: 400 });
+  }
+
+  const userId = await currentUserId();
+  if (!userId) {
+    // Session gone — rebuild the authorize request and send the user to log in;
+    // they land back on the consent screen afterwards.
+    const authorize = buildRedirect(new URL("/authorize", req.nextUrl.origin).toString(), {
+      response_type: "code",
+      client_id: clientId || "claude",
+      redirect_uri: redirectUri,
+      code_challenge: codeChallenge,
+      code_challenge_method: "S256",
+      ...(state ? { state } : {}),
+    });
+    const login = new URL("/login", req.nextUrl.origin);
+    login.searchParams.set("from", new URL(authorize).pathname + new URL(authorize).search);
+    return NextResponse.redirect(login, 303);
   }
 
   const code = generateAuthCode();
@@ -60,6 +80,5 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   });
   logAudit("oauth_authorize", `client=${clientId || "?"}`);
 
-  const url = buildRedirect(redirectUri, state ? { code, state } : { code });
-  return NextResponse.json({ redirectUrl: url });
+  return NextResponse.redirect(buildRedirect(redirectUri, state ? { code, state } : { code }), 303);
 }

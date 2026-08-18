@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import { currentUserId } from "@/lib/auth";
-import { isAllowedRedirect } from "@/lib/oauth/config";
-import { OAuthConsent } from "@/components/oauth-consent";
+import { isAllowedRedirect, buildRedirect } from "@/lib/oauth/config";
 import { VitalsWordmark } from "@/components/brand/logo";
-import { Plug } from "lucide-react";
+import { Plug, ShieldCheck } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 // OAuth 2.0 authorization endpoint (consent screen). Public in middleware so we
 // can preserve the full query when bouncing an unauthenticated user to /login.
+// The consent uses a native form POST (not fetch) so the session cookie is
+// carried by a top-level navigation.
 export default async function AuthorizePage({
   searchParams,
 }: {
@@ -38,6 +39,10 @@ export default async function AuthorizePage({
     for (const [k, v] of Object.entries(sp)) if (typeof v === "string") qs.set(k, v);
     redirect(`/login?from=${encodeURIComponent(`/authorize?${qs.toString()}`)}`);
   }
+
+  const denyUrl = invalid
+    ? "#"
+    : buildRedirect(redirectUri, state ? { error: "access_denied", state } : { error: "access_denied" });
 
   return (
     <div className="mkt-ambient min-h-screen flex items-center justify-center p-6">
@@ -76,13 +81,26 @@ export default async function AuthorizePage({
                   <span className="text-emerald font-semibold">✓</span> Révocable à tout moment dans Profil → Sécurité
                 </li>
               </ul>
-              <OAuthConsent
-                clientId={clientId}
-                redirectUri={redirectUri}
-                codeChallenge={codeChallenge}
-                codeChallengeMethod={codeChallengeMethod}
-                state={state}
-              />
+
+              <form action="/api/oauth/approve" method="POST" className="mt-6 flex gap-3">
+                <input type="hidden" name="clientId" value={clientId} />
+                <input type="hidden" name="redirectUri" value={redirectUri} />
+                <input type="hidden" name="codeChallenge" value={codeChallenge} />
+                <input type="hidden" name="codeChallengeMethod" value={codeChallengeMethod} />
+                <input type="hidden" name="state" value={state} />
+                <button
+                  type="submit"
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 active:translate-y-px transition"
+                >
+                  <ShieldCheck className="h-4 w-4" /> Autoriser
+                </button>
+                <a
+                  href={denyUrl}
+                  className="px-4 py-2.5 rounded-lg border border-border hover:bg-secondary/50 active:translate-y-px transition font-medium inline-flex items-center"
+                >
+                  Refuser
+                </a>
+              </form>
               <p className="mt-4 text-[11px] text-muted-foreground font-mono break-all">→ {redirectUri}</p>
             </>
           )}
