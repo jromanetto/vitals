@@ -19,6 +19,7 @@ import {
   buildRedirect,
   CODE_TTL_MS,
   SCOPE,
+  ISSUER,
 } from "@/lib/oauth/config";
 
 export const runtime = "nodejs";
@@ -53,8 +54,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const userId = await currentUserId();
   if (!userId) {
     // Session gone — rebuild the authorize request and send the user to log in;
-    // they land back on the consent screen afterwards.
-    const authorize = buildRedirect(new URL("/authorize", req.nextUrl.origin).toString(), {
+    // they land back on the consent screen afterwards. Use the canonical public
+    // origin: the app binds to 127.0.0.1 behind nginx, so req.nextUrl.origin is
+    // the internal host and would redirect the browser to localhost.
+    const authorize = buildRedirect(`${ISSUER}/authorize`, {
       response_type: "code",
       client_id: clientId || "claude",
       redirect_uri: redirectUri,
@@ -62,8 +65,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       code_challenge_method: "S256",
       ...(state ? { state } : {}),
     });
-    const login = new URL("/login", req.nextUrl.origin);
-    login.searchParams.set("from", new URL(authorize).pathname + new URL(authorize).search);
+    const u = new URL(authorize);
+    const login = new URL("/login", ISSUER);
+    login.searchParams.set("from", u.pathname + u.search);
     return NextResponse.redirect(login, 303);
   }
 
