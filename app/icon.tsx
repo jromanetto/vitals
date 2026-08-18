@@ -3,6 +3,7 @@ import { ImageResponse } from "next/og";
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
+// Favicon — the pulse-V mark (see components/brand/logo.tsx) on a dark tile.
 export default function Icon() {
   return new ImageResponse(
     (
@@ -17,15 +18,16 @@ export default function Icon() {
           borderRadius: 8,
         }}
       >
-        <div
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: "50%",
-            background: "rgb(16, 185, 129)",
-            boxShadow: "0 0 12px rgb(16, 185, 129)",
-          }}
-        />
+        <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+          <path
+            d="M2 16 H10 L15 25 L20 7 L25 16 H29"
+            stroke="rgb(16,185,129)"
+            strokeWidth={2.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle cx="29" cy="16" r="2.6" fill="rgb(16,185,129)" />
+        </svg>
       </div>
     ),
     size,
